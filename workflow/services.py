@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from .models import AnnualBalance, Audit, Document, DocumentCounter, Notice, Profile
+from .people import validate_approval_person
 
 def visible_documents(user):
     p = user.profile
@@ -105,6 +106,8 @@ def save_document(document, actor, submit=False):
     if document.kind == 'stock':
         # Stock requests do not have prices, a shopping URL or final approver.
         document.unit_price, document.approver, document.url = Decimal('0'), None, ''
+    validate_approval_person(document.reviewer)
+    validate_approval_person(document.approver)
     document.title = make_title(document)
     if submit:
         if document.kind not in dict(Document.KINDS):
@@ -222,6 +225,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             raise PermissionDenied
         if not new_person or not new_person.is_active or not new_person.profile.approved:
             raise ValidationError('활성화된 담당자를 선택해 주세요.')
+        validate_approval_person(new_person)
         field = 'reviewer' if document.status == 'review' else 'approver'
         old = getattr(document, field)
         setattr(document, field, new_person)

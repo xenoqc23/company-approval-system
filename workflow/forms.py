@@ -2,6 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from .models import DEPARTMENTS, RANKS, Document
+from .people import approval_people
 
 User = get_user_model()
 
@@ -33,9 +34,30 @@ class EmployeeChoice(forms.ModelChoiceField):
     def label_from_instance(self, user):
         return f'{user.first_name} · {user.profile.department} {user.profile.rank}'
 
+class DepartmentEmployeeSelect(forms.Select):
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        if value:
+            option['attrs']['data-department'] = value.instance.profile.department
+        return option
+
+def department_picker(person_field):
+    return forms.ChoiceField(label='부서', required=False, choices=[('', '부서를 선택하세요')] + [(x, x) for x in DEPARTMENTS],
+        widget=forms.Select(attrs={'data-department-picker': '', 'data-person-field': f'id_{person_field}'}))
+
+class ApprovalAssignmentForm(forms.Form):
+    new_person_department = department_picker('new_person')
+    new_person = EmployeeChoice(label='새 담당자', queryset=User.objects.none(), widget=DepartmentEmployeeSelect())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['new_person'].queryset = approval_people()
+
 class DocumentForm(forms.ModelForm):
-    reviewer = EmployeeChoice(label='검토자', queryset=User.objects.none(), required=False)
-    approver = EmployeeChoice(label='최종 승인자', queryset=User.objects.none(), required=False)
+    reviewer_department = department_picker('reviewer')
+    approver_department = department_picker('approver')
+    reviewer = EmployeeChoice(label='검토자', queryset=User.objects.none(), required=False, widget=DepartmentEmployeeSelect())
+    approver = EmployeeChoice(label='최종 승인자', queryset=User.objects.none(), required=False, widget=DepartmentEmployeeSelect())
     recipient = EmployeeChoice(label='물품 수령자', queryset=User.objects.none(), required=False)
 
     class Meta:
@@ -58,8 +80,13 @@ class DocumentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.submit = submit
         people = User.objects.filter(is_active=True, profile__approved=True).select_related('profile').order_by('first_name')
-        for key in ['reviewer', 'approver', 'recipient']:
-            self.fields[key].queryset = people
+        self.fields['recipient'].queryset = people
+        for key in ['reviewer', 'approver']:
+            self.fields[key].queryset = approval_people()
+            selected_id = self.data.get(key) if self.is_bound else getattr(self.instance, f'{key}_id', None)
+            selected = self.fields[key].queryset.filter(pk=selected_id).first() if str(selected_id or '').isdigit() else None
+            if selected:
+                self.initial[f'{key}_department'] = selected.profile.department
         for f in self.fields.values():
             f.required = False
         self.fields['kind'].required = True
@@ -67,6 +94,10 @@ class DocumentForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        for key in ['reviewer', 'approver']:
+            person, department = data.get(key), data.get(f'{key}_department')
+            if person and department and person.profile.department != department:
+                self.add_error(key, '선택한 부서에 속한 직원을 지정해 주세요.')
         if data.get('kind') == 'leave' and data.get('leave_type') != 'annual':
             data['end_date'] = data.get('start_date')
         if data.get('kind') == 'leave':

@@ -6,15 +6,16 @@ from django.contrib.auth import authenticate, login, logout, get_user_model, upd
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from .forms import DocumentForm, ProfilePasswordForm, SignupForm
+from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
+from .people import approval_people
 
 User = get_user_model()
 
@@ -95,6 +96,7 @@ def dashboard(request):
 @login_required
 def documents(request):
     mode = request.GET.get('mode', 'mine')
+    accounting_categories, selected_kind = [], ''
     qs = visible_documents(request.user).select_related('owner', 'owner__profile', 'reviewer', 'approver')
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
               'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
@@ -124,6 +126,17 @@ def documents(request):
         if not request.user.profile.view_accounting:
             raise PermissionDenied
         qs = qs.filter(status='approved')
+        selected_kind = request.GET.get('kind', 'leave')
+        if selected_kind not in dict(Document.KINDS):
+            selected_kind = 'leave'
+        counts = {row['kind']: row['total'] for row in qs.values('kind').annotate(total=Count('pk'))}
+        for key, label in [('leave', '휴가원'), ('office', '구매요청서'), ('stock', '생산 재고 요청')]:
+            params = request.GET.copy()
+            params['mode'], params['kind'] = 'accounting', key
+            for stale in ['status', 'shipment']:
+                params.pop(stale, None)
+            accounting_categories.append({'key': key, 'label': label, 'count': counts.get(key, 0), 'url': '?' + params.urlencode()})
+        qs = qs.filter(kind=selected_kind)
     elif mode == 'receive':
         qs = qs.filter(status='approved', recipient=request.user, kind__in=['office', 'stock'])
     elif mode == 'all':
@@ -135,6 +148,8 @@ def documents(request):
         q = request.GET['q']
         qs = qs.filter(Q(title__icontains=q) | Q(number__icontains=q) | Q(owner__first_name__icontains=q) | Q(product__icontains=q))
     for key in ['kind', 'status', 'shipment']:
+        if key == 'kind' and mode == 'accounting':
+            continue
         if request.GET.get(key):
             qs = qs.filter(**{key: request.GET[key]})
     if request.GET.get('department'):
@@ -147,7 +162,9 @@ def documents(request):
             messages.error(request, '검색 날짜 형식을 확인해 주세요.')
     return page(request, 'documents', titles[mode], mode, documents=qs[:100], document_count=qs.count(),
                 mode=mode, states=[(k, '검토완료' if k == 'approved' else label) for k, label in Document.STATES if k != 'approve'] if mode == 'stock' else Document.STATES,
-                kinds=Document.KINDS, departments=DEPARTMENTS)
+                kinds=Document.KINDS, departments=DEPARTMENTS,
+                accounting_categories=accounting_categories, selected_kind=selected_kind,
+                stock_column=mode == 'stock' or (mode == 'accounting' and selected_kind == 'stock'))
 
 @login_required
 def compose(request, pk=None):
@@ -193,10 +210,10 @@ def detail(request, pk):
         amount = leave_amount(doc) if doc.kind == 'leave' else 0
     except ValidationError:
         amount = 0
-    people = User.objects.filter(is_active=True, profile__approved=True).select_related('profile')
+    assignment_form = ApprovalAssignmentForm()
     procurement_log = doc.audits.filter(event='발주 처리').select_related('actor').first() if doc.kind == 'stock' else None
     return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
-                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, people=people, procurement_log=procurement_log,
+                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, procurement_log=procurement_log,
                 can_reassign=u.profile.manage_system and doc.status in ['review', 'approve'],
                 can_copy=u.pk == doc.owner_id and doc.status in ['rejected', 'cancelled'])
 
@@ -206,6 +223,8 @@ def action(request, pk):
     get_object_or_404(visible_documents(request.user), pk=pk)
     try:
         new = User.objects.filter(pk=request.POST.get('new_person') or None).first()
+        if request.POST.get('action') == 'reassign' and request.POST.get('new_person_department') and new and new.profile.department != request.POST['new_person_department']:
+            raise ValidationError('선택한 부서에 속한 직원을 지정해 주세요.')
         doc = act_on_document(pk, request.user, request.POST.get('action'), request.POST.get('reason', ''), new)
         messages.success(request, '처리가 완료되었습니다.')
         if doc.status == 'deleted' or not visible_documents(request.user).filter(pk=pk).exists():
@@ -221,6 +240,10 @@ def copy_document(request, pk):
     fields = ['kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'quantity', 'unit_price',
               'product', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
     new = Document(owner=request.user, **{field: getattr(old, field) for field in fields})
+    for field in ['reviewer', 'approver']:
+        person = getattr(new, field)
+        if person and not approval_people().filter(pk=person.pk).exists():
+            setattr(new, field, None)
     save_document(new, request.user)
     audit(request.user, '복사 재기안', new, old.number or '')
     messages.success(request, '새 기안으로 복사했습니다. 내용을 확인하고 제출해 주세요.')

@@ -7,6 +7,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from workflow.models import AnnualBalance, Audit, Document, Notice, Policy, Profile
 from workflow.services import act_on_document, edit_balance, save_document, visible_documents
+from workflow.forms import DocumentForm
 from workflow.management.commands.seed_demo import TENURE, POLICY
 
 
@@ -335,6 +336,99 @@ class ApprovalTests(TestCase):
         self.assertEqual(self.client.get(reverse('staff'), {'department': 'invalid'}).status_code, 200)
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get(reverse('staff'), {'department': '생산팀'}).status_code, 403)
+
+    def test_approval_candidates_exclude_admin_and_juniors_but_allow_senior_self(self):
+        self.recipient.profile.rank = '사원'
+        self.recipient.profile.save()
+        form = DocumentForm()
+        for field in ['reviewer', 'approver']:
+            self.assertFalse(form.fields[field].queryset.filter(pk=self.admin.pk).exists())
+            self.assertFalse(form.fields[field].queryset.filter(pk=self.recipient.pk).exists())
+            self.assertTrue(form.fields[field].queryset.filter(pk=self.owner.pk).exists())
+        self.assertTrue(form.fields['recipient'].queryset.filter(pk=self.recipient.pk).exists())
+        self.assertTrue(form.fields['recipient'].queryset.filter(pk=self.admin.pk).exists())
+        self.stranger.profile.rank = '주임'
+        self.stranger.profile.save()
+        self.assertTrue(DocumentForm().fields['reviewer'].queryset.filter(pk=self.stranger.pk).exists())
+        User = get_user_model()
+        named_admin = User.objects.create_user('ADMIN', first_name='관리용 계정')
+        Profile.objects.create(user=named_admin, department='인사팀', rank='이사', approved=True)
+        self.assertFalse(DocumentForm().fields['approver'].queryset.filter(pk=named_admin.pk).exists())
+
+    def test_direct_submission_and_reassignment_cannot_bypass_candidate_rules(self):
+        self.stranger.profile.rank = '사원'
+        self.stranger.profile.save()
+        for candidate in [self.admin, self.stranger]:
+            for field in ['reviewer', 'approver']:
+                with self.subTest(candidate=candidate.username, field=field):
+                    with self.assertRaises(ValidationError):
+                        self.leave(**{field: candidate})
+        doc = self.leave()
+        for candidate in [self.admin, self.stranger]:
+            with self.assertRaises(ValidationError):
+                act_on_document(doc.pk, self.admin, 'reassign', '담당자 변경', candidate)
+        doc.refresh_from_db()
+        self.assertEqual(doc.reviewer, self.reviewer)
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse('compose'), {'kind': 'stock', 'intent': 'submit',
+            'product': '매뉴얼', 'quantity': 10, 'reviewer': self.admin.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('reviewer', response.context['form'].errors)
+
+    def test_department_picker_preserves_draft_and_rejects_mismatched_staff(self):
+        self.approver.profile.department = '인사팀'
+        self.approver.profile.save()
+        draft = self.leave(submit=False)
+        form = DocumentForm(instance=draft)
+        self.assertEqual(form['reviewer_department'].value(), '개발팀')
+        self.assertEqual(form['approver_department'].value(), '인사팀')
+        self.assertIn('data-department="인사팀"', str(form['approver']))
+        self.client.force_login(self.owner)
+        data = {'kind': 'stock', 'intent': 'submit', 'product': '매뉴얼', 'quantity': 10,
+                'reviewer': self.reviewer.pk, 'reviewer_department': '인사팀'}
+        response = self.client.post(reverse('compose'), data)
+        self.assertIn('reviewer', response.context['form'].errors)
+        data['reviewer_department'] = '개발팀'
+        response = self.client.post(reverse('compose'), data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Document.objects.filter(kind='stock', status='review').count(), 1)
+
+    def test_copy_old_rejected_document_clears_now_ineligible_approval_people(self):
+        old = self.leave()
+        act_on_document(old.pk, self.reviewer, 'reject', '재검토')
+        self.reviewer.profile.rank = '사원'
+        self.reviewer.profile.save()
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse('copy', args=[old.pk]))
+        self.assertEqual(response.status_code, 302)
+        copy = Document.objects.filter(status='draft').get()
+        self.assertIsNone(copy.reviewer)
+        old.refresh_from_db()
+        self.assertEqual(old.reviewer, self.reviewer)
+
+    def test_accounting_tabs_separate_approved_kinds_and_keep_filters(self):
+        leave = self.finish(self.leave())
+        office = self.finish(self.purchase())
+        stock = self.finish(self.purchase(kind='stock', product='제품 매뉴얼'))
+        self.purchase(product='검토 전 구매')
+        self.client.force_login(self.accounting)
+        response = self.client.get(reverse('documents'), {'mode': 'accounting'})
+        self.assertEqual(response.context['selected_kind'], 'leave')
+        self.assertEqual([d.pk for d in response.context['documents']], [leave.pk])
+        self.assertNotContains(response, '최종승인대기</a>')
+        self.assertEqual({c['key']: c['count'] for c in response.context['accounting_categories']},
+                         {'leave': 1, 'office': 1, 'stock': 1})
+        for kind, expected in [('office', office), ('stock', stock)]:
+            response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': kind})
+            self.assertEqual([d.pk for d in response.context['documents']], [expected.pk])
+        response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office', 'q': 'A4'})
+        self.assertContains(response, 'name="kind" value="office"')
+        self.assertTrue(all('q=A4' in c['url'] for c in response.context['accounting_categories']))
+        act_on_document(office.pk, self.approver, 'cancel_approval', '취소')
+        response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office'})
+        self.assertEqual(list(response.context['documents']), [])
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'stock'}).status_code, 403)
 
     def test_csrf_is_enforced_for_mutation(self):
         client = Client(enforce_csrf_checks=True)
