@@ -82,11 +82,11 @@ class ApprovalTests(TestCase):
         act_on_document(office.pk, self.recipient, 'receive')
         self.assertEqual(Notice.objects.filter(user=self.accounting, document=office).first().stage, '배송완료')
         stock = self.finish(self.purchase(kind='stock'))
-        self.assertEqual(Notice.objects.filter(user=self.accounting, document=stock).first().display_text,
-                         'owner - 대리 - 생산 재고 요청서 - 검토완료')
+        self.assertFalse(Notice.objects.filter(user=self.accounting, document=stock).exists())
         act_on_document(stock.pk, self.accounting, 'place')
         act_on_document(stock.pk, self.recipient, 'receive')
-        self.assertEqual(Notice.objects.filter(user=self.accounting, document=stock).first().stage, '입고완료')
+        self.assertFalse(Notice.objects.filter(user=self.accounting, document=stock).exists())
+        self.assertEqual(Notice.objects.filter(user=self.owner, document=stock).first().stage, '입고완료')
         own = self.leave(reviewer=self.owner, approver=self.owner)
         act_on_document(own.pk, self.owner, 'review')
         self.assertEqual(Notice.objects.filter(user=self.owner, document=own).count(), 2)
@@ -122,6 +122,25 @@ class ApprovalTests(TestCase):
         act_on_document(doc.pk, self.approver, 'cancel_approval', '본인 구매 취소')
         self.assertEqual(set(visible_notices(self.accounting).filter(document=doc).values_list('stage', flat=True)),
                          {'검토완료', '승인완료', '배송중', '배송완료', '승인취소'})
+
+    def test_accounting_stock_notices_excluded_for_own_foreign_and_legacy_records(self):
+        for owner in [self.accounting, self.owner]:
+            stock = self.purchase(kind='stock', owner=owner, recipient=self.accounting)
+            self.finish(stock)
+            act_on_document(stock.pk, self.accounting, 'place')
+            act_on_document(stock.pk, self.accounting, 'receive')
+            self.assertFalse(Notice.objects.filter(user=self.accounting, document=stock).exists())
+            # Previously stored stock notices are hidden even with old final-approval wording.
+            for stage in ['검토대기', '검토완료', '승인완료', '입고완료']:
+                Notice.objects.create(user=self.accounting, document=stock, stage=stage, text='기존 재고 알림')
+            self.assertFalse(visible_notices(self.accounting).filter(document=stock).exists())
+            act_on_document(stock.pk, self.reviewer, 'cancel_review', '재고 요청 취소')
+        self.client.force_login(self.accounting)
+        response = self.client.get(reverse('notices'))
+        self.assertEqual(response.context['notice_rows'], [])
+        self.assertEqual(response.context['unread'], 0)
+        self.assertEqual(list(self.client.get(reverse('dashboard')).context['notices']), [])
+        self.assertEqual(Notice.objects.filter(user=self.accounting).count(), 8)
 
     def test_accounting_foreign_purchase_only_approval_and_delivery_completion(self):
         doc = self.purchase(reviewer=self.accounting, approver=self.accounting, recipient=self.accounting)
@@ -711,7 +730,7 @@ class ApprovalTests(TestCase):
         doc = act_on_document(doc.pk, self.reviewer, 'review')
         self.assertEqual(doc.status_label, '발주대기')
         self.assertEqual(self.used(), 3)
-        self.assertTrue(Notice.objects.filter(user=self.accounting, document=doc, text__contains='발주 담당자').exists())
+        self.assertFalse(Notice.objects.filter(user=self.accounting, document=doc).exists())
         with self.assertRaises(PermissionDenied):
             act_on_document(doc.pk, self.reviewer, 'review')
         self.client.force_login(self.owner)
@@ -730,6 +749,7 @@ class ApprovalTests(TestCase):
         self.assertFalse(visible_documents(self.stranger).filter(pk=stock.pk).exists())
         act_on_document(stock.pk, self.reviewer, 'review')
         self.assertTrue(visible_documents(self.stranger).filter(pk=stock.pk).exists())
+        self.assertTrue(Notice.objects.filter(user=self.stranger, document=stock, stage='검토완료').exists())
         self.assertFalse(visible_documents(self.stranger).filter(pk__in=[office.pk, leave.pk]).exists())
         self.client.force_login(self.stranger)
         response = self.client.get('/documents/?mode=stock&stock_stage=ready')
