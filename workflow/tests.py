@@ -51,6 +51,68 @@ class ApprovalTests(TestCase):
     def used(self, year=2026):
         return AnnualBalance.objects.get(user=self.owner, year=year).used
 
+    def test_notification_subject_stages_and_historical_snapshot(self):
+        self.owner.first_name = '홍길동'
+        self.owner.save()
+        doc = self.leave()
+        pending = Notice.objects.get(user=self.reviewer, document=doc)
+        self.assertEqual(pending.display_text, '홍길동 - 대리 - 휴가원 - 검토대기')
+        act_on_document(doc.pk, self.reviewer, 'review')
+        self.assertEqual(Notice.objects.get(user=self.owner, document=doc).stage, '검토완료')
+        self.assertEqual(Notice.objects.get(user=self.approver, document=doc).stage, '승인대기')
+        act_on_document(doc.pk, self.approver, 'approve')
+        approved = Notice.objects.get(user=self.accounting, document=doc)
+        self.assertEqual(approved.display_text, '홍길동 - 대리 - 휴가원 - 승인완료')
+        self.owner.first_name = '변경된 이름'
+        self.owner.save()
+        self.owner.profile.rank = '과장'
+        self.owner.profile.save()
+        pending.refresh_from_db()
+        self.assertEqual(pending.display_text, '홍길동 - 대리 - 휴가원 - 검토대기')
+        self.client.force_login(self.accounting)
+        self.assertContains(self.client.get(reverse('notices')), approved.display_text)
+        self.assertContains(self.client.get(reverse('dashboard')), approved.display_text)
+
+    def test_notification_purchase_fulfillment_stock_and_self_approval(self):
+        office = self.finish(self.purchase())
+        act_on_document(office.pk, self.accounting, 'place')
+        self.assertEqual(Notice.objects.filter(user=self.recipient, document=office).first().display_text,
+                         'owner - 대리 - 구매요청서 - 배송중')
+        act_on_document(office.pk, self.recipient, 'receive')
+        self.assertEqual(Notice.objects.filter(user=self.accounting, document=office).first().stage, '배송완료')
+        stock = self.finish(self.purchase(kind='stock'))
+        self.assertEqual(Notice.objects.filter(user=self.accounting, document=stock).first().display_text,
+                         'owner - 대리 - 생산 재고 요청서 - 검토완료')
+        act_on_document(stock.pk, self.accounting, 'place')
+        act_on_document(stock.pk, self.recipient, 'receive')
+        self.assertEqual(Notice.objects.filter(user=self.accounting, document=stock).first().stage, '입고완료')
+        own = self.leave(reviewer=self.owner, approver=self.owner)
+        act_on_document(own.pk, self.owner, 'review')
+        self.assertEqual(Notice.objects.filter(user=self.owner, document=own).count(), 2)
+        self.assertEqual(Notice.objects.filter(user=self.owner, document=own).first().stage, '검토완료 · 승인대기')
+        act_on_document(own.pk, self.owner, 'cancel_review', '일정 변경')
+        cancelled = Notice.objects.filter(user=self.owner, document=own).first()
+        self.assertEqual((cancelled.stage, cancelled.reason_text), ('검토취소', '일정 변경'))
+
+    def test_legacy_notification_backfill_preserves_original_event_and_read_state(self):
+        import importlib
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+        doc = self.finish(self.purchase())
+        original = Notice.objects.create(user=self.owner, document=doc, text='최종 승인되었습니다.', read=True)
+        rejection = Notice.objects.create(user=self.owner, document=doc, text='기안이 반려되었습니다. 사유: 수량 확인')
+        system = Notice.objects.create(user=self.owner, text='백업 작업에 실패했습니다.')
+        migration = importlib.import_module('workflow.migrations.0006_notification_subject_stage')
+        created = original.created_at
+        migration.format_existing_notices(apps, SimpleNamespace(connection=connection))
+        original.refresh_from_db(); rejection.refresh_from_db(); system.refresh_from_db()
+        self.assertEqual((original.stage, original.read, original.created_at, original.text),
+                         ('승인완료', True, created, '최종 승인되었습니다.'))
+        self.assertEqual(rejection.reason_text, '수량 확인')
+        self.assertEqual(system.display_text, system.text)
+        self.assertEqual(original.subject, 'owner - 대리 - 구매요청서')
+
     def test_rank_order_across_people_and_document_lists(self):
         for user, rank in [(self.owner, '사원'), (self.reviewer, '팀장'), (self.approver, '이사')]:
             user.profile.rank = rank

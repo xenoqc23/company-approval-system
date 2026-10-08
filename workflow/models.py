@@ -119,11 +119,21 @@ class Notice(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     document = models.ForeignKey(Document, null=True, blank=True, on_delete=models.PROTECT)
     text = models.CharField(max_length=250)
+    subject = models.CharField(max_length=250, blank=True)
+    stage = models.CharField(max_length=40, blank=True)
     read = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ['-created_at', '-pk']
+
+    @property
+    def display_text(self):
+        return f'{self.subject} - {self.stage}' if self.subject and self.stage else self.text
+
+    @property
+    def reason_text(self):
+        return self.text.partition('사유: ')[2] if self.subject and self.stage else ''
 
 class Policy(models.Model):
     tenure = models.TextField()

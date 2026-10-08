@@ -22,9 +22,12 @@ def visible_documents(user):
 def audit(actor, event, document=None, detail='', target=None):
     return Audit.objects.create(actor=actor, event=event, document=document, detail=detail, target=target)
 
-def notify(document, users, text):
+def notify(document, users, text, stage, stages_by_user=None):
     ids = {u.pk for u in users if u and u.is_active and u.profile.approved}
-    Notice.objects.bulk_create([Notice(user_id=i, document=document, text=text) for i in ids])
+    kind = {'leave': '휴가원', 'office': '구매요청서', 'stock': '생산 재고 요청서'}[document.kind]
+    subject = f'{document.owner.first_name or document.owner.username} - {document.owner.profile.rank} - {kind}'
+    Notice.objects.bulk_create([Notice(user_id=i, document=document, text=text, subject=subject,
+        stage=(stages_by_user or {}).get(i, stage)) for i in ids])
 
 def accountants(document):
     query = Q(profile__view_accounting=True)
@@ -141,7 +144,7 @@ def save_document(document, actor, submit=False):
     document.save()
     audit(actor, '기안 제출' if submit else '임시저장', document)
     if submit:
-        notify(document, [document.reviewer], f'{actor.first_name}님의 검토 요청이 도착했습니다.')
+        notify(document, [document.reviewer], f'{actor.first_name}님의 검토 요청이 도착했습니다.', '검토대기')
     return document
 
 def adjust_charges(document, sign):
@@ -165,11 +168,13 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         if document.kind == 'stock':
             document.status, document.approved_at = 'approved', now
             audit(actor, '재고 요청 검토 완료', document)
-            notify(document, [document.owner] + accountants(document), '생산 재고 요청의 검토가 완료되었습니다. 발주 담당자에게 전달했습니다.')
+            notify(document, [document.owner] + accountants(document), '생산 재고 요청의 검토가 완료되었습니다. 발주 담당자에게 전달했습니다.', '검토완료')
         else:
             document.status = 'approve'
             audit(actor, '검토 승인', document)
-            notify(document, [document.owner, document.approver], '검토가 완료되었습니다. 최종 승인을 기다리고 있습니다.')
+            approver_stage = '검토완료 · 승인대기' if document.owner_id == document.approver_id else '승인대기'
+            notify(document, [document.owner, document.approver], '검토가 완료되었습니다. 최종 승인을 기다리고 있습니다.',
+                   '검토완료', {document.approver_id: approver_stage})
     elif action == 'approve':
         if document.kind == 'stock' or document.status != 'approve' or document.approver_id != actor.pk:
             raise PermissionDenied
@@ -179,14 +184,14 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             adjust_charges(document, 1)
         document.status, document.approved_at = 'approved', now
         audit(actor, '최종 승인', document, f'연차 {document.charged}일 차감' if document.kind == 'leave' else '')
-        notify(document, [document.owner] + accountants(document), '최종 승인되었습니다.')
+        notify(document, [document.owner] + accountants(document), '최종 승인되었습니다.', '승인완료')
     elif action == 'reject':
         if not ((document.status == 'review' and document.reviewer_id == actor.pk) or
                 (document.kind != 'stock' and document.status == 'approve' and document.approver_id == actor.pk)):
             raise PermissionDenied
         document.status = 'rejected'
         audit(actor, '반려', document, reason)
-        notify(document, [document.owner], f'기안이 반려되었습니다. 사유: {reason[:100]}')
+        notify(document, [document.owner], f'기안이 반려되었습니다. 사유: {reason[:100]}', '반려')
     elif action == 'cancel_review':
         expected = 'approved' if document.kind == 'stock' else 'approve'
         if document.status != expected or document.reviewer_id != actor.pk:
@@ -194,7 +199,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         document.status = 'cancelled'
         audit(actor, '재고 요청 검토 취소' if document.kind == 'stock' else '검토 승인 취소', document, reason)
         recipients = [document.owner] + (accountants(document) if document.kind == 'stock' else [])
-        notify(document, recipients, f'검토가 취소되었습니다. 사유: {reason[:100]}')
+        notify(document, recipients, f'검토가 취소되었습니다. 사유: {reason[:100]}', '검토취소')
     elif action == 'cancel_approval':
         if document.kind == 'stock' or document.status != 'approved' or document.approver_id != actor.pk:
             raise PermissionDenied
@@ -202,7 +207,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             adjust_charges(document, -1)
         document.status = 'cancelled'
         audit(actor, '최종 승인 취소', document, f'{reason}\n연차 {document.charged}일 복원' if document.kind == 'leave' else reason)
-        notify(document, [document.owner] + accountants(document), f'최종 승인이 취소되었습니다. 사유: {reason[:100]}')
+        notify(document, [document.owner] + accountants(document), f'최종 승인이 취소되었습니다. 사유: {reason[:100]}', '승인취소')
     elif action == 'delete':
         if document.owner_id != actor.pk or document.status not in ['draft', 'review']:
             raise PermissionDenied
@@ -213,13 +218,15 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             raise PermissionDenied
         document.shipment = 'shipping' if document.kind == 'office' else 'ordered'
         audit(actor, '구매 처리' if document.kind == 'office' else '발주 처리', document)
-        notify(document, [document.owner, document.recipient], '구매·발주가 완료되었습니다. 물품을 받으면 수령을 확인해 주세요.')
+        notify(document, [document.owner, document.recipient], '구매·발주가 완료되었습니다. 물품을 받으면 수령을 확인해 주세요.',
+               '배송중' if document.kind == 'office' else '입고대기')
     elif action == 'receive':
         if document.status != 'approved' or document.recipient_id != actor.pk or document.shipment not in ['shipping', 'ordered']:
             raise PermissionDenied
         document.shipment = 'received'
         audit(actor, '배송완료' if document.kind == 'office' else '입고완료', document)
-        notify(document, [document.owner] + accountants(document), '물품 수령이 확인되었습니다.')
+        notify(document, [document.owner] + accountants(document), '물품 수령이 확인되었습니다.',
+               '배송완료' if document.kind == 'office' else '입고완료')
     elif action == 'reassign':
         if not p.manage_system or document.status not in ['review', 'approve']:
             raise PermissionDenied
@@ -230,7 +237,8 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         old = getattr(document, field)
         setattr(document, field, new_person)
         audit(actor, '담당자 변경', document, f'{old.first_name} → {new_person.first_name}\n{reason}')
-        notify(document, [document.owner, new_person], '대기 중인 결재 담당자가 변경되었습니다.')
+        notify(document, [document.owner, new_person], '대기 중인 결재 담당자가 변경되었습니다.',
+               ('검토대기' if document.status == 'review' else '승인대기') + ' · 담당자변경')
     else:
         raise ValidationError('지원하지 않는 처리입니다.')
     document.save()

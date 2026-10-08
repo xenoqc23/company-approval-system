@@ -49,3 +49,5 @@ body{font-size:14.5px}.nav-item{font-size:14.5px}.field small,.optional,.require
 .accounting-tabs a{display:flex;align-items:center;gap:7px;padding-left:12px;padding-right:12px;border-radius:7px 7px 0 0}
 .accounting-tabs a.has-new{background:#ffdcad;color:#79430c;border-bottom-color:#d88116;box-shadow:inset 0 -3px #d88116}
 .accounting-tabs a.has-new b{background:#f6bf77;color:#704410}
+
+.notice-row .notice-reason{margin:5px 0 0;color:#54665b;font-size:13px}.notice-row strong,.mini-notice p{overflow-wrap:anywhere}
