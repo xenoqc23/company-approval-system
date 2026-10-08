@@ -1,0 +1,50 @@
+{% load static ui %}<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}"><script src="{% static 'workflow/app.js' %}" defer></script></head>
+<body>
+<svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m7 12 3 3 7-7"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 20h4"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 17h2"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10M7 5l9 4"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 5"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 8h16v13H4zM3 3h18v5H3zM9 12h6"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></symbol>
+<symbol id="i-leaf" viewBox="0 0 24 24"><path d="M20 3C9 2 3 7 4 14c1 6 13 7 16-11ZM5 19l10-10"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6zM8 12l3 3 5-6"/></symbol>
+</defs></svg>
+{% if user.is_authenticated and not auth_layout %}
+<aside class="sidebar">
+<a class="brand" href="{% url 'dashboard' %}"><span class="brand-icon"><svg><use href="#i-file"/></svg></span><span>사내결재<small>WORKSPACE</small></span></a>
+<a class="btn sidebar-compose" href="{% url 'compose' %}"><svg><use href="#i-plus"/></svg>새 기안 작성</a>
+<div class="nav-label">나의 업무</div>
+<nav>
+<a class="nav-item {% if section == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><svg><use href="#i-grid"/></svg>대시보드</a>
+<a class="nav-item {% if section == 'mine' %}active{% endif %}" href="{% url 'documents' %}"><svg><use href="#i-file"/></svg>내 기안</a>
+<a class="nav-item {% if section == 'pending' %}active{% endif %}" href="{% url 'documents' %}?mode=pending"><svg><use href="#i-check"/></svg>결재함</a>
+<a class="nav-item {% if section == 'history' %}active{% endif %}" href="{% url 'documents' %}?mode=history"><svg><use href="#i-clock"/></svg>내 승인 내역</a>
+<a class="nav-item {% if section == 'drafts' %}active{% endif %}" href="{% url 'documents' %}?mode=drafts"><svg><use href="#i-archive"/></svg>임시저장함</a>
+<a class="nav-item {% if section == 'archive' %}active{% endif %}" href="{% url 'documents' %}?mode=archive"><svg><use href="#i-archive"/></svg>반려함</a>
+<a class="nav-item {% if section == 'receive' %}active{% endif %}" href="{% url 'documents' %}?mode=receive"><svg><use href="#i-box"/></svg>물품 수령 확인</a>
+</nav>
+<div class="nav-label">안내 및 관리</div><nav>
+<a class="nav-item {% if section == 'policy' %}active{% endif %}" href="{% url 'policy' %}"><svg><use href="#i-calendar"/></svg>연차규정</a>
+<a class="nav-item {% if section == 'notices' %}active{% endif %}" href="{% url 'notices' %}"><svg><use href="#i-bell"/></svg>알림함{% if unread %}<span class="nav-count">{{ unread }}</span>{% endif %}</a>
+{% if profile.manage_leave %}<a class="nav-item {% if section == 'balances' %}active{% endif %}" href="{% url 'balances' %}"><svg><use href="#i-users"/></svg>직원별 연차 관리</a>{% endif %}
+{% if profile.view_accounting %}<a class="nav-item {% if section == 'accounting' %}active{% endif %}" href="{% url 'documents' %}?mode=accounting"><svg><use href="#i-file"/></svg>최종 승인 문서함</a>{% endif %}
+{% if profile.manage_system %}<a class="nav-item {% if section == 'staff' %}active{% endif %}" href="{% url 'staff' %}"><svg><use href="#i-shield"/></svg>직원·권한 관리</a><a class="nav-item {% if section == 'all' %}active{% endif %}" href="{% url 'documents' %}?mode=all"><svg><use href="#i-file"/></svg>전체 문서</a><a class="nav-item {% if section == 'backups' %}active{% endif %}" href="{% url 'backups' %}"><svg><use href="#i-archive"/></svg>백업·복구</a>{% endif %}
+</nav>
+<div class="sidebar-footer"><span class="online-dot"></span>사내 업무 공간<small>PC 시안 · 예시 데이터</small></div>
+</aside>
+<div class="workspace"><header class="topbar"><div class="breadcrumb">워크스페이스<span>/</span><strong>{{ title }}</strong></div><div class="topbar-right"><a class="notification-link" href="{% url 'notices' %}" aria-label="알림함"><svg><use href="#i-bell"/></svg>{% if unread %}<i></i>{% endif %}</a><div class="topbar-divider"></div><span class="avatar">{{ user.first_name|slice:':1' }}</span><div class="profile-caption"><strong>{{ user.first_name }}</strong><small>{{ profile.department }} · {{ profile.rank }}</small></div><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout" title="로그아웃">로그아웃</button></form></div></header>
+<main class="main">
+{% else %}<main class="auth-main">{% endif %}
+{% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>{% if user.is_authenticated and not auth_layout %}</div>{% endif %}
+<dialog id="confirmation"><div class="dialog-icon"><svg><use href="#i-shield"/></svg></div><h2>처리 내용을 확인해 주세요</h2><p id="confirmation-text"></p><div class="dialog-actions"><button class="btn secondary" id="confirmation-back" type="button">돌아가기</button><button class="btn" id="confirmation-go" type="button">확인하고 처리</button></div></dialog>
+</body></html>
