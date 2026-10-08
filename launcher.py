@@ -38,6 +38,13 @@ def setup():
     print('\n[1/4] 실행 환경을 준비합니다.', flush=True)
     if not PYTHON.is_file():
         venv.EnvBuilder(with_pip=True).create(ROOT / '.venv')
+    # An interrupted first setup can leave python.exe without pip. Repair that
+    # environment before installing dependencies instead of skipping it.
+    pip_check = subprocess.run([str(PYTHON), '-m', 'pip', '--version'],
+                               cwd=ROOT, env=local_environment(), capture_output=True)
+    if pip_check.returncode != 0:
+        print('이전에 중단된 실행 환경의 설치 도구(pip)를 복구합니다.', flush=True)
+        command('-m', 'ensurepip', '--upgrade')
     print('\n[2/4] 필요한 프로그램을 설치합니다. 처음에는 인터넷 연결이 필요합니다.', flush=True)
     command('-m', 'pip', 'install', '-r', 'requirements-prototype.txt')
     print('\n[3/4] PC용 테스트 데이터베이스를 준비합니다.', flush=True)
