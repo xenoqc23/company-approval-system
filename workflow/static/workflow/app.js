@@ -1,4 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const exportForm = document.querySelector('[data-purchase-export]');
+  if (exportForm) {
+    const boxes = [...exportForm.querySelectorAll('[data-purchase-select]')];
+    const selectAll = exportForm.querySelector('[data-select-all]');
+    const refresh = () => {
+      const count = boxes.filter(box => box.checked).length;
+      exportForm.querySelector('[data-selection-count]').textContent = `${count}건 선택`;
+      exportForm.querySelector('[data-export-button]').disabled = count === 0;
+      selectAll.checked = boxes.length > 0 && count === boxes.length;
+      selectAll.indeterminate = count > 0 && count < boxes.length;
+      boxes.forEach(box => box.closest('tr').classList.toggle('export-selected', box.checked));
+    };
+    selectAll.addEventListener('change', () => {
+      boxes.forEach(box => box.checked = selectAll.checked);
+      refresh();
+    });
+    boxes.forEach(box => box.addEventListener('change', refresh));
+    exportForm.addEventListener('submit', event => {
+      if (!boxes.some(box => box.checked)) event.preventDefault();
+    });
+    refresh();
+  }
   const dialog = document.querySelector('#confirmation');
   const feedback = document.querySelector('#approval-feedback');
   const feedbackMessage = document.querySelector('.message[data-approval-feedback]');

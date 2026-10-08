@@ -1,5 +1,7 @@
 from datetime import date, time
 from decimal import Decimal
+from io import BytesIO
+from openpyxl import load_workbook
 from urllib.parse import urlencode
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -48,6 +50,83 @@ class ApprovalTests(TestCase):
 
     def used(self, year=2026):
         return AnnualBalance.objects.get(user=self.owner, year=year).used
+
+    def test_rank_order_across_people_and_document_lists(self):
+        for user, rank in [(self.owner, '사원'), (self.reviewer, '팀장'), (self.approver, '이사')]:
+            user.profile.rank = rank
+            user.profile.save()
+        from workflow.people import approval_people, rank_order
+        self.assertEqual(list(rank_order(get_user_model().objects.filter(
+            pk__in=[self.owner.pk, self.reviewer.pk, self.approver.pk])).values_list('pk', flat=True)),
+            [self.approver.pk, self.reviewer.pk, self.owner.pk])
+        self.assertEqual(list(approval_people().values_list('pk', flat=True))[:2], [self.approver.pk, self.reviewer.pk])
+        form = DocumentForm()
+        self.assertEqual(list(form.fields['recipient'].queryset.values_list('pk', flat=True))[:2], [self.approver.pk, self.reviewer.pk])
+        low = self.finish(self.purchase())
+        high = self.finish(self.purchase(owner=self.approver))
+        self.client.force_login(self.accounting)
+        response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office'})
+        self.assertEqual([doc.pk for doc in response.context['documents']], [high.pk, low.pk])
+
+    def test_balance_department_filter_preserves_selection_and_private_access(self):
+        self.owner.profile.department = '품질팀'
+        self.owner.profile.save()
+        self.client.force_login(self.accounting)
+        response = self.client.get(reverse('balances'), {'year': 2026, 'department': '품질팀'})
+        self.assertEqual([row['user'].pk for row in response.context['rows']], [self.owner.pk])
+        response = self.client.post(reverse('balances') + '?year=2026&department=품질팀',
+            {'user': self.owner.pk, 'year': 2026, 'field': 'total', 'value': '16', 'reason': '근속 변경'})
+        self.assertEqual(response.status_code, 302)
+        response = self.client.get(response.url)
+        self.assertEqual(response.context['selected_department'], '품질팀')
+        self.assertEqual(response.context['rows'][0]['total'], 16)
+        self.client.force_login(self.stranger)
+        response = self.client.get(reverse('balances'), {'department': '품질팀'})
+        self.assertEqual([row['user'].pk for row in response.context['rows']], [self.stranger.pk])
+        self.assertNotContains(response, 'name="department"')
+
+    def test_purchase_excel_selected_rows_prices_and_literal_text(self):
+        selected = self.finish(self.purchase(product='=SUM(1,2)', reason='=HYPERLINK("https://example.com")'))
+        self.finish(self.purchase(product='미선택 품목'))
+        self.client.force_login(self.accounting)
+        response = self.client.post(reverse('export_purchases'), {'documents': [selected.pk, selected.pk]})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment;', response['Content-Disposition'])
+        sheet = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(list(sheet.values), [
+            ('성명', '품명', '수량', '단가', '총가격', '신청사유'),
+            ('owner', selected.product, 4, 6500.25, 26001, selected.reason),
+        ])
+        self.assertEqual(sheet['B2'].data_type, 's')
+        self.assertEqual(sheet['F2'].data_type, 's')
+        self.assertEqual(sheet['D2'].data_type, 'n')
+        self.assertTrue(Audit.objects.filter(event='구매요청서 엑셀 다운로드', actor=self.accounting).exists())
+        selected.refresh_from_db()
+        self.assertEqual(selected.shipment, '')
+
+    def test_purchase_excel_refuses_unapproved_stock_cancelled_missing_and_empty(self):
+        valid = self.finish(self.purchase())
+        pending = self.purchase()
+        stock = self.finish(self.purchase(kind='stock'))
+        cancelled = self.finish(self.purchase())
+        act_on_document(cancelled.pk, self.approver, 'cancel_approval', '취소')
+        self.client.force_login(self.accounting)
+        for ids in [[], ['x'], ['١'], ['9' * 30], [valid.pk] * 101,
+                    [valid.pk, pending.pk], [stock.pk], [cancelled.pk], [valid.pk, 999999]]:
+            with self.subTest(ids=ids[:3]):
+                self.assertEqual(self.client.post(reverse('export_purchases'), {'documents': ids}).status_code, 400)
+        self.assertFalse(Audit.objects.filter(event='구매요청서 엑셀 다운로드').exists())
+
+    def test_purchase_excel_requires_accounting_permission_post_and_csrf(self):
+        doc = self.finish(self.purchase())
+        for user in [self.owner, self.admin]:
+            self.client.force_login(user)
+            self.assertEqual(self.client.post(reverse('export_purchases'), {'documents': [doc.pk]}).status_code, 403)
+        self.client.force_login(self.accounting)
+        self.assertEqual(self.client.get(reverse('export_purchases')).status_code, 405)
+        secure_client = Client(enforce_csrf_checks=True)
+        secure_client.force_login(self.accounting)
+        self.assertEqual(secure_client.post(reverse('export_purchases'), {'documents': [doc.pk]}).status_code, 403)
 
     def test_only_final_approval_charges_and_only_final_actor_cancels_once(self):
         doc = self.leave()

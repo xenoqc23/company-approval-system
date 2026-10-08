@@ -1,14 +1,28 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db.models import Case, IntegerField, Value, When
 from .models import DEPARTMENTS, RANKS
 
 
+def rank_order(queryset, person_prefix=''):
+    """Highest rank first, then name; keep document dates within each employee."""
+    rank_field = f'{person_prefix}profile__rank'
+    ordering = [f'{person_prefix}first_name', f'{person_prefix}username']
+    if person_prefix:
+        ordering += ['-created_at', '-pk']
+    return queryset.annotate(_rank_order=Case(
+        *[When(**{rank_field: rank}, then=Value(index))
+          for index, rank in enumerate(reversed(RANKS))],
+        default=Value(len(RANKS)), output_field=IntegerField(),
+    )).order_by('_rank_order', *ordering)
+
+
 def approval_people():
-    return get_user_model().objects.filter(
+    return rank_order(get_user_model().objects.filter(
         is_active=True, is_superuser=False, profile__approved=True,
         profile__department_confirmed=True, profile__department__in=DEPARTMENTS,
         profile__rank__in=RANKS[1:], profile__manage_system=False,
-    ).exclude(username__iexact='admin').select_related('profile').order_by('first_name', 'username')
+    ).exclude(username__iexact='admin').select_related('profile'))
 
 
 def validate_approval_person(person):

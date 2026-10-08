@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from .models import DEPARTMENTS, RANKS, Document
-from .people import approval_people
+from .people import approval_people, rank_order
 
 User = get_user_model()
 
@@ -79,7 +79,7 @@ class DocumentForm(forms.ModelForm):
     def __init__(self, *args, submit=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.submit = submit
-        people = User.objects.filter(is_active=True, profile__approved=True).select_related('profile').order_by('first_name')
+        people = rank_order(User.objects.filter(is_active=True, profile__approved=True).select_related('profile'))
         self.fields['recipient'].queryset = people
         for key in ['reviewer', 'approver']:
             self.fields[key].queryset = approval_people()

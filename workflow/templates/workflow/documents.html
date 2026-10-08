@@ -25,7 +25,13 @@
     {% if mode != 'accounting' or selected_kind != 'leave' %}<label>물품 상태<select name="shipment"><option value="">전체</option>{% if not stock_column %}<option value="shipping" {% if request.GET.shipment == 'shipping' %}selected{% endif %}>배송중</option>{% endif %}{% if mode != 'accounting' or selected_kind == 'stock' %}<option value="ordered" {% if request.GET.shipment == 'ordered' %}selected{% endif %}>입고대기</option>{% endif %}<option value="received" {% if request.GET.shipment == 'received' %}selected{% endif %}>{% if stock_column %}입고완료{% else %}수령완료{% endif %}</option></select></label>{% endif %}
   </div></details>
 </form>
-{% include 'workflow/table.html' %}
-<div class="panel-footer">조회 권한이 있는 문서만 표시됩니다.{% if document_count > 100 %} 최근 100건을 표시합니다. 검색 조건을 좁혀 주세요.{% endif %}</div>
+{% if can_export_purchases %}
+<form method="post" action="{% url 'export_purchases' %}" data-purchase-export>
+  {% csrf_token %}
+  <div class="export-toolbar"><div><strong>선택 문서 엑셀 다운로드</strong><p>성명 · 품명 · 수량 · 단가 · 총가격 · 신청사유</p></div><div class="export-actions"><span data-selection-count aria-live="polite">0건 선택</span><button class="btn" data-export-button disabled>선택 문서 다운로드</button></div></div>
+  {% include 'workflow/table.html' %}
+</form>
+{% else %}{% include 'workflow/table.html' %}{% endif %}
+<div class="panel-footer">직급이 높은 기안자부터 표시됩니다. 조회 권한이 있는 문서만 표시됩니다.{% if document_count > 100 %} 최대 100건을 표시합니다. 검색 조건을 좁혀 주세요.{% endif %}</div>
 </section>
 {% endblock %}

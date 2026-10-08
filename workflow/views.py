@@ -1,5 +1,7 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from io import BytesIO
+from urllib.parse import urlencode
 import secrets
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model, update_session_auth_hash
@@ -11,11 +13,13 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_POST
 from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
-from .people import approval_people
+from .people import approval_people, rank_order
+from .exports import purchase_workbook
 
 User = get_user_model()
 
@@ -160,11 +164,35 @@ def documents(request):
                 qs = qs.filter(**{lookup: date.fromisoformat(request.GET[key])})
         except ValueError:
             messages.error(request, '검색 날짜 형식을 확인해 주세요.')
+    qs = rank_order(qs, 'owner__')
     return page(request, 'documents', titles[mode], mode, documents=qs[:100], document_count=qs.count(),
                 mode=mode, states=[(k, '검토완료' if k == 'approved' else label) for k, label in Document.STATES if k != 'approve'] if mode == 'stock' else Document.STATES,
                 kinds=Document.KINDS, departments=DEPARTMENTS,
                 accounting_categories=accounting_categories, selected_kind=selected_kind,
+                can_export_purchases=mode == 'accounting' and selected_kind == 'office',
                 stock_column=mode == 'stock' or (mode == 'accounting' and selected_kind == 'stock'))
+
+@login_required
+@require_POST
+def export_purchases(request):
+    if not request.user.profile.view_accounting:
+        raise PermissionDenied
+    raw_ids = request.POST.getlist('documents')
+    if not raw_ids or len(raw_ids) > 100 or any(not value.isascii() or not value.isdigit() or len(value) > 18 for value in raw_ids):
+        return HttpResponse('다운로드할 구매요청서를 1~100건 선택해 주세요.', status=400, content_type='text/plain; charset=utf-8')
+    ids = {int(value) for value in raw_ids}
+    docs = list(rank_order(visible_documents(request.user).filter(
+        pk__in=ids, kind='office', status='approved').select_related('owner', 'owner__profile'), 'owner__'))
+    if len(docs) != len(ids):
+        return HttpResponse('선택한 문서가 취소되었거나 다운로드할 수 없습니다. 목록을 새로고침하고 다시 선택해 주세요.', status=400, content_type='text/plain; charset=utf-8')
+    output = BytesIO()
+    purchase_workbook(docs).save(output)
+    audit(request.user, '구매요청서 엑셀 다운로드', detail='선택 문서: ' + ', '.join(doc.number for doc in docs))
+    response = HttpResponse(output.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = f'구매요청서_{timezone.localtime():%Y%m%d_%H%M%S}.xlsx'
+    response['Content-Disposition'] = content_disposition_header(True, filename)
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 @login_required
 def compose(request, pk=None):
@@ -264,6 +292,9 @@ def copy_document(request, pk):
 @login_required
 def balances(request):
     p = request.user.profile
+    department = request.GET.get('department', '') if p.manage_leave else ''
+    if department not in DEPARTMENTS:
+        department = ''
     try:
         year = int(request.GET.get('year', timezone.localdate().year))
         if not 2000 <= year <= 2100:
@@ -285,17 +316,24 @@ def balances(request):
             messages.success(request, '연차를 수정하고 변경 이력을 기록했습니다.')
         except (ValidationError, InvalidOperation, ValueError) as exc:
             messages.error(request, ' '.join(exc.messages) if isinstance(exc, ValidationError) else '연도와 연차 값을 확인해 주세요.')
-        return redirect(f'/balances/?year={year}')
-    users = User.objects.filter(profile__approved=True).select_related('profile').order_by('first_name') if p.manage_leave else User.objects.filter(pk=request.user.pk)
+        return redirect(reverse('balances') + '?' + urlencode({'year': year, 'department': department}))
+    users = User.objects.filter(profile__approved=True) if p.manage_leave else User.objects.filter(pk=request.user.pk)
+    if department:
+        users = users.filter(profile__department=department)
+    users = list(rank_order(users.select_related('profile')))
+    balances_by_user = {balance.user_id: balance for balance in AnnualBalance.objects.filter(user__in=users, year=year)}
     rows = []
     for user in users:
-        b = AnnualBalance.objects.filter(user=user, year=year).first()
+        b = balances_by_user.get(user.pk)
         rows.append({'user': user, 'total': b.total if b else 0, 'used': b.used if b else 0, 'remaining': b.remaining if b else 0})
     logs = Audit.objects.filter(target__isnull=False)
     if not p.manage_leave:
         logs = logs.filter(target=request.user)
+    elif department:
+        logs = logs.filter(target__profile__department=department)
     return page(request, 'balances', '직원별 연차 관리' if p.manage_leave else '나의 연차', 'balances',
-                rows=rows, selected_year=year, years=range(timezone.localdate().year - 2, timezone.localdate().year + 2), logs=logs.select_related('actor', 'target')[:20])
+                rows=rows, selected_year=year, departments=DEPARTMENTS, selected_department=department,
+                years=range(timezone.localdate().year - 2, timezone.localdate().year + 2), logs=logs.select_related('actor', 'target')[:20])
 
 @login_required
 def policy(request):
@@ -391,7 +429,7 @@ def staff(request):
         if request.POST.get('intent') != 'reset':
             selected_group = target.profile.department
         return redirect(f'{reverse("staff")}?department={selected_group}')
-    members = list(User.objects.select_related('profile').order_by('first_name', 'username'))
+    members = list(rank_order(User.objects.select_related('profile')))
     groups = [{'key': 'unclassified', 'label': '미분류 계정', 'members': []}] + [
         {'key': dept, 'label': dept, 'members': []} for dept in DEPARTMENTS]
     groups_by_key = {group['key']: group for group in groups}
