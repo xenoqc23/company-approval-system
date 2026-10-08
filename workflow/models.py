@@ -9,6 +9,7 @@ RANKS = ['사원', '주임', '대리', '과장', '팀장', '부장', '이사']
 class Profile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
     department = models.CharField(max_length=30, choices=[(x, x) for x in DEPARTMENTS])
+    department_confirmed = models.BooleanField(default=True)
     rank = models.CharField(max_length=20, choices=[(x, x) for x in RANKS])
     approved = models.BooleanField(default=False)
     must_change_password = models.BooleanField(default=False)

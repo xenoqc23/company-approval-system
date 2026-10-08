@@ -1,0 +1,22 @@
+{% extends 'workflow/base.html' %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">MY ACCOUNT</div><h1>내 계정</h1><p>계정 정보를 확인하고 비밀번호를 변경하세요.</p></div></div>
+<div class="account-layout">
+  <section class="panel"><div class="panel-heading"><h2>계정 정보</h2></div>
+    <dl class="account-details">
+      <div><dt>이름</dt><dd>{{ user.first_name }}</dd></div>
+      <div><dt>아이디</dt><dd>{{ user.username }}</dd></div>
+      <div><dt>부서</dt><dd>{{ profile.department }}</dd></div>
+      <div><dt>직급</dt><dd>{{ profile.rank }}</dd></div>
+    </dl>
+  </section>
+  <section class="panel"><div class="panel-heading"><h2>비밀번호 변경</h2></div>
+    <form method="post" class="account-password">{% csrf_token %}
+      {{ form.non_field_errors }}
+      {% for field in form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+      <p class="form-footnote">새 비밀번호는 4자 이상 입력해 주세요. 숫자만 사용해도 됩니다.</p>
+      <button class="btn">비밀번호 변경</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,9 +1,16 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from .models import DEPARTMENTS, RANKS, Document
 
 User = get_user_model()
+
+class ProfilePasswordForm(PasswordChangeForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['old_password'].label = '현재 비밀번호'
+        for field in self.fields.values():
+            field.help_text = ''
 
 class SignupForm(UserCreationForm):
     first_name = forms.CharField(label='이름', max_length=80)

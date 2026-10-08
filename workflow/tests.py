@@ -1,5 +1,6 @@
 from datetime import date, time
 from decimal import Decimal
+from urllib.parse import urlencode
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase, Client
@@ -250,6 +251,90 @@ class ApprovalTests(TestCase):
         self.assertRedirects(response, '/')
         new.profile.refresh_from_db()
         self.assertFalse(new.profile.must_change_password)
+
+    def test_signup_accepts_four_numeric_characters_and_rejects_short_password(self):
+        data = {'first_name': '신규 직원', 'username': 'numeric-staff', 'password1': '123',
+                'password2': '123', 'department': '생산팀', 'rank': '사원'}
+        response = self.client.post(reverse('signup'), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(get_user_model().objects.filter(username='numeric-staff').exists())
+        data['password1'] = data['password2'] = '1234'
+        self.assertRedirects(self.client.post(reverse('signup'), data), reverse('login'))
+        new = get_user_model().objects.get(username='numeric-staff')
+        self.assertTrue(new.check_password('1234'))
+        self.assertNotEqual(new.password, '1234')
+        self.assertFalse(new.profile.department_confirmed)
+
+    def test_employee_changes_only_own_password_and_stays_logged_in(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse('account'))
+        self.assertContains(response, '내 계정')
+        data = {'old_password': 'wrong', 'new_password1': '5678', 'new_password2': '5678',
+                'user': self.stranger.pk}
+        response = self.client.post(reverse('account'), data)
+        self.assertContains(response, '현재 비밀번호')
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.check_password('test-password-only'))
+        data['old_password'] = 'test-password-only'
+        data['new_password1'] = data['new_password2'] = '123'
+        self.assertEqual(self.client.post(reverse('account'), data).status_code, 200)
+        data['new_password1'], data['new_password2'] = '5678', '9999'
+        self.assertEqual(self.client.post(reverse('account'), data).status_code, 200)
+        data['new_password2'] = '5678'
+        self.assertRedirects(self.client.post(reverse('account'), data), reverse('account'))
+        self.owner.refresh_from_db()
+        self.stranger.refresh_from_db()
+        self.assertTrue(self.owner.check_password('5678'))
+        self.assertTrue(self.stranger.check_password('test-password-only'))
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.owner.pk)
+        self.assertTrue(Audit.objects.filter(actor=self.owner, event='본인 비밀번호 변경').exists())
+        self.assertFalse(Audit.objects.filter(detail__contains='5678').exists())
+
+    def test_forced_password_change_allows_four_numeric_characters(self):
+        self.owner.profile.must_change_password = True
+        self.owner.profile.save()
+        self.client.force_login(self.owner)
+        self.assertRedirects(self.client.get(reverse('account')), reverse('password'))
+        self.assertRedirects(self.client.post(reverse('password'), {
+            'old_password': 'test-password-only', 'new_password1': '4567', 'new_password2': '4567'}), '/')
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.check_password('4567'))
+        self.assertFalse(self.owner.profile.must_change_password)
+
+    def test_staff_groups_new_signups_then_moves_them_to_assigned_department(self):
+        self.client.post(reverse('signup'), {'first_name': '신규 생산직원', 'username': 'pending-staff',
+            'password1': '1234', 'password2': '1234', 'department': '생산팀', 'rank': '사원'})
+        new = get_user_model().objects.get(username='pending-staff')
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('staff'))
+        self.assertEqual(response.context['selected_group'], 'unclassified')
+        self.assertEqual([u.pk for u in response.context['staff']], [new.pk])
+        response = self.client.get(reverse('staff'), {'department': '생산팀'})
+        self.assertEqual(response.context['staff'], [])
+        data = {'user': new.pk, 'department': '품질팀', 'rank': '주임', 'approved': 'on', 'active': 'on'}
+        self.assertRedirects(self.client.post(reverse('staff') + '?department=unclassified', data),
+            reverse('staff') + '?' + urlencode({'department': '품질팀'}))
+        new.profile.refresh_from_db()
+        self.assertTrue(new.profile.department_confirmed)
+        response = self.client.get(reverse('staff'), {'department': '품질팀'})
+        self.assertEqual([u.pk for u in response.context['staff']], [new.pk])
+        self.assertEqual(response.context['staff_total'], 8)
+        data.pop('approved')
+        self.client.post(reverse('staff'), data)
+        self.assertEqual([u.pk for u in self.client.get(reverse('staff'), {'department': '품질팀'}).context['staff']], [new.pk])
+        self.assertEqual(self.client.get(reverse('staff'), {'department': 'unclassified'}).context['staff'], [])
+
+    def test_staff_department_tabs_limit_results_and_permission(self):
+        self.owner.profile.department = '생산팀'
+        self.owner.profile.save()
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('staff'), {'department': '생산팀'})
+        self.assertEqual([u.pk for u in response.context['staff']], [self.owner.pk])
+        response = self.client.get(reverse('staff'), {'department': '영업팀'})
+        self.assertContains(response, '이 부서에 등록된 직원이 없습니다.')
+        self.assertEqual(self.client.get(reverse('staff'), {'department': 'invalid'}).status_code, 200)
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(reverse('staff'), {'department': '생산팀'}).status_code, 403)
 
     def test_csrf_is_enforced_for_mutation(self):
         client = Client(enforce_csrf_checks=True)

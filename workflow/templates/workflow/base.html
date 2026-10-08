@@ -1,5 +1,5 @@
 {% load static ui %}<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261008b"><script src="{% static 'workflow/app.js' %}?v=20261008b" defer></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261008c"><script src="{% static 'workflow/app.js' %}?v=20261008c" defer></script></head>
 <body>
 <svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
@@ -33,6 +33,7 @@
 <a class="nav-item {% if section == 'receive' %}active{% endif %}" href="{% url 'documents' %}?mode=receive"><svg><use href="#i-box"/></svg>물품 수령 확인</a>
 </nav>
 <div class="nav-label">안내 및 관리</div><nav>
+<a class="nav-item {% if section == 'account' %}active{% endif %}" href="{% url 'account' %}"><svg><use href="#i-users"/></svg>내 계정</a>
 <a class="nav-item {% if section == 'policy' %}active{% endif %}" href="{% url 'policy' %}"><svg><use href="#i-calendar"/></svg>연차규정</a>
 <a class="nav-item {% if section == 'notices' %}active{% endif %}" href="{% url 'notices' %}"><svg><use href="#i-bell"/></svg>알림함{% if unread %}<span class="nav-count">{{ unread }}</span>{% endif %}</a>
 {% if profile.manage_leave %}<a class="nav-item {% if section == 'balances' %}active{% endif %}" href="{% url 'balances' %}"><svg><use href="#i-users"/></svg>직원별 연차 관리</a>{% endif %}
@@ -41,7 +42,7 @@
 </nav>
 <div class="sidebar-footer"><span class="online-dot"></span>사내 업무 공간<small>PC 시안 · 예시 데이터</small></div>
 </aside>
-<div class="workspace"><header class="topbar"><div class="breadcrumb">워크스페이스<span>/</span><strong>{{ title }}</strong></div><div class="topbar-right"><a class="notification-link" href="{% url 'notices' %}" aria-label="알림함"><svg><use href="#i-bell"/></svg>{% if unread %}<i></i>{% endif %}</a><div class="topbar-divider"></div><span class="avatar">{{ user.first_name|slice:':1' }}</span><div class="profile-caption"><strong>{{ user.first_name }}</strong><small>{{ profile.department }} · {{ profile.rank }}</small></div><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout" title="로그아웃">로그아웃</button></form></div></header>
+<div class="workspace"><header class="topbar"><div class="breadcrumb">워크스페이스<span>/</span><strong>{{ title }}</strong></div><div class="topbar-right"><a class="notification-link" href="{% url 'notices' %}" aria-label="알림함"><svg><use href="#i-bell"/></svg>{% if unread %}<i></i>{% endif %}</a><div class="topbar-divider"></div><span class="avatar">{{ user.first_name|slice:':1' }}</span><a class="profile-caption" href="{% url 'account' %}" aria-label="내 계정"><strong>{{ user.first_name }}</strong><small>{{ profile.department }} · {{ profile.rank }}</small></a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout" title="로그아웃">로그아웃</button></form></div></header>
 <main class="main">
 {% else %}<main class="auth-main">{% endif %}
 {% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}

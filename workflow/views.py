@@ -4,15 +4,15 @@ import secrets
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import PasswordChangeForm
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from .forms import DocumentForm, SignupForm
+from .forms import DocumentForm, ProfilePasswordForm, SignupForm
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 
@@ -49,7 +49,7 @@ def signup(request):
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             user = form.save()
-            Profile.objects.create(user=user, department=form.cleaned_data['department'], rank=form.cleaned_data['rank'])
+            Profile.objects.create(user=user, department=form.cleaned_data['department'], rank=form.cleaned_data['rank'], department_confirmed=False)
         messages.success(request, '가입 신청이 완료되었습니다. 관리자의 승인 후 로그인해 주세요.')
         return redirect('login')
     return page(request, 'signup', '직원 가입', 'signup', form=form)
@@ -60,7 +60,7 @@ def pending(request):
 
 @login_required
 def password(request):
-    form = PasswordChangeForm(request.user, request.POST or None)
+    form = ProfilePasswordForm(request.user, request.POST if request.method == 'POST' else None)
     if request.method == 'POST' and form.is_valid():
         user = form.save()
         user.profile.must_change_password = False
@@ -69,6 +69,17 @@ def password(request):
         messages.success(request, '비밀번호가 변경되었습니다.')
         return redirect('dashboard')
     return page(request, 'password', '비밀번호 변경', 'password', form=form)
+
+@login_required
+def account(request):
+    form = ProfilePasswordForm(request.user, request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)
+        audit(user, '본인 비밀번호 변경')
+        messages.success(request, '비밀번호가 변경되었습니다.')
+        return redirect('account')
+    return page(request, 'account', '내 계정', 'account', form=form)
 
 @login_required
 def dashboard(request):
@@ -302,15 +313,22 @@ def open_notice(request, pk):
 def staff(request):
     if not request.user.profile.manage_system:
         raise PermissionDenied
+    group_keys = ['unclassified'] + DEPARTMENTS
+    selected_group = request.GET.get('department')
+    if selected_group not in group_keys:
+        unclassified_exists = Profile.objects.filter(department_confirmed=False).exists()
+        selected_group = 'unclassified' if unclassified_exists else next(
+            (dept for dept in DEPARTMENTS if Profile.objects.filter(department_confirmed=True, department=dept).exists()),
+            DEPARTMENTS[0])
     if request.method == 'POST':
         target = get_object_or_404(User, pk=request.POST.get('user'))
         if request.POST.get('intent') != 'reset':
             if request.POST.get('department') not in DEPARTMENTS or request.POST.get('rank') not in RANKS:
                 messages.error(request, '부서와 직급을 확인해 주세요.')
-                return redirect('staff')
+                return redirect(f'{reverse("staff")}?department={selected_group}')
             if target == request.user and any(request.POST.get(f) != 'on' for f in ['approved', 'active', 'manage_system']):
                 messages.error(request, '현재 로그인한 관리자의 가입 승인, 활성화, 관리자 권한은 해제할 수 없습니다.')
-                return redirect('staff')
+                return redirect(f'{reverse("staff")}?department={selected_group}')
         with transaction.atomic():
             if request.POST.get('intent') == 'reset':
                 password = secrets.token_urlsafe(9)
@@ -323,20 +341,32 @@ def staff(request):
             else:
                 department, rank = request.POST.get('department'), request.POST.get('rank')
                 flags = ['approved', 'manage_leave', 'view_accounting', 'procure', 'manage_system']
-                before = f'{target.first_name} / {target.profile.department} / {target.profile.rank} / 활성화 {target.is_active} / ' + ', '.join(f'{f}={getattr(target.profile, f)}' for f in flags)
+                before = f'{target.first_name} / {target.profile.department} / {target.profile.rank} / 부서 확인 {target.profile.department_confirmed} / 활성화 {target.is_active} / ' + ', '.join(f'{f}={getattr(target.profile, f)}' for f in flags)
                 target.profile.department, target.profile.rank = department, rank
+                target.profile.department_confirmed = True
                 target.first_name = request.POST.get('name', target.first_name).strip() or target.first_name
                 for field in flags:
                     setattr(target.profile, field, request.POST.get(field) == 'on')
                 target.is_active = request.POST.get('active') == 'on'
                 target.save()
                 target.profile.save()
-                after = f'{target.first_name} / {department} / {rank} / 활성화 {target.is_active} / ' + ', '.join(f'{f}={getattr(target.profile, f)}' for f in flags)
+                after = f'{target.first_name} / {department} / {rank} / 부서 확인 {target.profile.department_confirmed} / 활성화 {target.is_active} / ' + ', '.join(f'{f}={getattr(target.profile, f)}' for f in flags)
                 audit(request.user, '직원 권한 수정', detail=f'변경 전: {before}\n변경 후: {after}')
                 messages.success(request, '직원 정보와 업무 권한을 저장했습니다.')
-        return redirect('staff')
-    return page(request, 'staff', '직원·권한 관리', 'staff', staff=User.objects.select_related('profile').order_by('first_name'),
-                departments=DEPARTMENTS, ranks=RANKS)
+        if request.POST.get('intent') != 'reset':
+            selected_group = target.profile.department
+        return redirect(f'{reverse("staff")}?department={selected_group}')
+    members = list(User.objects.select_related('profile').order_by('first_name', 'username'))
+    groups = [{'key': 'unclassified', 'label': '미분류 계정', 'members': []}] + [
+        {'key': dept, 'label': dept, 'members': []} for dept in DEPARTMENTS]
+    groups_by_key = {group['key']: group for group in groups}
+    for member in members:
+        key = member.profile.department if member.profile.department_confirmed else 'unclassified'
+        groups_by_key.get(key, groups_by_key['unclassified'])['members'].append(member)
+    selected = groups_by_key[selected_group]
+    return page(request, 'staff', '직원·권한 관리', 'staff', staff=selected['members'],
+                staff_groups=groups, selected_group=selected_group, selected_label=selected['label'],
+                staff_total=len(members), departments=DEPARTMENTS, ranks=RANKS)
 
 @login_required
 def backups(request):

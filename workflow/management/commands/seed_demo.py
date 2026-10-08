@@ -2,6 +2,8 @@ from datetime import timedelta, time
 from decimal import Decimal
 from getpass import getpass
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
@@ -52,6 +54,10 @@ class Command(BaseCommand):
         password = options['initial_password'] or getpass('시안 계정 초기 비밀번호: ')
         if not password:
             raise CommandError('초기 비밀번호를 입력해 주세요.')
+        try:
+            validate_password(password)
+        except ValidationError as exc:
+            raise CommandError(' '.join(exc.messages)) from exc
         people = {}
         specs = [
             ('admin', '관리자', '전략기획팀', '이사', {'manage_system': True, 'must_change_password': True}),
