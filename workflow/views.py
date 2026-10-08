@@ -21,6 +21,7 @@ from .services import act_on_document, audit, edit_balance, leave_amount, save_d
 from .people import approval_people, rank_order
 from .exports import purchase_workbook
 from .accounting import accounting_tabs
+from .notifications import visible_notices
 
 User = get_user_model()
 
@@ -96,7 +97,7 @@ def dashboard(request):
     today = timezone.localdate()
     upcoming = mine.filter(kind='leave', status='approved', end_date__gte=today).order_by('start_date')[:3]
     return page(request, 'dashboard', '대시보드', documents=mine.select_related('owner', 'reviewer', 'approver')[:6],
-                counts=counts, upcoming=upcoming, notices=Notice.objects.filter(user=request.user)[:3], today=today)
+                counts=counts, upcoming=upcoming, notices=visible_notices(request.user)[:3], today=today)
 
 @login_required
 def documents(request):
@@ -375,16 +376,16 @@ def policy(request):
 @login_required
 def notices(request):
     if request.method == 'POST':
-        Notice.objects.filter(user=request.user, read=False).update(read=True)
+        visible_notices(request.user).filter(read=False).update(read=True)
         return redirect('notices')
     ids = set(visible_documents(request.user).values_list('pk', flat=True))
-    rows = [{'notice': n, 'accessible': n.document_id in ids} for n in Notice.objects.filter(user=request.user)]
+    rows = [{'notice': n, 'accessible': n.document_id in ids} for n in visible_notices(request.user)]
     return page(request, 'notices', '알림함', 'notices', notice_rows=rows)
 
 @login_required
 @require_POST
 def open_notice(request, pk):
-    notice = get_object_or_404(Notice, pk=pk, user=request.user)
+    notice = get_object_or_404(visible_notices(request.user), pk=pk)
     notice.read = True
     notice.save(update_fields=['read'])
     if notice.document_id and visible_documents(request.user).filter(pk=notice.document_id).exists():

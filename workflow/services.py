@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import AnnualBalance, Audit, Document, DocumentCounter, Notice, Profile
 from .people import validate_approval_person
+from .notifications import can_notify
 
 def visible_documents(user):
     p = user.profile
@@ -23,11 +24,13 @@ def audit(actor, event, document=None, detail='', target=None):
     return Audit.objects.create(actor=actor, event=event, document=document, detail=detail, target=target)
 
 def notify(document, users, text, stage, stages_by_user=None):
-    ids = {u.pk for u in users if u and u.is_active and u.profile.approved}
+    stages_by_user = stages_by_user or {}
+    ids = {u.pk for u in users if u and u.is_active and u.profile.approved and
+           can_notify(u, document, stages_by_user.get(u.pk, stage))}
     kind = {'leave': '휴가원', 'office': '구매요청서', 'stock': '생산 재고 요청서'}[document.kind]
     subject = f'{document.owner.first_name or document.owner.username} - {document.owner.profile.rank} - {kind}'
     Notice.objects.bulk_create([Notice(user_id=i, document=document, text=text, subject=subject,
-        stage=(stages_by_user or {}).get(i, stage)) for i in ids])
+        stage=stages_by_user.get(i, stage)) for i in ids])
 
 def accountants(document):
     query = Q(profile__view_accounting=True)

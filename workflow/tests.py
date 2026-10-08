@@ -10,6 +10,7 @@ from django.urls import reverse
 from workflow.models import AccountingReadState, AnnualBalance, Audit, Document, Notice, Policy, Profile
 from workflow.services import act_on_document, edit_balance, save_document, visible_documents
 from workflow.forms import DocumentForm
+from workflow.notifications import visible_notices
 from workflow.management.commands.seed_demo import TENURE, POLICY
 
 
@@ -112,6 +113,58 @@ class ApprovalTests(TestCase):
         self.assertEqual(rejection.reason_text, '수량 확인')
         self.assertEqual(system.display_text, system.text)
         self.assertEqual(original.subject, 'owner - 대리 - 구매요청서')
+
+    def test_accounting_own_purchase_keeps_progress_and_cancellation_notices(self):
+        doc = self.purchase(owner=self.accounting, recipient=self.accounting)
+        self.finish(doc)
+        act_on_document(doc.pk, self.accounting, 'place')
+        act_on_document(doc.pk, self.accounting, 'receive')
+        act_on_document(doc.pk, self.approver, 'cancel_approval', '본인 구매 취소')
+        self.assertEqual(set(visible_notices(self.accounting).filter(document=doc).values_list('stage', flat=True)),
+                         {'검토완료', '승인완료', '배송중', '배송완료', '승인취소'})
+
+    def test_accounting_foreign_purchase_only_approval_and_delivery_completion(self):
+        doc = self.purchase(reviewer=self.accounting, approver=self.accounting, recipient=self.accounting)
+        self.assertFalse(Notice.objects.filter(user=self.accounting, document=doc).exists())
+        act_on_document(doc.pk, self.accounting, 'review')
+        self.assertFalse(Notice.objects.filter(user=self.accounting, document=doc).exists())
+        act_on_document(doc.pk, self.accounting, 'approve')
+        self.assertEqual(Notice.objects.filter(user=self.accounting, document=doc).count(), 1)
+        act_on_document(doc.pk, self.accounting, 'place')
+        self.assertEqual(Notice.objects.filter(user=self.accounting, document=doc).count(), 1)
+        act_on_document(doc.pk, self.accounting, 'receive')
+        self.assertEqual(set(visible_notices(self.accounting).filter(document=doc).values_list('stage', flat=True)),
+                         {'승인완료', '배송완료'})
+        self.assertTrue(Notice.objects.filter(user=self.owner, document=doc, stage='배송중').exists())
+        act_on_document(doc.pk, self.accounting, 'cancel_approval', '구매 취소')
+        self.assertFalse(visible_notices(self.accounting).filter(document=doc).exists())
+        self.assertEqual(Notice.objects.filter(user=self.accounting, document=doc).count(), 2)
+
+    def test_accounting_legacy_notice_filter_matches_dashboard_badge_and_read_actions(self):
+        own = self.purchase(owner=self.accounting)
+        foreign = self.finish(self.purchase())
+        approved = Notice.objects.get(user=self.accounting, document=foreign)
+        own_notice = Notice.objects.create(user=self.accounting, document=own, stage='반려',
+            subject='accounting - 대리 - 구매요청서', text='기안이 반려되었습니다. 사유: 재확인')
+        hidden = Notice.objects.create(user=self.accounting, document=foreign, stage='배송중', text='기존 배송 알림')
+        pending = Notice.objects.create(user=self.accounting, document=foreign, stage='검토대기', text='기존 검토 알림')
+        system = Notice.objects.create(user=self.accounting, text='기존 시스템 알림')
+        allowed = {approved.pk, own_notice.pk}
+        self.client.force_login(self.accounting)
+        response = self.client.get(reverse('notices'))
+        self.assertEqual({row['notice'].pk for row in response.context['notice_rows']}, allowed)
+        self.assertEqual(response.context['unread'], 2)
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual({notice.pk for notice in response.context['notices']}, allowed)
+        self.assertEqual(response.context['unread'], 2)
+        self.assertEqual(self.client.post(reverse('open_notice', args=[hidden.pk])).status_code, 404)
+        self.client.post(reverse('notices'))
+        self.assertEqual(self.client.get(reverse('notices')).context['unread'], 0)
+        self.assertTrue(Notice.objects.get(pk=approved.pk).read)
+        for notice in [hidden, pending, system]:
+            notice.refresh_from_db()
+            self.assertFalse(notice.read)
+        self.assertEqual(Notice.objects.filter(user=self.accounting).count(), 5)
 
     def test_rank_order_across_people_and_document_lists(self):
         for user, rank in [(self.owner, '사원'), (self.reviewer, '팀장'), (self.approver, '이사')]:
@@ -320,7 +373,7 @@ class ApprovalTests(TestCase):
         self.assertEqual(self.client.get(reverse('detail', args=[doc.pk])).status_code, 404)
         notice = Notice.objects.filter(user=self.accounting, document=doc).first()
         response = self.client.post(reverse('open_notice', args=[notice.pk]))
-        self.assertRedirects(response, reverse('notices'))
+        self.assertEqual(response.status_code, 404)
         self.assertTrue(visible_documents(self.admin).filter(pk=doc.pk).exists())
 
     def test_purchase_total_shipping_recipient_and_cancel_freeze(self):
