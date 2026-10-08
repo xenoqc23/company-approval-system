@@ -71,8 +71,12 @@ class DocumentForm(forms.ModelForm):
             data['start_date'] = data['end_date'] = data['start_time'] = data['end_time'] = None
             data['quantity'] = data.get('quantity') if data.get('quantity') is not None else 1
             data['unit_price'] = data.get('unit_price') or 0
+            if data.get('kind') == 'stock':
+                data['unit_price'], data['approver'], data['url'] = 0, None, ''
         if self.submit:
-            required = ['reviewer', 'approver']
+            required = ['reviewer']
+            if data.get('kind') != 'stock':
+                required += ['approver']
             if data.get('kind') == 'leave':
                 required += ['leave_type', 'start_date', 'end_date', 'reason']
                 if data.get('leave_type') != 'annual':

@@ -14,6 +14,8 @@ def visible_documents(user):
     related |= Q(recipient=user, status='approved', kind__in=['office', 'stock'])
     if p.view_accounting:
         related |= Q(status='approved')
+    if p.procure:
+        related |= Q(kind='stock', status='approved')
     return Document.objects.filter(related).exclude(status='deleted').exclude(Q(status='draft') & ~Q(owner=user))
 
 def audit(actor, event, document=None, detail='', target=None):
@@ -87,7 +89,8 @@ def make_title(document):
         if document.end_date and document.end_date != document.start_date:
             period += f'~{document.end_date:%m.%d}'
         return f'휴가원 / {name} / {period}'
-    return f'구매요청 / {name} / {document.product or "품목 미입력"}'
+    prefix = '재고요청' if document.kind == 'stock' else '구매요청'
+    return f'{prefix} / {name} / {document.product or "품목 미입력"}'
 
 @transaction.atomic
 def save_document(document, actor, submit=False):
@@ -99,12 +102,15 @@ def save_document(document, actor, submit=False):
             raise PermissionDenied('제출된 기안은 수정할 수 없습니다.')
     if document.owner_id != actor.pk:
         raise PermissionDenied
+    if document.kind == 'stock':
+        # Stock requests do not have prices, a shopping URL or final approver.
+        document.unit_price, document.approver, document.url = Decimal('0'), None, ''
     document.title = make_title(document)
     if submit:
         if document.kind not in dict(Document.KINDS):
             raise ValidationError('문서 종류를 선택해 주세요.')
-        if not document.reviewer or not document.approver:
-            raise ValidationError('검토자와 승인자를 선택해 주세요.')
+        if not document.reviewer or (document.kind != 'stock' and not document.approver):
+            raise ValidationError('검토자를 선택해 주세요.' if document.kind == 'stock' else '검토자와 승인자를 선택해 주세요.')
         for person in (document.reviewer, document.approver, document.recipient):
             if person and (not person.is_active or not person.profile.approved):
                 raise ValidationError('활성화된 직원만 선택할 수 있습니다.')
@@ -113,8 +119,10 @@ def save_document(document, actor, submit=False):
                 raise ValidationError('휴가 신청 사유를 입력해 주세요.')
             allocations(document)
             check_overlap(document)
-        elif not document.product or document.quantity < 1 or document.unit_price <= 0:
-            raise ValidationError('품목, 1개 이상의 수량, 0원 초과 단가를 입력해 주세요.')
+        elif not document.product or document.quantity < 1:
+            raise ValidationError('품목과 1개 이상의 수량을 입력해 주세요.')
+        elif document.kind == 'office' and document.unit_price <= 0:
+            raise ValidationError('0원 초과 단가를 입력해 주세요.')
         elif document.kind == 'office' and not document.url:
             raise ValidationError('사무·사내용품의 구매 사이트 링크를 입력해 주세요.')
         if document.kind != 'leave' and not document.recipient:
@@ -150,11 +158,17 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
     if action == 'review':
         if document.status != 'review' or document.reviewer_id != actor.pk:
             raise PermissionDenied
-        document.status, document.reviewed_at = 'approve', now
-        audit(actor, '검토 승인', document)
-        notify(document, [document.owner, document.approver], '검토가 완료되었습니다. 최종 승인을 기다리고 있습니다.')
+        document.reviewed_at = now
+        if document.kind == 'stock':
+            document.status, document.approved_at = 'approved', now
+            audit(actor, '재고 요청 검토 완료', document)
+            notify(document, [document.owner] + accountants(document), '생산 재고 요청의 검토가 완료되었습니다. 발주 담당자에게 전달했습니다.')
+        else:
+            document.status = 'approve'
+            audit(actor, '검토 승인', document)
+            notify(document, [document.owner, document.approver], '검토가 완료되었습니다. 최종 승인을 기다리고 있습니다.')
     elif action == 'approve':
-        if document.status != 'approve' or document.approver_id != actor.pk:
+        if document.kind == 'stock' or document.status != 'approve' or document.approver_id != actor.pk:
             raise PermissionDenied
         if document.kind == 'leave':
             document.allocations = allocations(document)
@@ -165,19 +179,21 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         notify(document, [document.owner] + accountants(document), '최종 승인되었습니다.')
     elif action == 'reject':
         if not ((document.status == 'review' and document.reviewer_id == actor.pk) or
-                (document.status == 'approve' and document.approver_id == actor.pk)):
+                (document.kind != 'stock' and document.status == 'approve' and document.approver_id == actor.pk)):
             raise PermissionDenied
         document.status = 'rejected'
         audit(actor, '반려', document, reason)
         notify(document, [document.owner], f'기안이 반려되었습니다. 사유: {reason[:100]}')
     elif action == 'cancel_review':
-        if document.status != 'approve' or document.reviewer_id != actor.pk:
+        expected = 'approved' if document.kind == 'stock' else 'approve'
+        if document.status != expected or document.reviewer_id != actor.pk:
             raise PermissionDenied
         document.status = 'cancelled'
-        audit(actor, '검토 승인 취소', document, reason)
-        notify(document, [document.owner], f'검토 승인이 취소되었습니다. 사유: {reason[:100]}')
+        audit(actor, '재고 요청 검토 취소' if document.kind == 'stock' else '검토 승인 취소', document, reason)
+        recipients = [document.owner] + (accountants(document) if document.kind == 'stock' else [])
+        notify(document, recipients, f'검토가 취소되었습니다. 사유: {reason[:100]}')
     elif action == 'cancel_approval':
-        if document.status != 'approved' or document.approver_id != actor.pk:
+        if document.kind == 'stock' or document.status != 'approved' or document.approver_id != actor.pk:
             raise PermissionDenied
         if document.kind == 'leave':
             adjust_charges(document, -1)

@@ -1,5 +1,5 @@
 {% load static ui %}<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}"><script src="{% static 'workflow/app.js' %}" defer></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261008b"><script src="{% static 'workflow/app.js' %}?v=20261008b" defer></script></head>
 <body>
 <svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
@@ -25,6 +25,7 @@
 <nav>
 <a class="nav-item {% if section == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><svg><use href="#i-grid"/></svg>대시보드</a>
 <a class="nav-item {% if section == 'mine' %}active{% endif %}" href="{% url 'documents' %}"><svg><use href="#i-file"/></svg>내 기안</a>
+<a class="nav-item {% if section == 'stock' %}active{% endif %}" href="{% url 'documents' %}?mode=stock"><svg><use href="#i-box"/></svg>생산 재고 요청함</a>
 <a class="nav-item {% if section == 'pending' %}active{% endif %}" href="{% url 'documents' %}?mode=pending"><svg><use href="#i-check"/></svg>결재함</a>
 <a class="nav-item {% if section == 'history' %}active{% endif %}" href="{% url 'documents' %}?mode=history"><svg><use href="#i-clock"/></svg>내 승인 내역</a>
 <a class="nav-item {% if section == 'drafts' %}active{% endif %}" href="{% url 'documents' %}?mode=drafts"><svg><use href="#i-archive"/></svg>임시저장함</a>

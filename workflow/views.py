@@ -86,7 +86,8 @@ def documents(request):
     mode = request.GET.get('mode', 'mine')
     qs = visible_documents(request.user).select_related('owner', 'owner__profile', 'reviewer', 'approver')
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
-              'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인', 'all': '전체 문서'}
+              'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
+              'stock': '생산 재고 요청함', 'all': '전체 문서'}
     if mode == 'mine':
         qs = qs.filter(owner=request.user).exclude(status='draft')
     elif mode == 'drafts':
@@ -94,7 +95,18 @@ def documents(request):
     elif mode == 'pending':
         qs = qs.filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user))
     elif mode == 'history':
-        qs = qs.filter(audits__actor=request.user, audits__event__in=['검토 승인', '최종 승인']).distinct()
+        qs = qs.filter(audits__actor=request.user, audits__event__in=['검토 승인', '최종 승인', '재고 요청 검토 완료']).distinct()
+    elif mode == 'stock':
+        qs = qs.filter(kind='stock').exclude(status='draft')
+        stage = request.GET.get('stock_stage')
+        if stage == 'review':
+            qs = qs.filter(status='review')
+        elif stage == 'ready':
+            qs = qs.filter(status='approved', shipment='')
+        elif stage == 'ordered':
+            qs = qs.filter(status='approved', shipment='ordered')
+        elif stage == 'received':
+            qs = qs.filter(status='approved', shipment='received')
     elif mode == 'archive':
         qs = qs.filter(status__in=['rejected', 'cancelled'])
     elif mode == 'accounting':
@@ -123,7 +135,8 @@ def documents(request):
         except ValueError:
             messages.error(request, '검색 날짜 형식을 확인해 주세요.')
     return page(request, 'documents', titles[mode], mode, documents=qs[:100], document_count=qs.count(),
-                mode=mode, states=Document.STATES, kinds=Document.KINDS, departments=DEPARTMENTS)
+                mode=mode, states=[(k, '검토완료' if k == 'approved' else label) for k, label in Document.STATES if k != 'approve'] if mode == 'stock' else Document.STATES,
+                kinds=Document.KINDS, departments=DEPARTMENTS)
 
 @login_required
 def compose(request, pk=None):
@@ -149,12 +162,14 @@ def detail(request, pk):
     actions = []
     u = request.user
     if doc.status == 'review' and doc.reviewer_id == u.pk:
-        actions += [('review', '검토 승인'), ('reject', '반려')]
-    if doc.status == 'approve' and doc.approver_id == u.pk:
+        actions += [('review', '검토 완료' if doc.kind == 'stock' else '검토 승인'), ('reject', '반려')]
+    if doc.kind != 'stock' and doc.status == 'approve' and doc.approver_id == u.pk:
         actions += [('approve', '최종 승인'), ('reject', '반려')]
     if doc.status == 'approve' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 승인 취소')]
-    if doc.status == 'approved' and doc.approver_id == u.pk:
+    if doc.kind == 'stock' and doc.status == 'approved' and doc.reviewer_id == u.pk:
+        actions += [('cancel_review', '검토 완료 취소')]
+    if doc.kind != 'stock' and doc.status == 'approved' and doc.approver_id == u.pk:
         actions += [('cancel_approval', '최종 승인 취소')]
     if doc.status in ['draft', 'review'] and doc.owner_id == u.pk:
         actions += [('delete', '기안 삭제')]
@@ -168,7 +183,9 @@ def detail(request, pk):
     except ValidationError:
         amount = 0
     people = User.objects.filter(is_active=True, profile__approved=True).select_related('profile')
-    return page(request, 'detail', '기안 상세', 'mine', doc=doc, actions=actions, amount=amount, people=people,
+    procurement_log = doc.audits.filter(event='발주 처리').select_related('actor').first() if doc.kind == 'stock' else None
+    return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
+                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, people=people, procurement_log=procurement_log,
                 can_reassign=u.profile.manage_system and doc.status in ['review', 'approve'],
                 can_copy=u.pk == doc.owner_id and doc.status in ['rejected', 'cancelled'])
 

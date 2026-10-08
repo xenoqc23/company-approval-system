@@ -39,7 +39,9 @@ class ApprovalTests(TestCase):
         return save_document(Document(**defaults), defaults['owner'], submit=True)
 
     def finish(self, doc):
-        act_on_document(doc.pk, doc.reviewer, 'review')
+        reviewed = act_on_document(doc.pk, doc.reviewer, 'review')
+        if doc.kind == 'stock':
+            return reviewed
         return act_on_document(doc.pk, doc.approver, 'approve')
 
     def used(self, year=2026):
@@ -191,7 +193,7 @@ class ApprovalTests(TestCase):
         self.assertEqual(doc.shipment, 'received')
         second = self.finish(self.purchase(kind='stock', url=''))
         act_on_document(second.pk, self.accounting, 'place')
-        act_on_document(second.pk, self.approver, 'cancel_approval', '발주 취소')
+        act_on_document(second.pk, self.reviewer, 'cancel_review', '발주 취소')
         with self.assertRaises(PermissionDenied):
             act_on_document(second.pk, self.recipient, 'receive')
 
@@ -260,9 +262,117 @@ class ApprovalTests(TestCase):
         for user in [self.owner, self.accounting, self.admin]:
             self.client.force_login(user)
             for url in ['/', '/compose/', '/compose/?kind=office', '/compose/?kind=stock', '/documents/',
-                        '/documents/?mode=pending', '/documents/?mode=archive', '/balances/', '/policy/', '/notices/']:
+                        '/documents/?mode=pending', '/documents/?mode=archive', '/documents/?mode=stock', '/balances/', '/policy/', '/notices/']:
                 with self.subTest(user=user.username, url=url):
                     self.assertEqual(self.client.get(url).status_code, 200)
         self.assertEqual(self.client.get(reverse('detail', args=[doc.pk])).status_code, 200)
         self.assertEqual(self.client.get(reverse('staff')).status_code, 200)
         self.assertEqual(self.client.get(reverse('backups')).status_code, 200)
+
+    def test_stock_requires_only_reviewer_and_has_no_money_or_final_approval(self):
+        doc = self.purchase(kind='stock', approver=None, unit_price=0, url='', quantity=50)
+        self.assertIsNone(doc.approver)
+        self.assertEqual(doc.unit_price, 0)
+        self.assertEqual(doc.status, 'review')
+        with self.assertRaises(PermissionDenied):
+            act_on_document(doc.pk, self.approver, 'approve')
+        doc = act_on_document(doc.pk, self.reviewer, 'review')
+        self.assertEqual(doc.status_label, '발주대기')
+        self.assertEqual(self.used(), 3)
+        self.assertTrue(Notice.objects.filter(user=self.accounting, document=doc, text__contains='발주 담당자').exists())
+        with self.assertRaises(PermissionDenied):
+            act_on_document(doc.pk, self.reviewer, 'review')
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse('detail', args=[doc.pk]))
+        self.assertContains(response, '요청 수량')
+        self.assertNotContains(response, '수량 / 단가')
+        self.assertNotContains(response, '총가격')
+        self.assertNotContains(response, '03 최종 승인')
+
+    def test_procurement_only_role_receives_stock_requests_without_accounting_access(self):
+        self.stranger.profile.procure = True
+        self.stranger.profile.save()
+        stock = self.purchase(kind='stock', approver=None, unit_price=0, url='')
+        office = self.finish(self.purchase())
+        leave = self.finish(self.leave())
+        self.assertFalse(visible_documents(self.stranger).filter(pk=stock.pk).exists())
+        act_on_document(stock.pk, self.reviewer, 'review')
+        self.assertTrue(visible_documents(self.stranger).filter(pk=stock.pk).exists())
+        self.assertFalse(visible_documents(self.stranger).filter(pk__in=[office.pk, leave.pk]).exists())
+        self.client.force_login(self.stranger)
+        response = self.client.get('/documents/?mode=stock&stock_stage=ready')
+        self.assertContains(response, stock.number)
+        self.assertNotContains(response, office.number)
+        self.assertNotContains(response, '최종승인대기')
+        self.assertEqual(self.client.get('/documents/?mode=accounting').status_code, 403)
+        response = self.client.post(reverse('action', args=[stock.pk]), {'action': 'place'})
+        self.assertRedirects(response, reverse('detail', args=[stock.pk]))
+        stock.refresh_from_db()
+        self.assertEqual(stock.status_label, '입고대기')
+        self.assertNotContains(self.client.get('/documents/?mode=stock&stock_stage=ready'), stock.number)
+        self.assertContains(self.client.get('/documents/?mode=stock&stock_stage=ordered'), stock.number)
+
+    def test_stock_review_cancellation_blocks_fulfillment_and_requires_own_reviewer(self):
+        doc = self.finish(self.purchase(kind='stock', approver=None, unit_price=0, url=''))
+        act_on_document(doc.pk, self.accounting, 'place')
+        for user in [self.owner, self.accounting, self.approver]:
+            with self.assertRaises(PermissionDenied):
+                act_on_document(doc.pk, user, 'cancel_review', '취소 사유')
+        act_on_document(doc.pk, self.reviewer, 'cancel_review', '생산 계획 변경')
+        self.assertFalse(visible_documents(self.accounting).filter(pk=doc.pk).exists())
+        with self.assertRaises(PermissionDenied):
+            act_on_document(doc.pk, self.recipient, 'receive')
+        with self.assertRaises(PermissionDenied):
+            act_on_document(doc.pk, self.accounting, 'place')
+        self.assertEqual(self.used(), 3)
+
+    def test_stock_form_submission_ignores_price_and_approver_and_can_self_review(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse('compose'), {'intent': 'submit', 'kind': 'stock',
+            'product': '제품 보관함', 'quantity': 20, 'reviewer': self.owner.pk,
+            'unit_price': '12345', 'approver': self.approver.pk, 'url': 'https://example.com/unused'})
+        doc = Document.objects.get(kind='stock')
+        self.assertRedirects(response, reverse('detail', args=[doc.pk]))
+        self.assertIsNone(doc.approver)
+        self.assertEqual(doc.unit_price, 0)
+        self.assertEqual(doc.url, '')
+        reviewed = act_on_document(doc.pk, self.owner, 'review')
+        self.assertEqual(reviewed.status_label, '발주대기')
+        self.assertContains(self.client.get('/documents/?mode=history'), doc.number)
+
+    def test_stock_reject_copy_retains_single_review_workflow(self):
+        doc = self.purchase(kind='stock', approver=None, unit_price=0, url='')
+        act_on_document(doc.pk, self.reviewer, 'reject', '수량 확인')
+        self.client.force_login(self.owner)
+        self.client.post(reverse('copy', args=[doc.pk]))
+        copy = Document.objects.get(status='draft', kind='stock')
+        self.assertIsNone(copy.approver)
+        self.assertEqual(copy.unit_price, 0)
+        save_document(copy, self.owner, submit=True)
+        self.assertNotEqual(copy.number, doc.number)
+        self.assertEqual(act_on_document(copy.pk, self.reviewer, 'review').status, 'approved')
+
+    def test_legacy_stock_conversion_preserves_existing_reviews_and_fulfillment(self):
+        import importlib
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+        from django.utils import timezone
+        pending = Document.objects.create(owner=self.owner, reviewer=self.reviewer, approver=self.approver,
+            kind='stock', status='approve', number='LEGACY-1', title='구매요청 / owner / 보관함',
+            product='보관함', quantity=20, unit_price=15000, reviewed_at=timezone.now())
+        old_log = Audit.objects.create(document=pending, actor=self.reviewer, event='검토 승인')
+        ordered = Document.objects.create(owner=self.owner, reviewer=self.reviewer, approver=self.approver,
+            kind='stock', status='approved', shipment='ordered', number='LEGACY-2', product='매뉴얼', quantity=100)
+        unreviewed = Document.objects.create(owner=self.owner, reviewer=self.reviewer, kind='stock', status='approve')
+        migration = importlib.import_module('workflow.migrations.0003_stock_review_workflow')
+        migration.convert_stock_requests(apps, SimpleNamespace(connection=connection))
+        pending.refresh_from_db(); ordered.refresh_from_db(); unreviewed.refresh_from_db()
+        self.assertEqual(pending.status_label, '발주대기')
+        self.assertEqual(pending.approved_at, pending.reviewed_at)
+        self.assertEqual((pending.number, pending.quantity, pending.unit_price), ('LEGACY-1', 20, 15000))
+        self.assertTrue(Audit.objects.filter(pk=old_log.pk).exists())
+        self.assertTrue(Audit.objects.filter(document=pending, actor__isnull=True).exists())
+        self.assertEqual(ordered.shipment, 'ordered')
+        self.assertEqual(unreviewed.status, 'review')
+        self.assertTrue(Notice.objects.filter(document=pending, user=self.accounting).exists())

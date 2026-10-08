@@ -3,6 +3,9 @@
 이 시안은 본인 PC에서 화면과 업무 흐름을 확인하는 프로그램입니다.
 NAS/MariaDB는 연결하지 않습니다. PC 폴더 안에 별도 테스트 DB를 만듭니다.
 
+이미 실행 중인 이전 버전을 업데이트할 때는 UPDATE_WINDOWS.txt를 먼저 확인합니다.
+기존 프로그램 폴더의 .venv와 var를 보관한 채 최신 파일을 덮어씁니다.
+
 1. Python 설치 (처음 한 번)
 
   https://www.python.org/downloads/windows/ 에서 Python 3.14의

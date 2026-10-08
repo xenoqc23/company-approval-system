@@ -3,12 +3,14 @@ import argparse
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
 import urllib.request
 import venv
 import webbrowser
+from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent
 PYTHON = ROOT / '.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
@@ -32,6 +34,18 @@ def command(*args):
     subprocess.run([str(PYTHON), *args], cwd=ROOT, env=local_environment(), check=True)
 
 
+def backup_before_update():
+    database = ROOT / 'var/prototype.sqlite3'
+    if not database.is_file():
+        return
+    folder = ROOT / 'var/backups'
+    folder.mkdir(parents=True, exist_ok=True)
+    destination = folder / f'before-update-{datetime.now():%Y%m%d-%H%M%S-%f}.sqlite3'
+    with sqlite3.connect(str(database)) as source, sqlite3.connect(str(destination)) as target:
+        source.backup(target)
+    print(f'기존 데이터 백업을 보관했습니다: {destination.name}', flush=True)
+
+
 def setup():
     if sys.version_info < (3, 10):
         raise RuntimeError('Python 3.10 이상이 필요합니다. Python을 새 버전으로 설치해 주세요.')
@@ -48,6 +62,7 @@ def setup():
     print('\n[2/4] 필요한 프로그램을 설치합니다. 처음에는 인터넷 연결이 필요합니다.', flush=True)
     command('-m', 'pip', 'install', '-r', 'requirements-prototype.txt')
     print('\n[3/4] PC용 테스트 데이터베이스를 준비합니다.', flush=True)
+    backup_before_update()
     command('manage.py', 'migrate', '--noinput')
     print('\n[4/4] 예시 직원과 문서를 준비합니다.', flush=True)
     print('처음 설치할 때 초기 비밀번호를 입력합니다. 입력한 글자는 화면에 표시되지 않습니다.', flush=True)

@@ -31,7 +31,7 @@ class AnnualBalance(models.Model):
         return self.total - self.used
 
 class Document(models.Model):
-    KINDS = [('leave', '휴가원'), ('office', '사무·사내용품'), ('stock', '생산용 재고 발주')]
+    KINDS = [('leave', '휴가원'), ('office', '사무·사내용품'), ('stock', '생산 재고 요청')]
     LEAVES = [('annual', '연차'), ('am', '오전반차'), ('pm', '오후반차'), ('outing', '외출')]
     STATES = [('draft', '임시저장'), ('review', '검토대기'), ('approve', '최종승인대기'),
               ('approved', '결재완료'), ('rejected', '반려'), ('cancelled', '취소'), ('deleted', '삭제')]
@@ -79,9 +79,17 @@ class Document(models.Model):
 
     @property
     def shipment_label(self):
+        if self.kind == 'stock' and not self.shipment:
+            return '발주대기' if self.status == 'approved' else '검토 후 발주'
         if self.shipment == 'received':
             return '배송완료' if self.kind == 'office' else '입고완료'
         return self.get_shipment_display()
+
+    @property
+    def status_label(self):
+        if self.kind == 'stock' and self.status == 'approved':
+            return {'': '발주대기', 'ordered': '입고대기', 'received': '입고완료'}.get(self.shipment, '검토완료')
+        return self.get_status_display()
 
 class DocumentCounter(models.Model):
     day = models.DateField(unique=True)
@@ -89,7 +97,7 @@ class DocumentCounter(models.Model):
 
 class Audit(models.Model):
     document = models.ForeignKey(Document, null=True, blank=True, on_delete=models.PROTECT, related_name='audits')
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT)
     target = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='target_audits')
     event = models.CharField(max_length=80)
     detail = models.TextField(blank=True)

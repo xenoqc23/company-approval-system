@@ -82,7 +82,7 @@ class Command(BaseCommand):
             save_document(doc, doc_owner, submit=stage != 'draft')
             if stage in ['approve', 'approved']:
                 doc = act_on_document(doc.pk, doc.reviewer, 'review')
-            if stage == 'approved':
+            if stage == 'approved' and doc.kind != 'stock':
                 doc = act_on_document(doc.pk, doc.approver, 'approve')
             return doc
 
