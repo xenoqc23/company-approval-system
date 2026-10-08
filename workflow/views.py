@@ -8,8 +8,8 @@ from django.contrib.auth import authenticate, login, logout, get_user_model, upd
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Count, Q
-from django.http import HttpResponse
+from django.db.models import Q
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -20,6 +20,7 @@ from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, 
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 from .people import approval_people, rank_order
 from .exports import purchase_workbook
+from .accounting import accounting_tabs
 
 User = get_user_model()
 
@@ -130,17 +131,20 @@ def documents(request):
         if not request.user.profile.view_accounting:
             raise PermissionDenied
         qs = qs.filter(status='approved')
-        selected_kind = request.GET.get('kind', 'leave')
-        if selected_kind not in dict(Document.KINDS):
-            selected_kind = 'leave'
-        counts = {row['kind']: row['total'] for row in qs.values('kind').annotate(total=Count('pk'))}
-        for key, label in [('leave', '휴가원'), ('office', '구매요청서'), ('stock', '생산 재고 요청')]:
+        selected_kind = request.GET.get('kind', 'all')
+        if selected_kind not in ['all', *dict(Document.KINDS)]:
+            selected_kind = 'all'
+        # Opening the menu shows new markers; choosing a tab acknowledges it.
+        read_kind = selected_kind if request.GET.get('kind') == selected_kind else None
+        for category in accounting_tabs(request.user, read_kind):
+            key = category['key']
             params = request.GET.copy()
             params['mode'], params['kind'] = 'accounting', key
-            for stale in ['status', 'shipment']:
+            for stale in ['status', 'shipment', 'department']:
                 params.pop(stale, None)
-            accounting_categories.append({'key': key, 'label': label, 'count': counts.get(key, 0), 'url': '?' + params.urlencode()})
-        qs = qs.filter(kind=selected_kind)
+            accounting_categories.append({**category, 'url': '?' + params.urlencode()})
+        if selected_kind != 'all':
+            qs = qs.filter(kind=selected_kind)
     elif mode == 'receive':
         qs = qs.filter(status='approved', recipient=request.user, kind__in=['office', 'stock'])
     elif mode == 'all':
@@ -156,8 +160,6 @@ def documents(request):
             continue
         if request.GET.get(key):
             qs = qs.filter(**{key: request.GET[key]})
-    if request.GET.get('department'):
-        qs = qs.filter(owner__profile__department=request.GET['department'])
     for key, lookup in [('from', 'created_at__date__gte'), ('to', 'created_at__date__lte')]:
         try:
             if request.GET.get(key):
@@ -171,6 +173,14 @@ def documents(request):
                 accounting_categories=accounting_categories, selected_kind=selected_kind,
                 can_export_purchases=mode == 'accounting' and selected_kind == 'office',
                 stock_column=mode == 'stock' or (mode == 'accounting' and selected_kind == 'stock'))
+
+@login_required
+def accounting_tab_status(request):
+    if not request.user.profile.view_accounting:
+        raise PermissionDenied
+    response = JsonResponse({'tabs': accounting_tabs(request.user)})
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 @login_required
 @require_POST

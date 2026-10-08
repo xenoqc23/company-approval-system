@@ -1,4 +1,30 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const accountingTabs = document.querySelector('[data-accounting-status-url]');
+  if (accountingTabs) {
+    let checking = false;
+    const checkNewDocuments = async () => {
+      if (document.hidden || checking) return;
+      checking = true;
+      try {
+        const response = await fetch(accountingTabs.dataset.accountingStatusUrl, {cache: 'no-store'});
+        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return;
+        const data = await response.json();
+        data.tabs.forEach(tab => {
+          const link = accountingTabs.querySelector(`[data-accounting-kind="${tab.key}"]`);
+          if (!link) return;
+          link.classList.toggle('has-new', tab.unread);
+          link.querySelector('[data-tab-count]').textContent = tab.count;
+          link.querySelector('.tab-new').hidden = !tab.unread;
+        });
+      } catch {
+        // Keep the existing indicators if a temporary connection fails.
+      } finally {
+        checking = false;
+      }
+    };
+    window.setInterval(checkNewDocuments, 15000);
+    document.addEventListener('visibilitychange', checkNewDocuments);
+  }
   const exportForm = document.querySelector('[data-purchase-export]');
   if (exportForm) {
     const boxes = [...exportForm.querySelectorAll('[data-purchase-select]')];

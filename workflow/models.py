@@ -96,6 +96,14 @@ class DocumentCounter(models.Model):
     day = models.DateField(unique=True)
     value = models.PositiveIntegerField(default=0)
 
+class AccountingReadState(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    kind = models.CharField(max_length=20, choices=Document.KINDS)
+    seen_until = models.DateTimeField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'kind'], name='unique_accounting_read_kind')]
+
 class Audit(models.Model):
     document = models.ForeignKey(Document, null=True, blank=True, on_delete=models.PROTECT, related_name='audits')
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT)

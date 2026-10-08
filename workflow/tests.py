@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase, Client
 from django.urls import reverse
-from workflow.models import AnnualBalance, Audit, Document, Notice, Policy, Profile
+from workflow.models import AccountingReadState, AnnualBalance, Audit, Document, Notice, Policy, Profile
 from workflow.services import act_on_document, edit_balance, save_document, visible_documents
 from workflow.forms import DocumentForm
 from workflow.management.commands.seed_demo import TENURE, POLICY
@@ -100,6 +100,8 @@ class ApprovalTests(TestCase):
         self.assertEqual(sheet['B2'].data_type, 's')
         self.assertEqual(sheet['F2'].data_type, 's')
         self.assertEqual(sheet['D2'].data_type, 'n')
+        self.assertEqual(sheet['D2'].number_format, '#,##0')
+        self.assertEqual(sheet['E2'].number_format, '#,##0')
         self.assertTrue(Audit.objects.filter(event='구매요청서 엑셀 다운로드', actor=self.accounting).exists())
         selected.refresh_from_db()
         self.assertEqual(selected.shipment, '')
@@ -492,11 +494,11 @@ class ApprovalTests(TestCase):
         self.purchase(product='검토 전 구매')
         self.client.force_login(self.accounting)
         response = self.client.get(reverse('documents'), {'mode': 'accounting'})
-        self.assertEqual(response.context['selected_kind'], 'leave')
-        self.assertEqual([d.pk for d in response.context['documents']], [leave.pk])
+        self.assertEqual(response.context['selected_kind'], 'all')
+        self.assertEqual({d.pk for d in response.context['documents']}, {leave.pk, office.pk, stock.pk})
         self.assertNotContains(response, '최종승인대기</a>')
         self.assertEqual({c['key']: c['count'] for c in response.context['accounting_categories']},
-                         {'leave': 1, 'office': 1, 'stock': 1})
+                         {'all': 3, 'leave': 1, 'office': 1, 'stock': 1})
         for kind, expected in [('office', office), ('stock', stock)]:
             response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': kind})
             self.assertEqual([d.pk for d in response.context['documents']], [expected.pk])
@@ -508,6 +510,63 @@ class ApprovalTests(TestCase):
         self.assertEqual(list(response.context['documents']), [])
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'stock'}).status_code, 403)
+
+    def test_accounting_unread_tabs_acknowledge_each_kind_and_all_per_user(self):
+        self.finish(self.leave())
+        self.finish(self.purchase())
+        self.finish(self.purchase(kind='stock'))
+        self.client.force_login(self.accounting)
+        def states():
+            return {tab['key']: tab['unread'] for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']}
+        response = self.client.get(reverse('documents'), {'mode': 'accounting'})
+        self.assertTrue(all(tab['unread'] for tab in response.context['accounting_categories']))
+        self.assertFalse(AccountingReadState.objects.exists())
+        self.assertTrue(all(states().values()))
+        self.assertFalse(AccountingReadState.objects.exists())  # Polling never clears indicators.
+        self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office'})
+        self.assertEqual(states(), {'all': True, 'leave': True, 'office': False, 'stock': True})
+        self.client.logout()
+        self.client.force_login(self.accounting)
+        self.assertFalse(states()['office'])  # Retained across sessions.
+        self.owner.profile.view_accounting = True
+        self.owner.profile.save()
+        self.client.force_login(self.owner)
+        self.assertTrue(states()['office'])  # Independent for each accountant.
+        self.client.force_login(self.accounting)
+        self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'all'})
+        self.assertFalse(any(states().values()))
+        self.client.force_login(self.stranger)
+        self.assertEqual(self.client.get(reverse('accounting_tab_status')).status_code, 403)
+
+    def test_accounting_new_final_approvals_detected_and_cancelled_not_counted(self):
+        pending_office = self.purchase()
+        pending_stock = self.purchase(kind='stock')
+        self.client.force_login(self.accounting)
+        self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'all'})
+        self.finish(pending_office)
+        self.finish(pending_stock)
+        tabs = {tab['key']: tab for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']}
+        self.assertTrue(tabs['all']['unread'])
+        self.assertTrue(tabs['office']['unread'])
+        self.assertTrue(tabs['stock']['unread'])
+        self.assertFalse(tabs['leave']['unread'])
+        self.assertEqual(tabs['all']['count'], 2)
+        act_on_document(pending_office.pk, self.approver, 'cancel_approval', '취소')
+        tabs = {tab['key']: tab for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']}
+        self.assertEqual(tabs['office']['count'], 0)
+        self.assertFalse(tabs['office']['unread'])
+        self.assertTrue(tabs['all']['unread'])
+        response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'stock'})
+        self.assertFalse(any(tab['unread'] for tab in response.context['accounting_categories']))
+
+    def test_document_department_dropdown_removed_without_losing_leave_filter(self):
+        doc = self.finish(self.purchase())
+        self.client.force_login(self.accounting)
+        response = self.client.get(reverse('documents'), {'mode': 'accounting', 'department': '품질팀'})
+        self.assertNotContains(response, 'name="department"')
+        self.assertEqual([d.pk for d in response.context['documents']], [doc.pk])
+        self.assertTrue(all('department=' not in tab['url'] for tab in response.context['accounting_categories']))
+        self.assertContains(self.client.get(reverse('balances')), 'name="department"')
 
     def test_csrf_is_enforced_for_mutation(self):
         client = Client(enforce_csrf_checks=True)

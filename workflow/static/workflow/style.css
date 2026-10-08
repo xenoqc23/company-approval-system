@@ -45,3 +45,7 @@ body{font-size:14.5px}.nav-item{font-size:14.5px}.field small,.optional,.require
 .documents-table .selection-cell{width:52px;padding:16px;text-align:center}
 .selection-cell input{width:18px;height:18px;min-height:0;accent-color:#315d43;cursor:pointer;vertical-align:middle}
 .documents-table tr.export-selected td{background:#edf5ee}
+.accounting-tabs a{display:flex;align-items:center;gap:7px}
+.accounting-tabs a.has-new{background:#fff3dd;color:#875215;border-radius:7px 7px 0 0;box-shadow:inset 0 -3px #d69028}
+.accounting-tabs a.has-new b{background:#f8dfb0;color:#704410}
+.accounting-tabs .tab-new{font-size:11.5px;font-weight:700;background:#ae6816;color:#fff;padding:2px 5px;border-radius:4px;white-space:nowrap}

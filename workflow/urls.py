@@ -8,6 +8,7 @@ urlpatterns = [
     path('password/', views.password, name='password'), path('documents/', views.documents, name='documents'),
     path('account/', views.account, name='account'),
     path('documents/export/purchases/', views.export_purchases, name='export_purchases'),
+    path('documents/accounting/status/', views.accounting_tab_status, name='accounting_tab_status'),
     path('compose/', views.compose, name='compose'), path('compose/<int:pk>/', views.compose, name='edit'),
     path('documents/<int:pk>/', views.detail, name='detail'), path('documents/<int:pk>/action/', views.action, name='action'),
     path('documents/<int:pk>/copy/', views.copy_document, name='copy'), path('balances/', views.balances, name='balances'),

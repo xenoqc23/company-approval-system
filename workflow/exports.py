@@ -14,7 +14,7 @@ def purchase_workbook(documents):
         for column in [1, 2, 6]:
             sheet.cell(sheet.max_row, column).data_type = 's'
         for column in [4, 5]:
-            sheet.cell(sheet.max_row, column).number_format = '#,##0.00'
+            sheet.cell(sheet.max_row, column).number_format = '#,##0'
         for cell in sheet[sheet.max_row]:
             cell.alignment = Alignment(vertical='top', wrap_text=True)
     for cell in sheet[1]:
