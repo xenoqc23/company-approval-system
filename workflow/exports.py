@@ -25,3 +25,29 @@ def purchase_workbook(documents):
     sheet.freeze_panes = 'A2'
     sheet.auto_filter.ref = sheet.dimensions
     return workbook
+
+
+def leave_balances_workbook(rows, year):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = f'{year}년 연차 현황'
+    sheet.append(['연도', '성명', '부서', '직급', '총연차', '사용연차', '잔여연차'])
+    for row in rows:
+        person = row['user']
+        sheet.append([year, person.first_name or person.username, person.profile.department,
+                      person.profile.rank, row['total'], row['used'], row['remaining']])
+        for column in [2, 3, 4]:
+            sheet.cell(sheet.max_row, column).data_type = 's'
+        for column in [5, 6, 7]:
+            cell = sheet.cell(sheet.max_row, column)
+            cell.number_format = '#,##0' if cell.value == int(cell.value) else '#,##0.##'
+            if cell.value < 0:
+                cell.font = Font(color='A13F31')
+    for cell in sheet[1]:
+        cell.fill = PatternFill('solid', fgColor='315D43')
+        cell.font = Font(color='FFFFFF', bold=True)
+    for column in 'ABCDEFG':
+        sheet.column_dimensions[column].width = 18
+    sheet.freeze_panes = 'A2'
+    sheet.auto_filter.ref = sheet.dimensions
+    return workbook

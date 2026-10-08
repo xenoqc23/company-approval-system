@@ -51,3 +51,11 @@ body{font-size:14.5px}.nav-item{font-size:14.5px}.field small,.optional,.require
 .accounting-tabs a.has-new b{background:#f6bf77;color:#704410}
 
 .notice-row .notice-reason{margin:5px 0 0;color:#54665b;font-size:13px}.notice-row strong,.mini-notice p{overflow-wrap:anywhere}
+
+.balance-panel-actions,.leave-history-tools{display:flex;align-items:center;gap:18px}
+.leave-employee-link{display:inline-grid;gap:3px;color:#286443}.leave-employee-link small{font-size:12px;color:#526357}.leave-employee-link:hover strong{text-decoration:underline}
+.leave-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-bottom:20px}
+.leave-summary .panel{padding:20px 24px}.leave-summary small{display:block;color:#526357}.leave-summary strong{display:block;font-size:24px;margin-top:6px;color:#245239}
+.leave-records-note{padding:16px 22px;border-bottom:1px solid #e6ede7;font-size:13px;color:#526357;background:#f8faf8}
+.leave-date-cell strong,.leave-date-cell small{display:block}.leave-date-cell small{font-size:12px;color:#526357;margin-top:4px}
+.leave-records-table td{vertical-align:top}.leave-records-table .document-number{font-size:12px}

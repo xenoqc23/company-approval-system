@@ -12,6 +12,8 @@ urlpatterns = [
     path('compose/', views.compose, name='compose'), path('compose/<int:pk>/', views.compose, name='edit'),
     path('documents/<int:pk>/', views.detail, name='detail'), path('documents/<int:pk>/action/', views.action, name='action'),
     path('documents/<int:pk>/copy/', views.copy_document, name='copy'), path('balances/', views.balances, name='balances'),
+    path('balances/export/', views.export_balances, name='export_balances'),
+    path('balances/<int:pk>/history/', views.leave_history, name='leave_history'),
     path('policy/', views.policy, name='policy'), path('notices/', views.notices, name='notices'),
     path('notices/<int:pk>/open/', views.open_notice, name='open_notice'), path('staff/', views.staff, name='staff'),
     path('backups/', views.backups, name='backups'),

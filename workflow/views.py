@@ -19,9 +19,10 @@ from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, Si
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 from .people import approval_people, rank_order
-from .exports import purchase_workbook
+from .exports import purchase_workbook, leave_balances_workbook
 from .accounting import accounting_tabs
 from .notifications import visible_notices
+from .leave_records import balance_filters, balance_rows, employee_leave_records
 
 User = get_user_model()
 
@@ -303,15 +304,9 @@ def copy_document(request, pk):
 @login_required
 def balances(request):
     p = request.user.profile
-    department = request.GET.get('department', '') if p.manage_leave else ''
-    if department not in DEPARTMENTS:
+    year, department = balance_filters(request.GET)
+    if not p.manage_leave:
         department = ''
-    try:
-        year = int(request.GET.get('year', timezone.localdate().year))
-        if not 2000 <= year <= 2100:
-            raise ValueError
-    except ValueError:
-        year = timezone.localdate().year
     if request.method == 'POST':
         if not p.manage_leave:
             raise PermissionDenied
@@ -328,15 +323,7 @@ def balances(request):
         except (ValidationError, InvalidOperation, ValueError) as exc:
             messages.error(request, ' '.join(exc.messages) if isinstance(exc, ValidationError) else '연도와 연차 값을 확인해 주세요.')
         return redirect(reverse('balances') + '?' + urlencode({'year': year, 'department': department}))
-    users = User.objects.filter(profile__approved=True) if p.manage_leave else User.objects.filter(pk=request.user.pk)
-    if department:
-        users = users.filter(profile__department=department)
-    users = list(rank_order(users.select_related('profile')))
-    balances_by_user = {balance.user_id: balance for balance in AnnualBalance.objects.filter(user__in=users, year=year)}
-    rows = []
-    for user in users:
-        b = balances_by_user.get(user.pk)
-        rows.append({'user': user, 'total': b.total if b else 0, 'used': b.used if b else 0, 'remaining': b.remaining if b else 0})
+    rows = balance_rows(year, department, user=None if p.manage_leave else request.user)
     logs = Audit.objects.filter(target__isnull=False)
     if not p.manage_leave:
         logs = logs.filter(target=request.user)
@@ -345,6 +332,40 @@ def balances(request):
     return page(request, 'balances', '직원별 연차 관리' if p.manage_leave else '나의 연차', 'balances',
                 rows=rows, selected_year=year, departments=DEPARTMENTS, selected_department=department,
                 years=range(timezone.localdate().year - 2, timezone.localdate().year + 2), logs=logs.select_related('actor', 'target')[:20])
+
+@login_required
+@require_POST
+def export_balances(request):
+    if not request.user.profile.manage_leave:
+        raise PermissionDenied
+    year, department = balance_filters(request.POST)
+    rows = balance_rows(year, department)
+    output = BytesIO()
+    leave_balances_workbook(rows, year).save(output)
+    audit(request.user, '직원 연차 엑셀 다운로드', detail=f'{year}년 / {department or "모든 부서"} / {len(rows)}명')
+    response = HttpResponse(output.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = content_disposition_header(True, f'직원별_연차현황_{year}_{timezone.localtime():%Y%m%d_%H%M%S}.xlsx')
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+@login_required
+def leave_history(request, pk):
+    if not request.user.profile.manage_leave:
+        raise PermissionDenied
+    employee = get_object_or_404(User.objects.select_related('profile'), pk=pk, profile__approved=True)
+    year, _ = balance_filters(request.GET)
+    mode = 'all' if request.GET.get('mode') == 'all' else 'approved'
+    rows = employee_leave_records(employee, year, mode)
+    accessible = set(visible_documents(request.user).filter(pk__in=[row['doc'].pk for row in rows]).values_list('pk', flat=True))
+    for row in rows:
+        row['accessible'] = row['doc'].pk in accessible
+    balance = AnnualBalance.objects.filter(user=employee, year=year).first()
+    back_url = reverse('balances') + '?' + urlencode({'year': year, 'department': employee.profile.department})
+    return page(request, 'leave_history', f'{employee.first_name} 연차 사용 내역', 'balances', employee=employee,
+        selected_year=year, years=range(timezone.localdate().year - 2, timezone.localdate().year + 2),
+        mode=mode, leave_rows=rows, employee_balance=balance, back_url=back_url,
+        document_charged=sum((row['charged'] for row in rows), Decimal('0')),
+        logs=Audit.objects.filter(target=employee, event=f'{year}년 연차 수정').select_related('actor')[:30])
 
 @login_required
 def policy(request):

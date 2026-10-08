@@ -219,6 +219,96 @@ class ApprovalTests(TestCase):
         self.assertEqual([row['user'].pk for row in response.context['rows']], [self.stranger.pk])
         self.assertNotContains(response, 'name="department"')
 
+    def test_leave_balance_excel_filters_rank_order_fractional_negative_and_literal_names(self):
+        self.owner.first_name = '=SUM(1,2)'
+        self.owner.save()
+        for user, rank in [(self.owner, '대리'), (self.reviewer, '팀장')]:
+            user.profile.department, user.profile.rank = '품질팀', rank
+            user.profile.save()
+        balance = AnnualBalance.objects.get(user=self.owner, year=2026)
+        balance.total, balance.used = Decimal('1'), Decimal('3.25')
+        balance.save()
+        AnnualBalance.objects.create(user=self.owner, year=2027, total=20, used=1)
+        self.client.force_login(self.accounting)
+        response = self.client.post(reverse('export_balances'), {'year': 2026, 'department': '품질팀'})
+        self.assertEqual(response.status_code, 200)
+        sheet = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(list(sheet.values), [
+            ('연도', '성명', '부서', '직급', '총연차', '사용연차', '잔여연차'),
+            (2026, 'reviewer', '품질팀', '팀장', 0, 0, 0),
+            (2026, '=SUM(1,2)', '품질팀', '대리', 1, 3.25, -2.25),
+        ])
+        self.assertEqual(sheet['B3'].data_type, 's')
+        self.assertEqual(sheet['G3'].data_type, 'n')
+        self.assertEqual(sheet['E3'].number_format, '#,##0')
+        self.assertEqual(sheet['F3'].number_format, '#,##0.##')
+        self.assertTrue(Audit.objects.filter(actor=self.accounting, event='직원 연차 엑셀 다운로드').exists())
+        balance.refresh_from_db()
+        self.assertEqual(balance.used, Decimal('3.25'))
+
+    def test_leave_management_export_history_permissions_and_csrf(self):
+        for person in [self.owner, self.admin]:
+            self.client.force_login(person)
+            self.assertEqual(self.client.post(reverse('export_balances'), {'year': 2026}).status_code, 403)
+            self.assertEqual(self.client.get(reverse('leave_history', args=[self.owner.pk])).status_code, 403)
+        self.client.force_login(self.accounting)
+        self.assertEqual(self.client.get(reverse('export_balances')).status_code, 405)
+        self.assertEqual(self.client.get(reverse('leave_history', args=[999999])).status_code, 404)
+        secure_client = Client(enforce_csrf_checks=True)
+        secure_client.force_login(self.accounting)
+        self.assertEqual(secure_client.post(reverse('export_balances'), {'year': 2026}).status_code, 403)
+
+    def test_employee_leave_history_only_own_dates_approved_deductions_and_statuses(self):
+        annual = self.finish(self.leave())
+        half = self.finish(self.leave(leave_type='pm', start_date=date(2026, 10, 15), end_date=date(2026, 10, 15),
+            start_time=time(13, 30), end_time=time(17)))
+        outing = self.finish(self.leave(leave_type='outing', start_date=date(2026, 10, 16), end_date=date(2026, 10, 16),
+            start_time=time(9), end_time=time(10)))
+        cancelled = self.finish(self.leave(start_date=date(2026, 10, 19), end_date=date(2026, 10, 19)))
+        act_on_document(cancelled.pk, self.approver, 'cancel_approval', '일정 취소')
+        rejected = self.leave(start_date=date(2026, 10, 20), end_date=date(2026, 10, 20))
+        act_on_document(rejected.pk, self.reviewer, 'reject', '일정 확인')
+        pending = self.leave(start_date=date(2026, 10, 21), end_date=date(2026, 10, 21))
+        self.leave(submit=False)
+        deleted = self.leave(start_date=date(2026, 10, 23), end_date=date(2026, 10, 23))
+        act_on_document(deleted.pk, self.owner, 'delete')
+        self.finish(self.leave(owner=self.stranger))
+        self.finish(self.purchase())
+        self.client.force_login(self.accounting)
+        url = reverse('leave_history', args=[self.owner.pk])
+        response = self.client.get(url, {'year': 2026})
+        self.assertEqual({row['doc'].pk for row in response.context['leave_rows']}, {annual.pk, half.pk, outing.pk})
+        self.assertEqual(response.context['document_charged'], Decimal('3.75'))
+        self.assertContains(response, '13:30 ~ 17:00')
+        self.assertContains(response, '0.25일')
+        response = self.client.get(url, {'year': 2026, 'mode': 'all'})
+        rows = {row['doc'].pk: row for row in response.context['leave_rows']}
+        self.assertEqual(set(rows), {annual.pk, half.pk, outing.pk, cancelled.pk, rejected.pk, pending.pk})
+        self.assertEqual(response.context['document_charged'], Decimal('3.75'))
+        self.assertEqual(rows[cancelled.pk]['charged'], 0)
+        self.assertFalse(rows[cancelled.pk]['accessible'])
+        self.accounting.profile.view_accounting = False
+        self.accounting.profile.save()
+        response = self.client.get(url, {'year': 2026})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(any(row['accessible'] for row in response.context['leave_rows']))
+
+    def test_employee_leave_history_year_boundary_uses_original_allocations_and_manual_adjustments(self):
+        doc = self.finish(self.leave(start_date=date(2026, 12, 31), end_date=date(2027, 1, 4)))
+        edit_balance(self.accounting, self.owner, 2027, 'used', Decimal('4.25'), '기안 없는 휴가 수동 조정')
+        edit_balance(self.accounting, self.owner, 2026, 'total', Decimal('20'), '전년도 수정')
+        self.client.force_login(self.accounting)
+        url = reverse('leave_history', args=[self.owner.pk])
+        response = self.client.get(url, {'year': 2026})
+        self.assertEqual(response.context['document_charged'], 1)
+        response = self.client.get(url, {'year': 2027})
+        self.assertEqual([row['doc'].pk for row in response.context['leave_rows']], [doc.pk])
+        self.assertEqual(response.context['document_charged'], 2)
+        self.assertEqual(response.context['employee_balance'].used, Decimal('4.25'))
+        self.assertEqual([log.event for log in response.context['logs']], ['2027년 연차 수정'])
+        self.assertContains(response, '기안 없는 휴가 수동 조정')
+        self.assertContains(response, '실제 사용 날짜는 수정 이력만으로 확인할 수 없습니다.')
+
     def test_purchase_excel_selected_rows_prices_and_literal_text(self):
         selected = self.finish(self.purchase(product='=SUM(1,2)', reason='=HYPERLINK("https://example.com")'))
         self.finish(self.purchase(product='미선택 품목'))
