@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!link) return;
           link.classList.toggle('has-new', tab.unread);
           link.querySelector('[data-tab-count]').textContent = tab.count;
-          link.querySelector('.tab-new').hidden = !tab.unread;
+          link.setAttribute('aria-label', `${tab.label} ${tab.count}건${tab.unread ? ', 확인하지 않은 문서 있음' : ''}`);
         });
       } catch {
         // Keep the existing indicators if a temporary connection fails.

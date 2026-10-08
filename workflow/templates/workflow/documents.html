@@ -4,7 +4,7 @@
 <section class="panel">
 {% if mode == 'accounting' %}
   <nav class="list-tabs accounting-tabs" aria-label="최종 승인 문서 종류" data-accounting-status-url="{% url 'accounting_tab_status' %}">
-  {% for category in accounting_categories %}<a data-accounting-kind="{{ category.key }}" class="{% if selected_kind == category.key %}selected{% endif %}{% if category.unread %} has-new{% endif %}" {% if selected_kind == category.key %}aria-current="page"{% endif %} href="{{ category.url }}">{{ category.label }} <b data-tab-count>{{ category.count }}</b><span class="tab-new" {% if not category.unread %}hidden{% endif %}>새 문서</span></a>{% endfor %}
+  {% for category in accounting_categories %}<a data-accounting-kind="{{ category.key }}" class="{% if selected_kind == category.key %}selected{% endif %}{% if category.unread %} has-new{% endif %}" aria-label="{{ category.label }} {{ category.count }}건{% if category.unread %}, 확인하지 않은 문서 있음{% endif %}" {% if selected_kind == category.key %}aria-current="page"{% endif %} href="{{ category.url }}">{{ category.label }} <b data-tab-count>{{ category.count }}</b></a>{% endfor %}
   </nav>
   <p class="accounting-category-note">{% if selected_kind == 'all' %}최종 승인된 휴가원·구매요청서와 검토가 완료된 생산 재고 요청을 함께 표시합니다.{% elif selected_kind == 'leave' %}최종 승인된 휴가원만 표시됩니다.{% elif selected_kind == 'office' %}최종 승인된 사무·사내용품 구매요청서만 표시됩니다.{% else %}검토가 완료된 생산 재고 요청만 표시됩니다. 발주와 입고 진행상황을 확인하세요.{% endif %} 새 문서가 있는 탭은 주황색으로 표시되며, 탭을 누르면 확인 처리됩니다.</p>
 {% elif mode == 'stock' %}
