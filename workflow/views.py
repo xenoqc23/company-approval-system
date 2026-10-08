@@ -190,9 +190,9 @@ def detail(request, pk):
     actions = []
     u = request.user
     if doc.status == 'review' and doc.reviewer_id == u.pk:
-        actions += [('review', '검토 완료' if doc.kind == 'stock' else '검토 승인'), ('reject', '반려')]
+        actions += [('review', '검토확인'), ('reject', '반려')]
     if doc.kind != 'stock' and doc.status == 'approve' and doc.approver_id == u.pk:
-        actions += [('approve', '최종 승인'), ('reject', '반려')]
+        actions += [('approve', '승인확인'), ('reject', '반려')]
     if doc.status == 'approve' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 승인 취소')]
     if doc.kind == 'stock' and doc.status == 'approved' and doc.reviewer_id == u.pk:
@@ -212,8 +212,16 @@ def detail(request, pk):
         amount = 0
     assignment_form = ApprovalAssignmentForm()
     procurement_log = doc.audits.filter(event='발주 처리').select_related('actor').first() if doc.kind == 'stock' else None
+    review_cancelled = doc.status == 'cancelled' and (doc.kind == 'stock' or not doc.approved_at)
+    review_confirmed = bool(doc.reviewed_at) and not review_cancelled
+    approval_cancelled = doc.kind != 'stock' and doc.status == 'cancelled' and bool(doc.approved_at)
+    approval_confirmed = doc.kind != 'stock' and doc.status == 'approved' and bool(doc.approved_at)
     return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
                 'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, procurement_log=procurement_log,
+                review_confirmed=review_confirmed, review_cancelled=review_cancelled,
+                approval_confirmed=approval_confirmed, approval_cancelled=approval_cancelled,
+                my_review_confirmed=review_confirmed and doc.reviewer_id == u.pk,
+                my_approval_confirmed=approval_confirmed and doc.approver_id == u.pk,
                 can_reassign=u.profile.manage_system and doc.status in ['review', 'approve'],
                 can_copy=u.pk == doc.owner_id and doc.status in ['rejected', 'cancelled'])
 
@@ -226,7 +234,11 @@ def action(request, pk):
         if request.POST.get('action') == 'reassign' and request.POST.get('new_person_department') and new and new.profile.department != request.POST['new_person_department']:
             raise ValidationError('선택한 부서에 속한 직원을 지정해 주세요.')
         doc = act_on_document(pk, request.user, request.POST.get('action'), request.POST.get('reason', ''), new)
-        messages.success(request, '처리가 완료되었습니다.')
+        if request.POST.get('action') in ['review', 'approve']:
+            label = '검토확인' if request.POST['action'] == 'review' else '승인확인'
+            messages.success(request, f'{label}이 완료되었습니다.', extra_tags='approval-feedback')
+        else:
+            messages.success(request, '처리가 완료되었습니다.')
         if doc.status == 'deleted' or not visible_documents(request.user).filter(pk=pk).exists():
             return redirect('documents')
     except ValidationError as exc:

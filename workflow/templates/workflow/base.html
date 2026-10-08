@@ -1,5 +1,5 @@
 {% load static ui %}<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261008d"><script src="{% static 'workflow/app.js' %}?v=20261008d" defer></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · 사내결재</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261008e"><script src="{% static 'workflow/app.js' %}?v=20261008e" defer></script></head>
 <body>
 <svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
@@ -45,8 +45,9 @@
 <div class="workspace"><header class="topbar"><div class="breadcrumb">워크스페이스<span>/</span><strong>{{ title }}</strong></div><div class="topbar-right"><a class="notification-link" href="{% url 'notices' %}" aria-label="알림함"><svg><use href="#i-bell"/></svg>{% if unread %}<i></i>{% endif %}</a><div class="topbar-divider"></div><span class="avatar">{{ user.first_name|slice:':1' }}</span><a class="profile-caption" href="{% url 'account' %}" aria-label="내 계정"><strong>{{ user.first_name }}</strong><small>{{ profile.department }} · {{ profile.rank }}</small></a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout" title="로그아웃">로그아웃</button></form></div></header>
 <main class="main">
 {% else %}<main class="auth-main">{% endif %}
-{% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+{% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}" {% if 'approval-feedback' in message.tags %}data-approval-feedback{% endif %}>{{ message }}</div>{% endfor %}</div>{% endif %}
 {% block content %}{% endblock %}
 </main>{% if user.is_authenticated and not auth_layout %}</div>{% endif %}
 <dialog id="confirmation"><div class="dialog-icon"><svg><use href="#i-shield"/></svg></div><h2>처리 내용을 확인해 주세요</h2><p id="confirmation-text"></p><div class="dialog-actions"><button class="btn secondary" id="confirmation-back" type="button">돌아가기</button><button class="btn" id="confirmation-go" type="button">확인하고 처리</button></div></dialog>
+<dialog id="approval-feedback" class="approval-feedback-dialog" role="alertdialog" aria-labelledby="approval-feedback-title" aria-describedby="approval-feedback-description"><div class="feedback-check"><svg><use href="#i-check"/></svg></div><h2 id="approval-feedback-title">확인이 완료되었습니다.</h2><p id="approval-feedback-description">결재 진행상황에 확인 상태와 시간이 기록되었습니다.</p><button id="approval-feedback-close" class="btn full-width" type="button" autofocus>확인</button></dialog>
 </body></html>

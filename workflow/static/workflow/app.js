@@ -1,5 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
   const dialog = document.querySelector('#confirmation');
+  const feedback = document.querySelector('#approval-feedback');
+  const feedbackMessage = document.querySelector('.message[data-approval-feedback]');
+  if (feedback && feedbackMessage) {
+    document.querySelector('#approval-feedback-title').textContent = feedbackMessage.textContent.trim();
+    feedback.showModal();
+  }
+  document.querySelector('#approval-feedback-close')?.addEventListener('click', () => feedback.close());
   let pendingForm;
   document.querySelectorAll('form[data-confirm]').forEach(form => {
     form.addEventListener('submit', event => {
@@ -16,6 +23,20 @@ document.addEventListener('DOMContentLoaded', () => {
     pendingForm.dataset.confirmed = 'yes';
     dialog.close();
     pendingForm.requestSubmit();
+  });
+  document.querySelectorAll('form[data-document-action]').forEach(actionForm => {
+    actionForm.addEventListener('submit', event => {
+      if (event.defaultPrevented) return;
+      if (actionForm.dataset.processing === 'yes') {
+        event.preventDefault();
+        return;
+      }
+      actionForm.dataset.processing = 'yes';
+      actionForm.setAttribute('aria-busy', 'true');
+      const button = actionForm.querySelector('button');
+      button.disabled = true;
+      button.textContent = '처리 중…';
+    });
   });
   const departmentPickers = [...document.querySelectorAll('[data-department-picker]')].map(picker => {
     const person = document.getElementById(picker.dataset.personField);
