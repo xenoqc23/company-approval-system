@@ -8,6 +8,7 @@
 
 처음 프로그램을 실행하는 경우 [START_HERE.txt](START_HERE.txt)의 안내를 따라 주세요.
 Windows에서는 Python 설치 후 `setup.bat`으로 최초 설치하고 `run.bat`으로 실행합니다.
+다른 Windows PC로 프로그램과 데이터를 복사해 시연할 때는 [MOVE_TO_OTHER_PC.txt](MOVE_TO_OTHER_PC.txt)를 따릅니다. 복사한 `.venv`는 제거하고 새 PC에서 다시 설치하며, 기존 계정·기안을 유지하려면 `var`를 함께 복사합니다.
 실행 도우미는 NAS 설정을 사용하지 않고 본인 PC의 테스트 DB로 실행합니다.
 Mac/Linux에서는 `python3 launcher.py setup`, `python3 launcher.py run`을 사용합니다.
 

@@ -5,6 +5,8 @@ NAS/MariaDB는 연결하지 않습니다. PC 폴더 안에 별도 테스트 DB�
 
 이미 실행 중인 이전 버전을 업데이트할 때는 UPDATE_WINDOWS.txt를 먼저 확인합니다.
 기존 프로그램 폴더의 .venv와 var를 보관한 채 최신 파일을 덮어씁니다.
+다른 PC로 폴더를 복사해 시연할 때는 MOVE_TO_OTHER_PC.txt를 따릅니다.
+이때는 복사한 .venv를 제거하고 새 PC에서 재설치하며 var는 유지합니다.
 
 1. Python 설치 (처음 한 번)
 
