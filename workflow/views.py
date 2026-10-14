@@ -94,11 +94,24 @@ def dashboard(request):
     mine = Document.objects.filter(owner=request.user).exclude(status__in=['draft', 'deleted'])
     waiting = visible_documents(request.user).filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user))
     counts = {'mine': mine.count(), 'pending': mine.filter(status__in=['review', 'approve']).count(),
-              'approved': mine.filter(status='approved').count(), 'waiting': waiting.count()}
+              'approved': mine.filter(status='approved').count(), 'waiting': waiting.count(),
+              'rejected': mine.filter(status__in=['rejected', 'cancelled']).count()}
     today = timezone.localdate()
     upcoming = mine.filter(kind='leave', status='approved', end_date__gte=today).order_by('start_date')[:3]
-    return page(request, 'dashboard', '대시보드', documents=mine.select_related('owner', 'reviewer', 'approver')[:6],
-                counts=counts, upcoming=upcoming, notices=visible_notices(request.user)[:3], today=today)
+    from .home import quick_form, progress_stages, today_schedules
+    progress_doc = mine.filter(status__in=['review', 'approve']).select_related('owner__profile', 'reviewer', 'approver').first()
+    if not progress_doc:
+        progress_doc = mine.select_related('owner__profile', 'reviewer', 'approver').first()
+    home_lists = [
+        {'key': 'mine', 'label': '내 문서', 'docs': mine.select_related('owner')[:4]},
+        {'key': 'waiting', 'label': '결재 대기', 'docs': rank_order(waiting.select_related('owner__profile'), 'owner__')[:4]},
+        {'key': 'completed', 'label': '완료 문서', 'docs': mine.filter(status='approved').select_related('owner')[:4]},
+    ]
+    return page(request, 'dashboard', '홈', documents=mine.select_related('owner', 'reviewer', 'approver')[:6],
+                counts=counts, upcoming=upcoming, notices=visible_notices(request.user)[:3], today=today,
+                home_leave=quick_form(request.user, 'leave', today), home_office=quick_form(request.user, 'office', today),
+                home_lists=home_lists, progress_doc=progress_doc, progress_steps=progress_stages(progress_doc),
+                day_schedules=today_schedules(request.user, today))
 
 @login_required
 def documents(request):
@@ -107,7 +120,7 @@ def documents(request):
     qs = visible_documents(request.user).select_related('owner', 'owner__profile', 'reviewer', 'approver')
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
               'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
-              'stock': '생산 재고 요청함', 'all': '전체 문서'}
+              'stock': '생산 재고 요청함', 'all': '전체 문서', 'search': '문서 검색'}
     if mode == 'mine':
         qs = qs.filter(owner=request.user).exclude(status='draft')
     elif mode == 'drafts':
@@ -152,11 +165,22 @@ def documents(request):
     elif mode == 'all':
         if not request.user.profile.manage_system:
             raise PermissionDenied
+    elif mode == 'search':
+        if not request.GET.get('q', '').strip():
+            qs = qs.none()
     else:
         raise PermissionDenied
-    if request.GET.get('q'):
-        q = request.GET['q']
-        qs = qs.filter(Q(title__icontains=q) | Q(number__icontains=q) | Q(owner__first_name__icontains=q) | Q(product__icontains=q))
+    if request.GET.get('q', '').strip():
+        q = request.GET['q'].strip()
+        matching = Q(title__icontains=q) | Q(number__icontains=q) | Q(owner__first_name__icontains=q) | Q(product__icontains=q)
+        leave_types = [key for key, label in Document.LEAVES if q.casefold() in label.casefold()]
+        kind_labels = [*Document.KINDS, ('office', '구매요청서')]
+        kinds = [key for key, label in kind_labels if q.casefold() in label.casefold()]
+        if leave_types:
+            matching |= Q(kind='leave', leave_type__in=leave_types)
+        if kinds:
+            matching |= Q(kind__in=kinds)
+        qs = qs.filter(matching)
     for key in ['kind', 'status', 'shipment']:
         if key == 'kind' and mode == 'accounting':
             continue
@@ -211,7 +235,18 @@ def compose(request, pk=None):
     instance = get_object_or_404(Document, pk=pk, owner=request.user, status='draft') if pk else Document(owner=request.user)
     initial = {'kind': request.GET.get('kind', 'leave'), 'recipient': request.user.pk, 'quantity': 1, 'urgency': 'normal',
                'start_date': timezone.localdate(), 'end_date': timezone.localdate()}
-    form = DocumentForm(request.POST or None, instance=instance, initial=initial if not pk else {},
+    data = request.POST or None
+    if request.method == 'POST' and not pk and request.POST.get('home_kind') in ['leave', 'office']:
+        # The compact forms use separate namespaces; the existing form/service
+        # handles validation, draft saving and submission for both entry points.
+        kind = request.POST['home_kind']
+        prefix = f'home_{kind}-'
+        data = request.POST.copy()
+        for key in request.POST:
+            if key.startswith(prefix):
+                data.setlist(key[len(prefix):], request.POST.getlist(key))
+        data['kind'] = kind
+    form = DocumentForm(data, instance=instance, initial=initial if not pk else {},
                         submit=request.POST.get('intent') == 'submit')
     if request.method == 'POST' and form.is_valid():
         doc = form.save(commit=False)

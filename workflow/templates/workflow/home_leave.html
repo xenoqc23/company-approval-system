@@ -1,0 +1,11 @@
+{% load ui %}
+<section class="panel home-form leave-home"><div class="home-card-heading"><h2><span class="home-icon leave"><svg><use href="#i-calendar"/></svg></span>휴가원 작성</h2><a href="{% url 'compose' %}?kind=leave">상세 작성 ↗</a></div>
+<form method="post" action="{% url 'compose' %}" data-quick-compose="leave" data-prefix="home_leave" data-remaining="{{ remaining }}">{% csrf_token %}<input type="hidden" name="home_kind" value="leave">
+<div class="quick-leave-summary"><div><svg><use href="#i-calendar"/></svg><span>잔여 연차<strong>{{ remaining|amount }}일</strong></span></div><div><svg><use href="#i-clock"/></svg><span>신청 차감량<strong data-quick-deduction>—</strong></span></div><div><svg><use href="#i-leaf"/></svg><span>예상 잔여<strong data-quick-remaining>—</strong></span></div></div>
+<div class="quick-field quick-type-field"><span class="quick-field-label">휴가 종류</span><div class="quick-leave-types">{% for value,label in home_leave.fields.leave_type.choices %}<label><input type="radio" name="{{ home_leave.leave_type.html_name }}" value="{{ value }}" {% if value == 'annual' %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div></div>
+<div class="quick-field"><label for="{{ home_leave.start_date.id_for_label }}">사용 기간</label><div class="quick-dates">{{ home_leave.start_date }}<span data-quick-date-separator>~</span><span data-quick-end-date>{{ home_leave.end_date }}</span></div></div>
+<div class="quick-field" data-quick-times hidden><label for="{{ home_leave.start_time.id_for_label }}">사용 시간</label><div class="quick-dates">{{ home_leave.start_time }}<span>~</span>{{ home_leave.end_time }}</div></div>
+<div class="quick-field"><label for="{{ home_leave.reason.id_for_label }}">신청 사유</label>{{ home_leave.reason }}</div>
+{% include 'workflow/home_approvers.html' with form=home_leave %}
+<p class="quick-rule">최종 승인 시 차감 · 주말 제외 · 공휴일은 피해서 신청</p><p data-quick-negative class="negative" hidden>잔여가 부족해도 신청할 수 있습니다.</p>
+<div class="quick-form-actions"><button class="btn secondary" name="intent" value="draft" formnovalidate><svg><use href="#i-file"/></svg>임시저장</button><button class="btn" name="intent" value="submit"><svg><use href="#i-arrow"/></svg>휴가원 제출</button></div></form></section>

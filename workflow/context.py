@@ -1,5 +1,6 @@
 from django.utils import timezone
-from .models import AnnualBalance
+from .models import AnnualBalance, Document
+from django.db.models import Q
 from .notifications import visible_notices
 
 def shell(request):
@@ -10,4 +11,5 @@ def shell(request):
     return {'profile': request.user.profile, 'balance': balance,
             'remaining': balance.remaining if balance else 0,
             'used_percent': max(0, min(100, float(balance.used / balance.total * 100))) if balance and balance.total > 0 else 0,
+            'nav_waiting': Document.objects.filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user)).count(),
             'unread': visible_notices(request.user).filter(read=False).count(), 'current_year': year}

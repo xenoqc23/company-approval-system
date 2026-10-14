@@ -124,7 +124,8 @@ class DocumentForm(forms.ModelForm):
         self.fields['recipient'].queryset = people
         for key in ['reviewer', 'approver']:
             self.fields[key].queryset = approval_people()
-            selected_id = self.data.get(key) if self.is_bound else getattr(self.instance, f'{key}_id', None)
+            self.fields[f'{key}_department'].widget.attrs['data-person-field'] = self[key].auto_id
+            selected_id = self.data.get(self.add_prefix(key)) if self.is_bound else getattr(self.instance, f'{key}_id', None)
             selected = self.fields[key].queryset.filter(pk=selected_id).first() if str(selected_id or '').isdigit() else None
             if selected:
                 self.initial[f'{key}_department'] = selected.profile.department

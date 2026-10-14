@@ -1,5 +1,5 @@
 {% load static ui %}<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · Xenosys 사내결재시스템</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261014"><link rel="stylesheet" href="{% static 'workflow/xenosys.css' %}?v=20261014"><script src="{% static 'workflow/app.js' %}?v=20261014" defer></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · Xenosys 사내결재시스템</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261014portal"><link rel="stylesheet" href="{% static 'workflow/xenosys.css' %}?v=20261014portal"><link rel="stylesheet" href="{% static 'workflow/workspace.css' %}?v=20261014portal"><script src="{% static 'workflow/app.js' %}?v=20261014portal" defer></script><script src="{% static 'workflow/home.js' %}?v=20261014portal" defer></script></head>
 <body>
 <svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
@@ -18,31 +18,8 @@
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6zM8 12l3 3 5-6"/></symbol>
 </defs></svg>
 {% if user.is_authenticated and not auth_layout %}
-<aside class="sidebar">
-<a class="brand" href="{% url 'dashboard' %}"><img class="company-logo" src="{% static 'workflow/images/xenosys-logo.png' %}" alt="Xenosys"><span class="brand-title">사내결재시스템<small>XENOSYS WORKSPACE</small></span></a>
-<a class="btn sidebar-compose" href="{% url 'compose' %}"><svg><use href="#i-plus"/></svg>새 기안 작성</a>
-<div class="nav-label">나의 업무</div>
-<nav>
-<a class="nav-item {% if section == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><svg><use href="#i-grid"/></svg>대시보드</a>
-<a class="nav-item {% if section == 'mine' %}active{% endif %}" href="{% url 'documents' %}"><svg><use href="#i-file"/></svg>내 기안</a>
-<a class="nav-item {% if section == 'stock' %}active{% endif %}" href="{% url 'documents' %}?mode=stock"><svg><use href="#i-box"/></svg>생산 재고 요청함</a>
-<a class="nav-item {% if section == 'pending' %}active{% endif %}" href="{% url 'documents' %}?mode=pending"><svg><use href="#i-check"/></svg>결재함</a>
-<a class="nav-item {% if section == 'history' %}active{% endif %}" href="{% url 'documents' %}?mode=history"><svg><use href="#i-clock"/></svg>내 승인 내역</a>
-<a class="nav-item {% if section == 'drafts' %}active{% endif %}" href="{% url 'documents' %}?mode=drafts"><svg><use href="#i-archive"/></svg>임시저장함</a>
-<a class="nav-item {% if section == 'archive' %}active{% endif %}" href="{% url 'documents' %}?mode=archive"><svg><use href="#i-archive"/></svg>반려함</a>
-<a class="nav-item {% if section == 'receive' %}active{% endif %}" href="{% url 'documents' %}?mode=receive"><svg><use href="#i-box"/></svg>물품 수령 확인</a>
-</nav>
-<div class="nav-label">일정 및 복지</div><nav><a class="nav-item {% if section == 'calendar' %}active{% endif %}" href="{% url 'calendar' %}"><svg><use href="#i-calendar"/></svg>직원 일정</a><a class="nav-item {% if section == 'welfare' or section == 'policy' %}active{% endif %}" href="{% url 'welfare' %}"><svg><use href="#i-leaf"/></svg>직원복지</a>
-<a class="nav-item {% if section == 'account' %}active{% endif %}" href="{% url 'account' %}"><svg><use href="#i-users"/></svg>내 계정</a>
-
-<a class="nav-item {% if section == 'notices' %}active{% endif %}" href="{% url 'notices' %}"><svg><use href="#i-bell"/></svg>알림함{% if unread %}<span class="nav-count">{{ unread }}</span>{% endif %}</a>
-{% if profile.manage_leave %}<a class="nav-item {% if section == 'company_holidays' %}active{% endif %}" href="{% url 'company_holidays' %}"><svg><use href="#i-calendar"/></svg>회사 휴무 관리</a><a class="nav-item {% if section == 'balances' %}active{% endif %}" href="{% url 'balances' %}"><svg><use href="#i-users"/></svg>직원별 연차 관리</a>{% endif %}
-{% if profile.view_accounting %}<a class="nav-item {% if section == 'accounting' %}active{% endif %}" href="{% url 'documents' %}?mode=accounting"><svg><use href="#i-file"/></svg>최종 승인 문서함</a>{% endif %}
-{% if profile.manage_system %}<a class="nav-item {% if section == 'staff' %}active{% endif %}" href="{% url 'staff' %}"><svg><use href="#i-shield"/></svg>직원·권한 관리</a><a class="nav-item {% if section == 'all' %}active{% endif %}" href="{% url 'documents' %}?mode=all"><svg><use href="#i-file"/></svg>전체 문서</a><a class="nav-item {% if section == 'backups' %}active{% endif %}" href="{% url 'backups' %}"><svg><use href="#i-archive"/></svg>백업·복구</a>{% endif %}
-</nav>
-<div class="sidebar-footer"><span class="online-dot"></span>사내 업무 공간<small>PC 시안 · 예시 데이터</small></div>
-</aside>
-<div class="workspace"><header class="topbar"><div class="breadcrumb">사내결재시스템<span>/</span><strong>{{ title }}</strong></div><div class="topbar-right"><a class="notification-link" href="{% url 'notices' %}" aria-label="알림함"><svg><use href="#i-bell"/></svg>{% if unread %}<i></i>{% endif %}</a><div class="topbar-divider"></div><span class="avatar">{{ user.first_name|slice:':1' }}</span><a class="profile-caption" href="{% url 'account' %}" aria-label="내 계정"><strong>{{ user.first_name }}</strong><small>{{ profile.department }} · {{ profile.rank }}</small></a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout" title="로그아웃">로그아웃</button></form></div></header>
+{% include 'workflow/sidebar.html' %}
+<div class="workspace"><header class="topbar"><form class="global-search" method="get" action="{% url 'documents' %}"><input type="hidden" name="mode" value="search"><svg><use href="#i-search"/></svg><input name="q" value="{% if mode == 'search' %}{{ request.GET.q }}{% endif %}" maxlength="120" placeholder="문서명, 신청자, 품목을 검색하세요." aria-label="전체 문서 검색" required><button type="submit">검색</button></form><div class="topbar-right"><a class="notification-link" href="{% url 'notices' %}" aria-label="알림함"><svg><use href="#i-bell"/></svg>{% if unread %}<span class="top-unread">{{ unread }}</span>{% endif %}</a><div class="topbar-divider"></div><span class="avatar">{{ user.first_name|slice:':1' }}</span><a class="profile-caption" href="{% url 'account' %}" aria-label="내 계정"><strong>{{ user.first_name }}</strong><small>{{ profile.department }} · {{ profile.rank }}</small></a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="logout" title="로그아웃">로그아웃</button></form></div></header>
 <main class="main">
 {% else %}<main class="auth-main">{% endif %}
 {% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}" {% if 'approval-feedback' in message.tags %}data-approval-feedback{% endif %}>{{ message }}</div>{% endfor %}</div>{% endif %}
