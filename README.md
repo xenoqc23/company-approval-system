@@ -6,6 +6,8 @@
 
 ## 실행
 
+Python 설치 없이 다른 Windows 64비트 PC에서 시연하려면 [설치 없는 실행파일 ZIP](https://github.com/xenoqc23/company-approval-system/archive/refs/heads/portable/windows-demo.zip)을 받아 압축을 모두 푼 뒤 `CompanyApproval.exe`를 실행합니다. 실행에 필요한 Python과 라이브러리는 폴더에 포함되어 있습니다. 기존 데이터는 실행 전에 `var`를 EXE 옆으로 복사합니다. [START_WITHOUT_PYTHON.txt](START_WITHOUT_PYTHON.txt)에 자세한 안내가 있습니다.
+
 처음 프로그램을 실행하는 경우 [START_HERE.txt](START_HERE.txt)의 안내를 따라 주세요.
 Windows에서는 Python 설치 후 `setup.bat`으로 최초 설치하고 `run.bat`으로 실행합니다.
 다른 Windows PC로 프로그램과 데이터를 복사해 시연할 때는 [MOVE_TO_OTHER_PC.txt](MOVE_TO_OTHER_PC.txt)를 따릅니다. 복사한 `.venv`는 제거하고 새 PC에서 다시 설치하며, 기존 계정·기안을 유지하려면 `var`를 함께 복사합니다.

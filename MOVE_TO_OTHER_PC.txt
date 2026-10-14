@@ -1,5 +1,9 @@
 사내결재시스템 — 다른 Windows PC로 복사해서 시연하기
 
+Python 설치 없는 실행파일을 사용하려면 START_WITHOUT_PYTHON.txt를 따릅니다.
+배포 ZIP: https://github.com/xenoqc23/company-approval-system/archive/refs/heads/portable/windows-demo.zip
+아래는 기존 Python 방식의 프로그램 폴더를 옮기는 절차입니다.
+
 기존 PC에서
 
 1. 프로그램을 실행한 검은색 창에서 Ctrl+C를 눌러 종료합니다.
