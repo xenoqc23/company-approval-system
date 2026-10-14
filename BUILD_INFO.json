@@ -1,0 +1,49 @@
+{
+  "platform": "Windows x64",
+  "python": "3.12.10",
+  "data_included": false,
+  "runtime_checksum_verification": {
+    "url": "https://api.nuget.org/v3/catalog0/data/2025.04.08.14.01.15/python.3.12.10.json",
+    "sha512_base64": "u9pNz2iKlCEbYtUJaKkbOPMF0LjR7NkCafdKhvigpPzrt8oWKgdTpHaR6z3wyWQAm9PYGUxv0Zr66NX9AeHMDw==",
+    "package_url": "https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg"
+  },
+  "inputs": [
+    {
+      "name": "python.3.12.10.nupkg",
+      "sha256": "0eb85c2dfccccf1b17352de4c397f69194035b7d37149eacc16f1147d93de3b8"
+    },
+    {
+      "name": "asgiref-3.12.1-py3-none-any.whl",
+      "sha256": "fe386d1c2bff7259ea95929266d12a8cf9a8b5a1c2598402967d8792e7a7c094"
+    },
+    {
+      "name": "django-5.2.18-py3-none-any.whl",
+      "sha256": "92ed81d500be6408ecd704d7bd1366c534f30427bffcc63c5fefb129561aec7c"
+    },
+    {
+      "name": "et_xmlfile-2.0.0-py3-none-any.whl",
+      "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"
+    },
+    {
+      "name": "openpyxl-3.1.5-py2.py3-none-any.whl",
+      "sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"
+    },
+    {
+      "name": "sqlparse-0.6.0-py3-none-any.whl",
+      "sha256": "b861c0288ce2fa56209a9a6412d2e066ac664b3873b89c26c9d8415e8e32996f"
+    },
+    {
+      "name": "tzdata-2025.2-py2.py3-none-any.whl",
+      "sha256": "1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8"
+    }
+  ],
+  "exe_sha256": "74752ae2700ef598df5b27026c8ee22554ef9fb708d7fce1681cc60563e79a56",
+  "source_commit": "d3204535744d22d7c55c44027d17aedd6b574866",
+  "validation": {
+    "windows_python_workflow_tests": 54,
+    "environment": "Windows binaries under Wine 10",
+    "unicode_folder_with_spaces": true,
+    "login_excel_leave_history": true,
+    "existing_accounts_documents_balances_preserved": true
+  }
+}

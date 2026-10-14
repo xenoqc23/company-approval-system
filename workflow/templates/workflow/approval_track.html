@@ -1,0 +1,31 @@
+<section class="panel approval-track" aria-label="결재 진행상황">
+  <div class="track-step {% if doc.submitted_at %}submitted{% endif %}" data-stage="submission">
+    <span class="track-circle"><svg><use href="#i-file"/></svg></span>
+    <div class="track-copy"><div class="track-head"><small>01 기안</small><span class="track-state">{% if doc.status == 'draft' %}임시저장{% else %}제출{% endif %}</span></div>
+      <strong>{{ doc.owner.first_name }} <span>{{ doc.owner.profile.rank }}</span></strong><p>{{ doc.submitted_at|date:'m.d H:i'|default:'작성 중' }}</p>
+    </div>
+  </div>
+  <div class="track-step {% if review_cancelled %}reversed{% elif review_confirmed %}confirmed{% elif doc.status == 'rejected' %}reversed{% elif doc.status == 'review' %}current{% endif %}" data-stage="review">
+    <span class="track-circle"><svg><use href="#i-check"/></svg></span>
+    <div class="track-copy"><div class="track-head"><small>02 검토</small><span class="track-state">{% if review_cancelled %}검토취소{% elif review_confirmed %}검토확인{% elif doc.status == 'rejected' %}반려{% else %}검토대기{% endif %}</span></div>
+      <strong>{{ doc.reviewer.first_name|default:'미지정' }} <span>{{ doc.reviewer.profile.rank }}</span></strong><p>{{ doc.reviewed_at|date:'m.d H:i'|default:'—' }}</p>
+      {% if my_review_confirmed %}<span class="self-confirmed"><svg><use href="#i-check"/></svg>내가 확인함</span>{% endif %}
+    </div>
+  </div>
+  {% if doc.kind == 'stock' %}
+  <div class="track-step {% if doc.status == 'cancelled' or doc.status == 'rejected' %}reversed{% elif doc.shipment %}confirmed{% elif doc.status == 'approved' %}current{% endif %}" data-stage="procurement">
+    <span class="track-circle"><svg><use href="#i-box"/></svg></span>
+    <div class="track-copy"><div class="track-head"><small>03 발주 처리</small><span class="track-state">{% if doc.status == 'cancelled' or doc.status == 'rejected' %}처리 중단{% elif doc.shipment %}발주완료{% elif doc.status == 'approved' %}발주대기{% else %}검토대기{% endif %}</span></div>
+      <strong>{{ procurement_log.actor.first_name|default:'발주 담당자' }}</strong><p>{{ procurement_log.created_at|date:'m.d H:i'|default:'검토 후 처리' }}</p>
+    </div>
+  </div>
+  {% else %}
+  <div class="track-step {% if approval_cancelled %}reversed{% elif approval_confirmed %}confirmed{% elif doc.status == 'rejected' or doc.status == 'cancelled' %}reversed{% elif doc.status == 'approve' %}current{% endif %}" data-stage="approval">
+    <span class="track-circle"><svg><use href="#i-shield"/></svg></span>
+    <div class="track-copy"><div class="track-head"><small>03 최종 승인</small><span class="track-state">{% if approval_cancelled %}승인취소{% elif approval_confirmed %}승인확인{% elif doc.status == 'rejected' and doc.reviewed_at %}반려{% elif doc.status == 'rejected' or doc.status == 'cancelled' %}진행 중단{% else %}승인대기{% endif %}</span></div>
+      <strong>{{ doc.approver.first_name|default:'미지정' }} <span>{{ doc.approver.profile.rank }}</span></strong><p>{{ doc.approved_at|date:'m.d H:i'|default:'—' }}</p>
+      {% if my_approval_confirmed %}<span class="self-confirmed"><svg><use href="#i-check"/></svg>내가 확인함</span>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</section>

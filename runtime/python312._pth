@@ -1,0 +1,6 @@
+.
+Lib
+DLLs
+..
+../vendor
+import site
