@@ -1,4 +1,4 @@
-from datetime import timedelta, time
+from datetime import date, timedelta, time
 from decimal import Decimal
 from getpass import getpass
 from django.contrib.auth import get_user_model
@@ -7,7 +7,8 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
-from workflow.models import AnnualBalance, Document, Policy, Profile
+from workflow.models import AnnualBalance, Document, Policy, Profile, Absence
+from workflow.annual_grants import entitlement
 from workflow.services import act_on_document, save_document
 
 
@@ -70,16 +71,21 @@ class Command(BaseCommand):
             ('sales', '윤지호', '영업팀', '과장', {}),
         ]
         year = timezone.localdate().year
+        demo_tenure = {'employee': 3, 'reviewer': 5, 'approver': 20, 'accounting': 10,
+                       'quality': 1, 'production': 2, 'sales': 7}
         for username, name, department, rank, flags in specs:
             user = User.objects.create_user(username=username, first_name=name, password=password)
-            Profile.objects.create(user=user, department=department, rank=rank, approved=True, **flags)
-            AnnualBalance.objects.create(user=user, year=year, total=15 if rank in ['주임', '대리'] else 20,
-                                         used=2 if username == 'employee' else 1)
+            hire = date(year-demo_tenure[username], 10, 15) if username != 'admin' else None
+            Profile.objects.create(user=user, department=department, rank=rank, approved=True, hire_date=hire, **flags)
+            AnnualBalance.objects.create(user=user, year=year, total=entitlement(hire, year) if hire else 0,
+                                         used=2 if username == 'employee' else 1, grant_initialized=True)
             people[username] = user
         Policy.objects.create(tenure=TENURE, text=POLICY, updated_by=people['accounting'])
         owner, reviewer, approver = [people[x] for x in ['employee', 'reviewer', 'approver']]
         today = timezone.localdate()
         monday = today + timedelta(days=(7 - today.weekday()) % 7 or 7)
+        Absence.objects.create(employee=people['sales'], reason='외근 (예시)', start_date=monday, end_date=monday,
+                               all_day=False, start_time=time(9), end_time=time(12))
 
         def make(stage='review', **fields):
             doc_owner = fields.pop('owner', owner)

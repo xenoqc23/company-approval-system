@@ -25,8 +25,20 @@
       "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"
     },
     {
+      "name": "holidays-0.106-py3-none-any.whl",
+      "sha256": "4be3fb5be6a88a232e92f96825e4fab9b80710caabde90b7c476e57ba0ed9f5d"
+    },
+    {
       "name": "openpyxl-3.1.5-py2.py3-none-any.whl",
       "sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"
+    },
+    {
+      "name": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+      "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427"
+    },
+    {
+      "name": "six-1.17.0-py2.py3-none-any.whl",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"
     },
     {
       "name": "sqlparse-0.6.0-py3-none-any.whl",
@@ -38,12 +50,6 @@
     }
   ],
   "exe_sha256": "74752ae2700ef598df5b27026c8ee22554ef9fb708d7fce1681cc60563e79a56",
-  "source_commit": "d3204535744d22d7c55c44027d17aedd6b574866",
-  "validation": {
-    "windows_python_workflow_tests": 54,
-    "environment": "Windows binaries under Wine 10",
-    "unicode_folder_with_spaces": true,
-    "login_excel_leave_history": true,
-    "existing_accounts_documents_balances_preserved": true
-  }
+  "application_version": "2026-10-14",
+  "source_commit": "4733a79eceaf58ec76fe1884a1ee8cc84062a74d"
 }

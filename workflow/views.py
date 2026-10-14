@@ -15,8 +15,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_POST
-from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm
-from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile
+from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm
+from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile, Absence, CompanyHoliday, CompanyLeaveCharge
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 from .people import approval_people, rank_order
 from .exports import purchase_workbook, leave_balances_workbook
@@ -315,11 +315,20 @@ def balances(request):
             posted_year = int(request.POST.get('year', year))
             if not 2000 <= posted_year <= 2100:
                 raise ValueError
-            value = Decimal(request.POST.get('value', ''))
-            if not value.is_finite() or abs(value) > 99999:
-                raise ValueError
-            edit_balance(request.user, target, posted_year, request.POST.get('field'), value, request.POST.get('reason', ''))
-            messages.success(request, '연차를 수정하고 변경 이력을 기록했습니다.')
+            if request.POST.get('operation') == 'hire':
+                from .annual_grants import set_hire_date
+                form = HireDateForm(request.POST)
+                if not form.is_valid():
+                    raise ValidationError('입사일을 확인해 주세요.')
+                set_hire_date(request.user, target, form.cleaned_data['hire_date'], posted_year,
+                              apply=request.POST.get('apply') == 'yes')
+                messages.success(request, '입사일을 저장했습니다.' + (' 총연차를 산정해 적용했습니다.' if request.POST.get('apply') == 'yes' else ''))
+            else:
+                value = Decimal(request.POST.get('value', ''))
+                if not value.is_finite() or abs(value) > 99999:
+                    raise ValueError
+                edit_balance(request.user, target, posted_year, request.POST.get('field'), value, request.POST.get('reason', ''))
+                messages.success(request, '연차를 수정하고 변경 이력을 기록했습니다.')
         except (ValidationError, InvalidOperation, ValueError) as exc:
             messages.error(request, ' '.join(exc.messages) if isinstance(exc, ValidationError) else '연도와 연차 값을 확인해 주세요.')
         return redirect(reverse('balances') + '?' + urlencode({'year': year, 'department': department}))
@@ -365,7 +374,98 @@ def leave_history(request, pk):
         selected_year=year, years=range(timezone.localdate().year - 2, timezone.localdate().year + 2),
         mode=mode, leave_rows=rows, employee_balance=balance, back_url=back_url,
         document_charged=sum((row['charged'] for row in rows), Decimal('0')),
+        common_charges=CompanyLeaveCharge.objects.filter(employee=employee, year=year, active=True).select_related('holiday').order_by('-holiday__day'),
         logs=Audit.objects.filter(target=employee, event=f'{year}년 연차 수정').select_related('actor')[:30])
+
+
+@login_required
+def calendar_view(request):
+    from .calendars import month_selection, month_grid
+    year, month = month_selection(request.GET)
+    return page(request, 'calendar', '직원 일정', 'calendar', **month_grid(year, month, request.user))
+
+
+@login_required
+def absence_edit(request, pk=None):
+    instance = get_object_or_404(Absence.objects.select_related('employee__profile'), pk=pk) if pk else None
+    form = AbsenceForm(request.POST or None, instance=instance)
+    if request.method == 'POST' and form.is_valid():
+        absence = form.save(commit=False)
+        if not instance:
+            absence.employee = request.user
+        absence.save()
+        messages.success(request, '부재 일정을 저장했습니다.')
+        return redirect(reverse('calendar') + '?' + urlencode({'year': absence.start_date.year, 'month': absence.start_date.month}))
+    return page(request, 'absence', '부재 일정 수정' if pk else '나의 부재 일정 등록', 'calendar', form=form, absence=instance)
+
+
+@login_required
+@require_POST
+def absence_delete(request, pk):
+    absence = get_object_or_404(Absence, pk=pk)
+    year, month = absence.start_date.year, absence.start_date.month
+    absence.delete()
+    messages.success(request, '부재 일정을 삭제했습니다.')
+    return redirect(reverse('calendar') + '?' + urlencode({'year': year, 'month': month}))
+
+
+@login_required
+def calendar_leave(request, pk):
+    doc = get_object_or_404(Document.objects.select_related('owner__profile'), pk=pk, kind='leave', status='approved')
+    accessible = visible_documents(request.user).filter(pk=pk).exists()
+    return page(request, 'calendar_leave', '휴가 일정', 'calendar', doc=doc, accessible=accessible)
+
+
+@login_required
+def company_holidays(request):
+    if not request.user.profile.manage_leave:
+        raise PermissionDenied
+    year, _ = balance_filters(request.GET)
+    instance = None
+    if request.GET.get('edit'):
+        instance = get_object_or_404(CompanyHoliday, pk=request.GET['edit'], active=True)
+    if request.method == 'POST' and request.POST.get('id'):
+        instance = get_object_or_404(CompanyHoliday, pk=request.POST['id'], active=True)
+    form = CompanyHolidayForm(request.POST or None, instance=instance)
+    if request.method == 'POST' and form.is_valid():
+        from .company_holidays import save_company_holiday
+        try:
+            item = save_company_holiday(request.user, form.cleaned_data, instance.pk if instance else None)
+            messages.success(request, '회사 휴무를 저장했습니다.' + (' 직원별 공용연차 1일을 반영했습니다.' if item.use_annual else ' 연차 차감은 없습니다.'))
+            return redirect(reverse('company_holidays') + f'?year={item.day.year}')
+        except ValidationError as exc:
+            form.add_error(None, exc)
+    return page(request, 'company_holidays', '회사 휴무 관리', 'company_holidays', form=form, holiday=instance,
+        selected_year=year, items=CompanyHoliday.objects.filter(active=True, day__year=year).order_by('day'),
+        years=range(timezone.localdate().year-2, timezone.localdate().year+3))
+
+
+@login_required
+@require_POST
+def company_holiday_delete(request, pk):
+    if not request.user.profile.manage_leave:
+        raise PermissionDenied
+    item = get_object_or_404(CompanyHoliday, pk=pk, active=True)
+    from .company_holidays import delete_company_holiday
+    delete_company_holiday(request.user, pk)
+    messages.success(request, '회사 휴무를 삭제했습니다. 차감된 공용연차는 원래 연도로 복원했습니다.')
+    return redirect(reverse('company_holidays') + f'?year={item.day.year}')
+
+
+@login_required
+def welfare(request):
+    from .welfare import AWARDS, BENEFITS, award_candidates
+    year, _ = balance_filters(request.GET)
+    tab = request.GET.get('tab', 'awards')
+    if tab not in ['awards', 'benefits', 'leave']:
+        tab = 'awards'
+    record = Policy.objects.first()
+    tenure_rows = [(str(low), days) for low, days in [('1년 미만', 11), ('1~3년 미만', 15), ('3~5년 미만', 16),
+        ('5~7년 미만', 17), ('7~9년 미만', 18), ('9~11년 미만', 19), ('11~13년 미만', 20),
+        ('13~15년 미만', 21), ('15~17년 미만', 22), ('17~19년 미만', 23), ('19~21년 미만', 24), ('21년 이상', 25)]]
+    return page(request, 'welfare', '직원복지', 'welfare', selected_year=year, tab=tab, awards=AWARDS,
+        benefits=BENEFITS, candidates=award_candidates(year, timezone.localdate()), policy=record, tenure_rows=tenure_rows,
+        years=range(timezone.localdate().year-2, timezone.localdate().year+3))
 
 @login_required
 def policy(request):

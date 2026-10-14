@@ -17,4 +17,12 @@ urlpatterns = [
     path('policy/', views.policy, name='policy'), path('notices/', views.notices, name='notices'),
     path('notices/<int:pk>/open/', views.open_notice, name='open_notice'), path('staff/', views.staff, name='staff'),
     path('backups/', views.backups, name='backups'),
+    path('calendar/', views.calendar_view, name='calendar'),
+    path('calendar/absence/new/', views.absence_edit, name='absence_new'),
+    path('calendar/absence/<int:pk>/', views.absence_edit, name='absence_edit'),
+    path('calendar/absence/<int:pk>/delete/', views.absence_delete, name='absence_delete'),
+    path('calendar/leave/<int:pk>/', views.calendar_leave, name='calendar_leave'),
+    path('company-holidays/', views.company_holidays, name='company_holidays'),
+    path('company-holidays/<int:pk>/delete/', views.company_holiday_delete, name='company_holiday_delete'),
+    path('welfare/', views.welfare, name='welfare'),
 ]

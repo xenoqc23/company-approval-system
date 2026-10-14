@@ -17,12 +17,14 @@ class Profile(models.Model):
     view_accounting = models.BooleanField(default=False)
     procure = models.BooleanField(default=False)
     manage_system = models.BooleanField(default=False)
+    hire_date = models.DateField(null=True, blank=True)
 
 class AnnualBalance(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='balances')
     year = models.PositiveIntegerField()
     total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     used = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    grant_initialized = models.BooleanField(default=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user', 'year'], name='unique_user_year')]
@@ -140,3 +142,38 @@ class Policy(models.Model):
     text = models.TextField()
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT)
+
+
+class Absence(models.Model):
+    employee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    reason = models.CharField(max_length=100)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    all_day = models.BooleanField(default=True)
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+
+
+class CompanyHoliday(models.Model):
+    title = models.CharField(max_length=100)
+    day = models.DateField()
+    use_annual = models.BooleanField(default=False)
+    description = models.CharField(max_length=300, blank=True)
+    active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+
+
+class CompanyHolidayLock(models.Model):
+    """Singleton lock to serialize all company-wide leave operations."""
+    pass
+
+
+class CompanyLeaveCharge(models.Model):
+    holiday = models.ForeignKey(CompanyHoliday, on_delete=models.PROTECT, related_name='charges')
+    employee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    year = models.PositiveIntegerField()
+    amount = models.DecimalField(max_digits=8, decimal_places=2, default=1)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['holiday', 'employee'], name='unique_company_leave_charge')]

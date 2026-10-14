@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
 from django.utils import timezone
-from .models import AnnualBalance, DEPARTMENTS, Document
+from .models import AnnualBalance, DEPARTMENTS, Document, CompanyLeaveCharge
+from .annual_grants import completed_years, entitlement, employees
+from django.db.models import Sum
 from .people import rank_order
 from django.contrib.auth import get_user_model
 
@@ -18,13 +20,19 @@ def balance_filters(params):
 
 
 def balance_rows(year, department='', user=None):
-    users = get_user_model().objects.filter(profile__approved=True) if user is None else get_user_model().objects.filter(pk=user.pk)
+    users = employees() if user is None else get_user_model().objects.filter(pk=user.pk)
     if department:
         users = users.filter(profile__department=department)
     users = list(rank_order(users.select_related('profile')))
     balances = {item.user_id: item for item in AnnualBalance.objects.filter(user__in=users, year=year)}
+    common = {item['employee_id']: item['amount'] for item in CompanyLeaveCharge.objects.filter(
+        employee__in=users, year=year, active=True).values('employee_id').annotate(amount=Sum('amount'))}
     return [{'user': employee, 'total': balances[employee.pk].total if employee.pk in balances else Decimal('0'),
              'used': balances[employee.pk].used if employee.pk in balances else Decimal('0'),
+             'tenure': completed_years(employee.profile.hire_date, date(year, 1, 1)) if employee.profile.hire_date else None,
+             'calculated': entitlement(employee.profile.hire_date, year) if employee.profile.hire_date else None,
+             'common': common.get(employee.pk, Decimal('0')),
+             'available': (balances[employee.pk].total if employee.pk in balances else Decimal('0')) - common.get(employee.pk, Decimal('0')),
              'remaining': balances[employee.pk].remaining if employee.pk in balances else Decimal('0')}
             for employee in users]
 
