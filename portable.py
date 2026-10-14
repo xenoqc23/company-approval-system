@@ -21,6 +21,7 @@ def prepare():
         launcher.backup_before_update()
         call_command('migrate', interactive=False, verbosity=0)
     call_command('seed_demo', verbosity=0)
+    call_command('sync_annual_grants', stdout=StringIO())
     call_command('check', stdout=StringIO())
     connection.close()
 

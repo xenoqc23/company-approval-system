@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
-from .models import DEPARTMENTS, RANKS, Document
+from .models import DEPARTMENTS, RANKS, Document, Absence, CompanyHoliday
 from .people import approval_people, rank_order
 
 User = get_user_model()
@@ -12,6 +12,47 @@ class ProfilePasswordForm(PasswordChangeForm):
         self.fields['old_password'].label = '현재 비밀번호'
         for field in self.fields.values():
             field.help_text = ''
+
+
+class AbsenceForm(forms.ModelForm):
+    class Meta:
+        model = Absence
+        fields = ['reason', 'start_date', 'end_date', 'all_day', 'start_time', 'end_time']
+        labels = {'reason': '부재 사유', 'start_date': '시작일', 'end_date': '종료일',
+                  'all_day': '종일', 'start_time': '시작 시간', 'end_time': '종료 시간'}
+        widgets = {**{k: forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d') for k in ['start_date', 'end_date']},
+                   **{k: forms.TimeInput(attrs={'type': 'time'}) for k in ['start_time', 'end_time']}}
+
+    def clean(self):
+        data = super().clean()
+        start, end = data.get('start_date'), data.get('end_date')
+        if start and end and (end < start or not 2000 <= start.year <= end.year <= 2100):
+            raise forms.ValidationError('시작·종료 날짜를 확인해 주세요.')
+        if data.get('all_day'):
+            data['start_time'] = data['end_time'] = None
+        elif not data.get('start_time') or not data.get('end_time'):
+            raise forms.ValidationError('시간을 입력하거나 종일을 선택해 주세요.')
+        elif start == end and data['end_time'] <= data['start_time']:
+            raise forms.ValidationError('종료 시간은 시작 시간 이후여야 합니다.')
+        return data
+
+
+class CompanyHolidayForm(forms.ModelForm):
+    class Meta:
+        model = CompanyHoliday
+        fields = ['title', 'day', 'use_annual', 'description']
+        labels = {'title': '휴무명', 'day': '휴무 날짜', 'use_annual': '공용연차 사용 (직원별 1일 차감)', 'description': '설명'}
+        widgets = {'day': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')}
+
+    def clean_day(self):
+        day = self.cleaned_data['day']
+        if not 2000 <= day.year <= 2100:
+            raise forms.ValidationError('휴무 연도는 2000~2100년으로 입력해 주세요.')
+        return day
+
+
+class HireDateForm(forms.Form):
+    hire_date = forms.DateField(label='입사일', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
 
 class SignupForm(UserCreationForm):
     first_name = forms.CharField(label='이름', max_length=80)

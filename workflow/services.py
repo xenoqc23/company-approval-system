@@ -151,9 +151,10 @@ def save_document(document, actor, submit=False):
     return document
 
 def adjust_charges(document, sign):
+    from .annual_grants import ensure_balance
     for year, amount in document.allocations.items():
-        balance, _ = AnnualBalance.objects.get_or_create(user=document.owner, year=int(year))
-        balance = AnnualBalance.objects.select_for_update().get(pk=balance.pk)
+        Profile.objects.select_for_update().get(user=document.owner)
+        balance = ensure_balance(document.owner, int(year))
         balance.used += Decimal(amount) * sign
         balance.save(update_fields=['used'])
 
@@ -253,13 +254,15 @@ def edit_balance(actor, user, year, field, value, reason):
         raise PermissionDenied
     if not reason.strip() or field not in ['total', 'used', 'remaining']:
         raise ValidationError('수정 항목과 사유를 확인해 주세요.')
-    balance, _ = AnnualBalance.objects.get_or_create(user=user, year=year)
-    balance = AnnualBalance.objects.select_for_update().get(pk=balance.pk)
+    from .annual_grants import ensure_balance
+    Profile.objects.select_for_update().get(user=user)
+    balance = ensure_balance(user, year)
     before = f'총 {balance.total} / 사용 {balance.used} / 잔여 {balance.remaining}'
     if field == 'remaining':
         balance.used = balance.total - value
     else:
         setattr(balance, field, value)
+    balance.grant_initialized = True
     balance.save()
     after = f'총 {balance.total} / 사용 {balance.used} / 잔여 {balance.remaining}'
     audit(actor, f'{year}년 연차 수정', detail=f'{before} → {after}\n사유: {reason}', target=user)

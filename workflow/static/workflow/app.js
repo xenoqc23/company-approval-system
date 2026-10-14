@@ -191,3 +191,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   update();
 });
+// 부재 일정의 종일 선택에 맞춰 시간 입력을 표시합니다.
+document.addEventListener('DOMContentLoaded', () => {
+  const checkbox = document.querySelector('#id_all_day');
+  if (!checkbox) return;
+  const update = () => ['#id_start_time', '#id_end_time'].forEach(selector => {
+    const input = document.querySelector(selector);
+    if (input) input.closest('.field').hidden = checkbox.checked;
+  });
+  checkbox.addEventListener('change', update);
+  update();
+});

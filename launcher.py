@@ -67,6 +67,7 @@ def setup():
     print('\n[4/4] 예시 직원과 문서를 준비합니다.', flush=True)
     print('처음 설치할 때 초기 비밀번호를 입력합니다. 입력한 글자는 화면에 표시되지 않습니다.', flush=True)
     command('manage.py', 'seed_demo')
+    command('manage.py', 'sync_annual_grants')
     command('manage.py', 'check')
     print('\n설치가 완료되었습니다! 이 창을 닫고 run.bat을 더블클릭해 주세요.', flush=True)
     print('Mac/Linux에서는 python3 launcher.py run 명령으로 실행합니다.', flush=True)

@@ -50,4 +50,21 @@ def leave_balances_workbook(rows, year):
         sheet.column_dimensions[column].width = 18
     sheet.freeze_panes = 'A2'
     sheet.auto_filter.ref = sheet.dimensions
+    overview = workbook.create_sheet('인원별 연차표')
+    overview.append(['성명', '근무연수', '연차일수', '공통사용연차', '사용가능연차', '잔여연차'])
+    for row in rows:
+        overview.append([row['user'].first_name or row['user'].username, row['tenure'],
+                         row['total'], row['common'], row['available'], row['remaining']])
+        overview.cell(overview.max_row, 1).data_type = 's'
+        for cell in list(overview[overview.max_row])[2:]:
+            cell.number_format = '#,##0' if cell.value == int(cell.value) else '#,##0.##'
+            if cell.value < 0:
+                cell.font = Font(color='A13F31')
+    for cell in overview[1]:
+        cell.fill = PatternFill('solid', fgColor='343F57')
+        cell.font = Font(color='FFFFFF', bold=True)
+    for column in 'ABCDEF':
+        overview.column_dimensions[column].width = 20
+    overview.freeze_panes = 'A2'
+    overview.auto_filter.ref = overview.dimensions
     return workbook

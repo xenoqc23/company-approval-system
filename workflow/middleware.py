@@ -12,4 +12,7 @@ class AccountGateMiddleware:
                 return redirect('pending')
             if profile.must_change_password and request.path not in allowed:
                 return redirect('password')
+            if profile.approved and request.path not in allowed:
+                from .annual_grants import sync_annual_grants
+                sync_annual_grants()
         return self.get_response(request)
