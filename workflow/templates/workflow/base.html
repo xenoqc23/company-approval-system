@@ -1,5 +1,5 @@
 {% load static ui %}<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · Xenosys 사내결재시스템</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261015balance"><link rel="stylesheet" href="{% static 'workflow/xenosys.css' %}?v=20261015balance"><link rel="stylesheet" href="{% static 'workflow/workspace.css' %}?v=20261015balance"><script src="{% static 'workflow/app.js' %}?v=20261015balance" defer></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} · Xenosys 사내결재시스템</title><link rel="stylesheet" href="{% static 'workflow/style.css' %}?v=20261015kinds"><link rel="stylesheet" href="{% static 'workflow/xenosys.css' %}?v=20261015kinds"><link rel="stylesheet" href="{% static 'workflow/workspace.css' %}?v=20261015kinds"><script src="{% static 'workflow/app.js' %}?v=20261015kinds" defer></script></head>
 <body{% if user.is_authenticated and not auth_layout %} class="workspace-layout"{% endif %}>
 <svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></symbol>

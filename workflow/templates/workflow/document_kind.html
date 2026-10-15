@@ -1,0 +1,1 @@
+<span class="kind-label {{ doc.kind }}"><svg aria-hidden="true"><use href="{% if doc.kind == 'leave' %}#i-calendar{% elif doc.kind == 'office' %}#i-cart{% else %}#i-box{% endif %}"/></svg><span>{% if full_label %}{{ doc.get_kind_display }}{% elif doc.kind == 'leave' %}휴가원{% elif doc.kind == 'office' %}구매요청서{% else %}생산 재고{% endif %}</span></span>
