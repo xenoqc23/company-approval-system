@@ -92,26 +92,15 @@ def account(request):
 @login_required
 def dashboard(request):
     mine = Document.objects.filter(owner=request.user).exclude(status__in=['draft', 'deleted'])
-    waiting = visible_documents(request.user).filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user))
-    counts = {'mine': mine.count(), 'pending': mine.filter(status__in=['review', 'approve']).count(),
-              'approved': mine.filter(status='approved').count(), 'waiting': waiting.count(),
-              'rejected': mine.filter(status__in=['rejected', 'cancelled']).count()}
-    today = timezone.localdate()
-    upcoming = mine.filter(kind='leave', status='approved', end_date__gte=today).order_by('start_date')[:3]
-    from .home import quick_form, progress_stages, today_schedules
-    progress_doc = mine.filter(status__in=['review', 'approve']).select_related('owner__profile', 'reviewer', 'approver').first()
+    from .home import progress_stages
+    progress_doc = mine.filter(status__in=['review', 'approve']).select_related('owner', 'reviewer', 'approver').first()
     if not progress_doc:
-        progress_doc = mine.select_related('owner__profile', 'reviewer', 'approver').first()
-    home_lists = [
-        {'key': 'mine', 'label': '내 문서', 'docs': mine.select_related('owner')[:4]},
-        {'key': 'waiting', 'label': '결재 대기', 'docs': rank_order(waiting.select_related('owner__profile'), 'owner__')[:4]},
-        {'key': 'completed', 'label': '완료 문서', 'docs': mine.filter(status='approved').select_related('owner')[:4]},
-    ]
-    return page(request, 'dashboard', '홈', documents=mine.select_related('owner', 'reviewer', 'approver')[:6],
-                counts=counts, upcoming=upcoming, notices=visible_notices(request.user)[:3], today=today,
-                home_leave=quick_form(request.user, 'leave', today), home_office=quick_form(request.user, 'office', today),
-                home_lists=home_lists, progress_doc=progress_doc, progress_steps=progress_stages(progress_doc),
-                day_schedules=today_schedules(request.user, today))
+        progress_doc = mine.select_related('owner', 'reviewer', 'approver').first()
+    steps = progress_stages(progress_doc)
+    if progress_doc and progress_doc.kind != 'stock':
+        steps = steps[:3]
+    return page(request, 'dashboard', '홈', documents=mine.select_related('owner')[:4],
+                progress_doc=progress_doc, progress_steps=steps, notices=visible_notices(request.user)[:3])
 
 @login_required
 def documents(request):

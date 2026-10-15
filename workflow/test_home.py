@@ -30,16 +30,17 @@ class HomeWorkspaceTests(TestCase):
             fields.update(product='A4 용지', quantity='2', unit_price='1200.25', url='https://example.com/a4')
         return {'home_kind': kind, 'intent': intent, **{prefix+k: v for k, v in fields.items()}}
 
-    def test_home_forms_have_independent_department_pickers_and_namespace(self):
+    def test_home_links_open_correct_forms_with_independent_department_pickers(self):
         for kind in ['leave', 'office']:
             form = quick_form(self.owner, kind, date(2026, 10, 14))
             self.assertEqual(form.fields['reviewer_department'].widget.attrs['data-person-field'], f'id_home_{kind}-reviewer')
         self.client.force_login(self.owner)
         response = self.client.get(reverse('dashboard'))
-        self.assertContains(response, 'data-quick-compose="leave"')
-        self.assertContains(response, 'data-quick-compose="office"')
-        self.assertContains(response, 'name="home_leave-reason"')
-        self.assertContains(response, 'name="home_office-reason"')
+        for kind in ['leave', 'office']:
+            self.assertContains(response, f'{reverse("compose")}?kind={kind}')
+            form_response = self.client.get(reverse('compose'), {'kind': kind})
+            self.assertEqual(form_response.context['form']['kind'].value(), kind)
+            self.assertNotIn(self.admin.pk, form_response.context['form'].fields['reviewer'].queryset.values_list('pk', flat=True))
         self.assertContains(response, '전체 문서 검색')
         self.assertContains(response, 'workspace.css')
 
