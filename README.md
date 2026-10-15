@@ -1,10 +1,14 @@
-# 사내결재시스템 — PC 작동 시안
+# Xenosys 사내결재시스템
 
-최종 계획서를 바탕으로 만든 **Django 기반 웹 시안**입니다. 화면만 있는 목업이 아니라 기안·결재·연차·물품 수령·권한을 테스트 DB에 저장합니다. 가상 직원과 예시 문서를 사용하며 실제 NAS/MariaDB 데이터에는 접근하지 않습니다.
+**NAS 설치용 구성과 PC 검토 실행을 함께 제공합니다.** NAS는 Docker/Gunicorn/전용 MariaDB로 운영하며 샘플 직원·문서 없이 시작합니다. 프로그램 업데이트 시 DB·설정·백업은 별도 보관됩니다. 아래 PC 실행은 기존 SQLite 검토용입니다.
+
+- NAS 설치: [처음 읽기](NAS_처음읽기.md) · [설치·업데이트·백업·복구 안내](docs/NAS_INSTALL.md)
+- 배포 구성: [Docker 설정](deploy/nas/compose.yml) · [NAS 명령](deploy/nas/nas.sh)
+- 실제 NAS 설치·HTTPS·예약 백업·사용자 PC 인수 점검은 설치 안내에 따라 별도로 진행합니다.
 
 기존 Streamlit `app.py`, `approval_data.csv`는 이전 자료입니다. 새 시안은 `manage.py`로 실행하며 기존 CSV를 사용하지 않습니다.
 
-## 실행
+## PC 검토 실행
 
 **NAS 연동 전 최신 검토본은 `setup.bat`·`run.bat` 방식으로 실행합니다.**
 [최신 Windows 실행용 ZIP](https://github.com/xenoqc23/company-approval-system/archive/refs/heads/prototype/pc-demo-20261008.zip)을 내려받아 모두 압축을 풀어 주세요.

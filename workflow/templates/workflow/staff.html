@@ -1,7 +1,7 @@
 {% extends 'workflow/base.html' %}
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">PEOPLE & ACCESS</div><h1>직원·권한 관리</h1><p>미분류 계정을 확인하고, 부서별로 직원 정보와 권한을 관리하세요.</p></div><span class="date-chip"><svg><use href="#i-users"/></svg>전체 {{ staff_total }}명</span></div>
-<div class="inline-info staff-info"><svg><use href="#i-shield"/></svg><span>부서·직급과 업무 권한은 별도로 관리합니다. 경리는 연차 관리·경리 문서 조회·구매발주 권한을 지정해 주세요.</span></div>
+<div class="inline-info staff-info"><svg><use href="#i-shield"/></svg><span>부서·직급과 업무 권한은 별도로 관리합니다. 담당 업무에 따라 연차 관리·승인 문서 조회·구매 및 발주 권한을 설정해 주세요.</span></div>
 <nav class="staff-tabs" aria-label="직원 부서 선택">
 {% for group in staff_groups %}<a class="{% if selected_group == group.key %}selected{% endif %}" {% if selected_group == group.key %}aria-current="page"{% endif %} href="?department={{ group.key|urlencode }}">{{ group.label }} <b>{{ group.members|length }}</b></a>{% endfor %}
 </nav>

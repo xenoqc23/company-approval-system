@@ -23,6 +23,6 @@
 <section class="panel"><div class="panel-heading"><h2>{{ selected_year }}년 공용연차 사용</h2></div><div class="table-wrap"><table><thead><tr><th>회사 휴무 날짜</th><th>휴무명</th><th>차감</th></tr></thead><tbody>{% for charge in common_charges %}<tr><td>{{ charge.holiday.day|date:'Y.m.d' }}</td><td>{{ charge.holiday.title }}</td><td>{{ charge.amount|amount }}일</td></tr>{% empty %}<tr><td colspan="3" class="subtle-empty">해당 연도의 공용연차 차감이 없습니다.</td></tr>{% endfor %}</tbody></table></div></section>
 <section class="panel history-panel"><div class="panel-heading"><h2>{{ selected_year }}년 수동 수정 이력</h2><span class="muted">기안 없이 조정한 연차는 여기서 확인하세요</span></div><div class="history-list">
   {% for log in logs %}<div class="history-item"><span class="history-point"></span><div><strong>{{ log.event }}</strong><p>{{ log.detail|linebreaksbr }}</p><small>수정일 {{ log.created_at|date:'Y.m.d H:i' }} · {{ log.actor.first_name }}</small></div></div>{% empty %}<p class="subtle-empty">해당 연도의 수동 수정 이력이 없습니다.</p>{% endfor %}
-  <p class="panel-footer">수정일은 경리가 값을 변경한 날짜입니다. 기안 없는 휴가의 실제 사용 날짜는 수정 이력만으로 확인할 수 없습니다.</p>
+  <p class="panel-footer">수정일은 연차 정보가 변경된 날짜입니다. 기안 없는 휴가의 실제 사용 날짜는 수정 이력만으로 확인할 수 없습니다.</p>
 </div></section>
 {% endblock %}

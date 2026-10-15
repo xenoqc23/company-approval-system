@@ -1,11 +1,20 @@
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('APPROVAL_DATA_DIR', BASE_DIR / 'var'))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'development-only-approval-prototype-key')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
+PRODUCTION = os.environ.get('APPROVAL_PRODUCTION', '0') == '1'
+if PRODUCTION:
+    if DEBUG or len(os.environ.get('DJANGO_SECRET_KEY', '')) < 50:
+        raise ImproperlyConfigured('운영 모드에서는 DEBUG=0과 별도의 충분한 비밀키가 필요합니다.')
+    if os.environ.get('DB_ENGINE') != 'mariadb':
+        raise ImproperlyConfigured('NAS 운영 모드에는 MariaDB 설정이 필요합니다.')
+    if not os.environ.get('DJANGO_ALLOWED_HOSTS') or '*' in os.environ['DJANGO_ALLOWED_HOSTS']:
+        raise ImproperlyConfigured('운영 접속 주소를 명시해 주세요.')
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
 INSTALLED_APPS = [
     'django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions',
@@ -17,6 +26,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware', 'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware', 'workflow.middleware.AccountGateMiddleware',
 ]
+if PRODUCTION:
+    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 ROOT_URLCONF = 'approval_site.urls'
 TEMPLATES = [{
     'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -46,6 +57,18 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+if PRODUCTION:
+    STORAGES = {'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'}}
+BACKUP_DIR = Path(os.environ.get('APPROVAL_BACKUP_DIR', DATA_DIR / 'backups'))
+APP_VERSION = os.environ.get('APP_VERSION', 'pc')
+CSRF_TRUSTED_ORIGINS = [x for x in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if x]
+SESSION_COOKIE_SECURE = os.environ.get('DJANGO_SECURE_COOKIES', '0') == '1'
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SSL_REDIRECT', '0') == '1'
+SECURE_REDIRECT_EXEMPT = [r'^health/$']
+if os.environ.get('DJANGO_TRUST_PROXY', '0') == '1':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = 'login'
 SESSION_COOKIE_HTTPONLY = True

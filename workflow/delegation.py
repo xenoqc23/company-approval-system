@@ -23,7 +23,7 @@ def resolve_route(kind, owner_rank, total=Decimal('0')):
             continue
         matches.append(rule)
     if len(matches) > 1:
-        raise ValidationError('여러 전결규정이 겹칩니다. 경리 또는 admin에게 규정 확인을 요청해 주세요.')
+        raise ValidationError('여러 전결규정이 겹칩니다. 규정 관리 담당자에게 확인을 요청해 주세요.')
     if matches:
         rule = matches[0]
         snapshot.update(name=rule.name, rule_id=rule.pk, version=rule.version,

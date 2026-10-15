@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#quantity-price-grid').classList.toggle('single-column', isStock);
     document.querySelector('#approval-heading').textContent = isStock ? '검토자 지정' : '결재선 지정';
     document.querySelector('#compose-intro').textContent = isStock ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
-    document.querySelector('#approval-footnote').textContent = isStock ? 'admin을 제외한 주임 이상 검토자를 지정하세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : 'admin을 제외한 주임 이상 직원을 지정하세요. 같은 사람을 선택해도 검토와 최종 승인은 각각 진행됩니다.';
+    document.querySelector('#approval-footnote').textContent = isStock ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
     document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
     document.querySelector('#compose-help-route').textContent = isStock ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
     document.querySelector('#submit-label').textContent = isStock ? '재고 요청 제출' : '기안 제출';

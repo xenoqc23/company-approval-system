@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.templatetags.static import static
 from .models import Profile, AnnualBalance, Document
 from .home import quick_form, progress_stages
 from .services import save_document, act_on_document
@@ -46,7 +47,7 @@ class HomeWorkspaceTests(TestCase):
             self.assertEqual(form_response.context['form']['kind'].value(), kind)
             self.assertNotIn(self.admin.pk, form_response.context['form'].fields['reviewer'].queryset.values_list('pk', flat=True))
         self.assertContains(response, '전체 문서 검색')
-        self.assertContains(response, 'workspace.css')
+        self.assertContains(response, static('workflow/workspace.css'))
 
     @patch('workflow.context.timezone.localdate', return_value=date(2026, 10, 15))
     def test_home_balance_uses_current_employee_and_year(self, _today):
@@ -67,13 +68,13 @@ class HomeWorkspaceTests(TestCase):
             AnnualBalance.objects.filter(user=self.owner, year=2026).update(used=used)
             response = self.client.get(reverse('dashboard'))
             self.assertContains(response, f'aria-label="잔여연차 {expected}일"')
-            self.assertNotContains(response, '연차가 아직 등록되지 않았습니다.')
+            self.assertNotContains(response, '연차 정보가 등록되지 않았습니다.')
 
     @patch('workflow.context.timezone.localdate', return_value=date(2026, 10, 15))
     def test_home_unregistered_balance_is_not_presented_as_zero_entitlement(self, _today):
         self.client.force_login(self.other)
         response = self.client.get(reverse('dashboard'))
-        self.assertContains(response, '연차가 아직 등록되지 않았습니다.')
+        self.assertContains(response, '연차 정보가 등록되지 않았습니다.')
         self.assertNotContains(response, 'aria-label="총연차 0일"')
 
     def test_home_kind_filter_and_counts_are_limited_to_submitted_own_documents(self):

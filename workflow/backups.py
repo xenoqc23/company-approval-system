@@ -10,17 +10,18 @@ from django.conf import settings
 from django.db import connection
 
 def directory():
-    root = settings.DATA_DIR / 'backups'
-    root.mkdir(exist_ok=True)
+    root = settings.BACKUP_DIR
+    root.mkdir(parents=True, exist_ok=True)
     return root
 
 def list_backups():
     return [{'name': p.name, 'size': round(p.stat().st_size / 1024), 'time': datetime.fromtimestamp(p.stat().st_mtime)}
-            for p in sorted(directory().glob('*.sqlite3'), reverse=True)]
+            for p in sorted([*directory().glob('*.sqlite3'), *directory().glob('backup-*.zip')], reverse=True)]
 
-def create_backup():
+def create_backup(kind='manual'):
     if connection.vendor != 'sqlite':
-        raise RuntimeError('MariaDB의 운영 백업은 NAS 백업 작업과 연결한 뒤 사용할 수 있습니다.')
+        from .nas_backup import create_mariadb_backup
+        return create_mariadb_backup(kind)
     dest = directory() / f'backup-{datetime.now():%Y%m%d-%H%M%S-%f}.sqlite3'
     with closing(sqlite3.connect(str(connection.settings_dict['NAME']))) as source:
         with closing(sqlite3.connect(str(dest))) as target:
@@ -29,7 +30,7 @@ def create_backup():
 
 def restore_backup(name):
     if connection.vendor != 'sqlite':
-        raise RuntimeError('MariaDB의 운영 복구는 NAS 복구 절차와 연결한 뒤 사용할 수 있습니다.')
+        raise RuntimeError('운영 DB 복구는 서비스를 중지한 뒤 NAS의 복구 명령으로 실행해 주세요.')
     path = directory() / name
     if Path(name).name != name or path.suffix != '.sqlite3' or not path.is_file():
         raise ValueError('유효한 백업 파일을 선택해 주세요.')

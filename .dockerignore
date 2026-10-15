@@ -1,0 +1,14 @@
+*
+!requirements-prototype.txt
+!requirements-nas.txt
+!manage.py
+!approval_site/
+!approval_site/**
+!workflow/
+!workflow/**
+!deploy/
+!deploy/nas/
+!deploy/nas/**
+**/__pycache__
+**/*.pyc
+**/.env

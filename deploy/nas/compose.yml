@@ -1,0 +1,74 @@
+version: '2.4'
+x-app: &app
+  image: ${APP_IMAGE}
+  environment: &app-env
+    APPROVAL_PRODUCTION: '1'
+    DJANGO_DEBUG: '0'
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+    DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+    DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+    DJANGO_SECURE_COOKIES: ${DJANGO_SECURE_COOKIES:-0}
+    DJANGO_SSL_REDIRECT: ${DJANGO_SSL_REDIRECT:-0}
+    DJANGO_TRUST_PROXY: ${DJANGO_TRUST_PROXY:-0}
+    DB_ENGINE: mariadb
+    DB_NAME: ${DB_NAME}
+    DB_USER: ${DB_USER}
+    DB_PASSWORD: ${DB_PASSWORD}
+    DB_HOST: db
+    APPROVAL_DATA_DIR: /data
+    APPROVAL_BACKUP_DIR: /backups
+    APP_VERSION: ${APP_IMAGE}
+  volumes:
+    - ${APPROVAL_BASE}/data/app:/data
+    - ${APPROVAL_BASE}/backups:/backups
+  mem_limit: 384m
+  logging:
+    driver: json-file
+    options: {max-size: '5m', max-file: '3'}
+services:
+  db:
+    image: mariadb:10.11.14
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    volumes:
+      - ${APPROVAL_BASE}/data/mariadb:/var/lib/mysql
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci', '--innodb-buffer-pool-size=128M', '--max-connections=25', '--performance-schema=OFF']
+    mem_limit: 512m
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: {max-size: '5m', max-file: '3'}
+  web:
+    <<: *app
+    restart: unless-stopped
+    ports:
+      - '${BIND_IP}:${APP_PORT}:8000'
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: ['CMD', 'python', '/app/deploy/nas/healthcheck.py']
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 15s
+  tools:
+    <<: *app
+    restart: 'no'
+    environment:
+      <<: *app-env
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: ${DB_ROOT_PASSWORD}
+      APPROVAL_DATA_DIR: /data
+      APPROVAL_BACKUP_DIR: /backups
+      APP_VERSION: ${APP_IMAGE}

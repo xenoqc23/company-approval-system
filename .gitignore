@@ -5,3 +5,12 @@ var/
 .env
 staticfiles/
 test-results/
+# NAS runtime credentials and deployment state (if used near the checkout)
+initial-login.txt
+.initialized
+.current-image
+.rollback-image
+.rollback-backup
+.pending-image
+.recovery-in-progress
+.operation.lock/

@@ -658,9 +658,13 @@ class ApprovalTests(TestCase):
         self.stranger.profile.rank = '주임'
         self.stranger.profile.save()
         self.assertTrue(DocumentForm().fields['reviewer'].queryset.filter(pk=self.stranger.pk).exists())
-        User = get_user_model()
-        named_admin = User.objects.create_user('ADMIN', first_name='관리용 계정')
-        Profile.objects.create(user=named_admin, department='인사팀', rank='이사', approved=True)
+        # MariaDB correctly treats ADMIN/admin as the same unique username.
+        # Reuse the account and remove its role flag to isolate the name guard.
+        named_admin = self.admin
+        named_admin.username = 'ADMIN'
+        named_admin.save(update_fields=['username'])
+        named_admin.profile.manage_system = False
+        named_admin.profile.save(update_fields=['manage_system'])
         self.assertFalse(DocumentForm().fields['approver'].queryset.filter(pk=named_admin.pk).exists())
 
     def test_direct_submission_and_reassignment_cannot_bypass_candidate_rules(self):

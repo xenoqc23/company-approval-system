@@ -620,19 +620,21 @@ def backups(request):
     if not request.user.profile.manage_system:
         raise PermissionDenied
     from .backups import create_backup, list_backups, restore_backup
+    from django.db import connection
     if request.method == 'POST':
         try:
             if request.POST.get('intent') == 'restore':
                 name = request.POST.get('file', '')
                 restore_backup(name)
-                audit(request.user, '시안 DB 복구', detail=name)
-                messages.success(request, '시안 데이터를 복원했습니다. 복원 전 데이터도 별도로 백업했습니다.')
+                audit(request.user, 'DB 복구', detail=name)
+                messages.success(request, '데이터를 복원했습니다. 복원 전 데이터도 별도로 백업했습니다.')
             else:
                 path = create_backup()
-                audit(request.user, '시안 DB 백업', detail=path.name)
-                messages.success(request, '시안 데이터 백업을 생성했습니다.')
+                audit(request.user, 'DB 백업', detail=path.name)
+                messages.success(request, '데이터 백업을 생성했습니다.')
         except (ValueError, RuntimeError, OSError) as exc:
             messages.error(request, str(exc))
             Notice.objects.create(user=request.user, text=f'백업·복구 작업이 실패했습니다: {str(exc)[:180]}')
         return redirect('backups')
-    return page(request, 'backups', '백업·복구', 'backups', backup_files=list_backups())
+    return page(request, 'backups', '백업·복구', 'backups', backup_files=list_backups(),
+                offline_restore=connection.vendor != 'sqlite')
