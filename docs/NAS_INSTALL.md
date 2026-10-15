@@ -48,7 +48,7 @@ sudo sh /volume1/docker/company-approval/app/deploy/nas/nas.sh install
 
 DSM **제어판 → 작업 스케줄러 → 생성 → 예약된 작업 → 사용자 정의 스크립트**:
 
-- 작업명: `Xenosys 결재시스템 일일 백업`
+- 작업명: `XenosysApprovalBackup` (영문·숫자로 입력하며 앞뒤 공백은 넣지 않음)
 - 사용자: `root`
 - 일정: 매일 오전 3시 등 업무가 없는 시간 (NAS 시간대 서울 확인)
 - 작업 설정 → 사용자 정의 스크립트:
