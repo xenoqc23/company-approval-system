@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const progressPicker = document.querySelector('[data-progress-picker]');
+  if (progressPicker) progressPicker.addEventListener('change', () => progressPicker.form.requestSubmit());
   const accountingTabs = document.querySelector('[data-accounting-status-url]');
   if (accountingTabs) {
     let checking = false;

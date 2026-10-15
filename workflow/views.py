@@ -93,9 +93,14 @@ def account(request):
 def dashboard(request):
     mine = Document.objects.filter(owner=request.user).exclude(status__in=['draft', 'deleted'])
     from .home import progress_stages
-    progress_doc = mine.filter(status__in=['review', 'approve']).select_related('owner', 'reviewer', 'approver').first()
-    if not progress_doc:
-        progress_doc = mine.select_related('owner', 'reviewer', 'approver').first()
+    # Keep the chooser limited to the employee's own submitted documents.
+    progress_documents = list(mine.select_related('owner', 'reviewer', 'approver'))
+    pending_documents = [doc for doc in progress_documents if doc.status in ['review', 'approve']]
+    other_documents = [doc for doc in progress_documents if doc.status not in ['review', 'approve']]
+    selected_id = request.GET.get('progress_document', '')
+    progress_doc = next((doc for doc in progress_documents if str(doc.pk) == selected_id), None)
+    if progress_doc is None:
+        progress_doc = next(iter(pending_documents or progress_documents), None)
     steps = progress_stages(progress_doc)
     if progress_doc and progress_doc.kind != 'stock':
         steps = steps[:3]
@@ -105,12 +110,14 @@ def dashboard(request):
     kind_counts = dict(mine.order_by().values_list('kind').annotate(n=Count('pk')))
     home_categories = [
         {'key': key, 'label': label, 'count': sum(kind_counts.values()) if key == 'all' else kind_counts.get(key, 0),
-         'url': reverse('dashboard') + '?home_kind=' + key + '#recent-documents'}
+         'url': reverse('dashboard') + '?home_kind=' + key
+                + (f'&progress_document={progress_doc.pk}' if progress_doc else '') + '#recent-documents'}
         for key, label in [('all', '전체'), ('leave', '휴가원'), ('office', '구매요청서'), ('stock', '생산 재고')]]
     recent = mine if home_kind == 'all' else mine.filter(kind=home_kind)
     return page(request, 'dashboard', '홈', documents=recent.select_related('owner')[:4],
                 home_kind=home_kind, home_categories=home_categories,
-                progress_doc=progress_doc, progress_steps=steps, notices=visible_notices(request.user)[:3])
+                progress_doc=progress_doc, progress_steps=steps, progress_count=len(pending_documents),
+                progress_groups=[('진행 중', pending_documents), ('처리 완료·종료', other_documents)], notices=visible_notices(request.user)[:3])
 
 @login_required
 def documents(request):

@@ -28,3 +28,10 @@
 실측 자료: [화면과 기능](mint-ui-report.json) · [메뉴·뒤로 이동](mint-navigation-report.json) · [글자 대비](mint-contrast-report.json) · [Excel](mint-export-report.json)
 
 [실제 화면 갤러리](../screenshots/README.md) · [Windows 실행 방법](../../START_HERE.txt)
+
+
+## 여러 기안 선택 추가 점검
+
+홈 관련 기능 시험 15건 통과. 본인의 여러 기안 선택, 검토대기/승인대기만 집계, 완료 기안 선택, 진행 중 0건, 타인·임시저장·삭제 문서 및 비정상 번호 제외를 확인했습니다. Chromium에서 실제 8개 기안을 차례로 선택하고 결재 단계·상세 링크·최근 문서 필터 유지와 다섯 가지 창 너비를 확인했습니다. JavaScript 오류가 없었습니다.
+
+[실제 전환 점검 기록](progress-picker-report.json) · [적용 화면](../screenshots/home-progress-picker.png)
