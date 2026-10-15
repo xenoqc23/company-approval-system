@@ -91,8 +91,10 @@ class Command(BaseCommand):
             doc_owner = fields.pop('owner', owner)
             doc = Document(owner=doc_owner, reviewer=fields.pop('reviewer', reviewer),
                            approver=fields.pop('approver', approver), recipient=fields.pop('recipient', doc_owner), **fields)
+            if doc.kind == 'office' and doc.total_price <= 100000:
+                doc.approver = doc.reviewer or doc_owner
             save_document(doc, doc_owner, submit=stage != 'draft')
-            if stage in ['approve', 'approved']:
+            if stage in ['approve', 'approved'] and doc.review_required:
                 doc = act_on_document(doc.pk, doc.reviewer, 'review')
             if stage == 'approved' and doc.kind != 'stock':
                 doc = act_on_document(doc.pk, doc.approver, 'approve')

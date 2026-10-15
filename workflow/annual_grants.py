@@ -20,7 +20,8 @@ def entitlement(hire_date, year):
     if not hire_date or hire_date.year > year:
         return Decimal('0')
     years = completed_years(hire_date, date(year, 1, 1))
-    return Decimal(11 if years < 1 else min(25, 15 + max(0, (years - 1) // 2)))
+    from .regulations import bands_for
+    return Decimal(next(days for low, days in reversed(bands_for(year)) if years >= low))
 
 
 def ensure_balance(employee, year):
@@ -29,8 +30,11 @@ def ensure_balance(employee, year):
     balance = AnnualBalance.objects.select_for_update().get(pk=balance.pk)
     if employee.profile.hire_date and not balance.grant_initialized:
         balance.total = entitlement(employee.profile.hire_date, year)
-        balance.grant_initialized = True
-        balance.save(update_fields=['total', 'grant_initialized'])
+        from .regulations import annual_policy
+        policy = annual_policy(year)
+        balance.grant_initialized, balance.total_manual = True, False
+        balance.grant_policy_year = policy.effective_year if policy else None
+        balance.save(update_fields=['total', 'grant_initialized', 'total_manual', 'grant_policy_year'])
     return balance
 
 
@@ -60,6 +64,8 @@ def set_hire_date(actor, employee, hire_date, year, apply=False):
         raise PermissionDenied
     if hire_date > timezone.localdate():
         raise ValidationError('입사일은 오늘 이후로 입력할 수 없습니다.')
+    from .models import CompanyHolidayLock
+    CompanyHolidayLock.objects.select_for_update().get(pk=1)
     profile = Profile.objects.select_for_update().get(user=employee)
     before = profile.hire_date
     profile.hire_date = hire_date
@@ -71,8 +77,13 @@ def set_hire_date(actor, employee, hire_date, year, apply=False):
         balance = AnnualBalance.objects.select_for_update().get(pk=balance.pk)
         previous = balance.total
         balance.total = entitlement(hire_date, year)
-        balance.grant_initialized = True
-        balance.save(update_fields=['total', 'grant_initialized'])
+        from .regulations import annual_policy
+        policy = annual_policy(year)
+        balance.grant_initialized, balance.total_manual = True, False
+        balance.grant_policy_year = policy.effective_year if policy else None
+        balance.save(update_fields=['total', 'grant_initialized', 'total_manual', 'grant_policy_year'])
         audit(actor, f'{year}년 총연차 산정 적용', target=employee,
               detail=f'입사일 {hire_date} / 총연차 {previous} → {balance.total}, 사용연차 {balance.used} 유지')
+    from .company_holidays import reconcile_employee
+    reconcile_employee(actor, employee)
     audit(actor, '입사일 수정', target=employee, detail=f'{before or "미입력"} → {hire_date}')

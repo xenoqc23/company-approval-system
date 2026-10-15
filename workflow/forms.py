@@ -80,6 +80,7 @@ class DepartmentEmployeeSelect(forms.Select):
         option = super().create_option(name, value, label, selected, index, subindex, attrs)
         if value:
             option['attrs']['data-department'] = value.instance.profile.department
+            option['attrs']['data-rank'] = value.instance.profile.rank
         return option
 
 def department_picker(person_field):
@@ -155,6 +156,16 @@ class DocumentForm(forms.ModelForm):
                 data['unit_price'], data['approver'], data['url'] = 0, None, ''
         if self.submit:
             required = ['reviewer']
+            if self.instance.owner_id:
+                from .delegation import resolve_route
+                try:
+                    route = resolve_route(data.get('kind'), self.instance.owner.profile.rank,
+                        (data.get('quantity') or 1) * (data.get('unit_price') or 0))
+                    if route['skip_review']:
+                        data['reviewer'] = None
+                        required = []
+                except forms.ValidationError as exc:
+                    self.add_error(None, exc)
             if data.get('kind') != 'stock':
                 required += ['approver']
             if data.get('kind') == 'leave':
@@ -169,3 +180,45 @@ class DocumentForm(forms.ModelForm):
                 if not data.get(key):
                     self.add_error(key, '이 항목을 입력해 주세요.')
         return data
+
+
+class ApprovalRuleForm(forms.ModelForm):
+    author_ranks = forms.MultipleChoiceField(label='기안자 직급 (미선택: 전체)', choices=[(x, x) for x in RANKS], required=False,
+        widget=forms.CheckboxSelectMultiple)
+    reviewer_ranks = forms.MultipleChoiceField(label='검토 가능 직급', choices=[(x, x) for x in RANKS[1:]], required=False,
+        widget=forms.CheckboxSelectMultiple)
+    approver_ranks = forms.MultipleChoiceField(label='승인 가능 직급', choices=[(x, x) for x in RANKS[1:]],
+        widget=forms.CheckboxSelectMultiple)
+
+    class Meta:
+        from .models import ApprovalRule
+        model = ApprovalRule
+        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'skip_review', 'reviewer_ranks', 'approver_ranks', 'enabled']
+        labels = {'name': '규정명', 'kind': '문서 종류', 'amount_over': '구매 총금액 하한 (초과)',
+            'amount_to': '구매 총금액 상한 (이하, 빈칸: 제한 없음)', 'skip_review': '검토 생략 (기안 → 승인)', 'enabled': '규정 사용'}
+
+    def clean(self):
+        data = super().clean()
+        if not data.get('skip_review') and not data.get('reviewer_ranks'):
+            self.add_error('reviewer_ranks', '검토 가능 직급을 선택해 주세요.')
+        low, high = data.get('amount_over'), data.get('amount_to')
+        if low is not None and (low < 0 or (high is not None and high <= low)):
+            self.add_error('amount_to', '상한은 하한보다 커야 합니다.')
+        return data
+
+
+class AnnualBandForm(forms.Form):
+    years = forms.IntegerField(label='근속 시작 연수 (이상)', min_value=0, max_value=100)
+    days = forms.IntegerField(label='연차일수', min_value=0, max_value=999)
+
+
+class BenefitRuleForm(forms.Form):
+    category = forms.CharField(label='구분', max_length=80)
+    target = forms.CharField(label='대상·근속 조건', max_length=140)
+    amount = forms.IntegerField(label='경조금 (원)', min_value=0, max_value=999999999)
+    remark = forms.CharField(label='비고', max_length=100, required=False)
+
+
+class AwardRuleForm(forms.Form):
+    years = forms.IntegerField(label='포상 근속연수', min_value=1, max_value=100)
+    reward = forms.CharField(label='포상 내용', max_length=120)

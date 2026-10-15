@@ -31,6 +31,8 @@ class CalendarWelfareTests(TestCase):
             setattr(cls, key, user)
 
     def holiday(self, **overrides):
+        # Known hire dates are required for company-wide annual-leave eligibility.
+        Profile.objects.filter(hire_date__isnull=True).update(hire_date=date(2020, 1, 1))
         values = {'title': '회사 지정 휴무', 'day': date(2026, 10, 23), 'use_annual': True, 'description': ''}
         values.update(overrides)
         return save_company_holiday(self.accounting, values)

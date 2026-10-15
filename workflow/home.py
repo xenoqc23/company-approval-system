@@ -17,6 +17,8 @@ def progress_stages(doc):
     steps = [{'label': '기안', 'person': doc.owner.first_name, 'done': bool(doc.submitted_at), 'time': doc.submitted_at},
              {'label': '검토', 'person': doc.reviewer.first_name if doc.reviewer else '—',
               'done': bool(doc.reviewed_at), 'time': doc.reviewed_at}]
+    if not doc.review_required:
+        steps = steps[:1]
     if doc.kind != 'stock':
         steps.append({'label': '승인', 'person': doc.approver.first_name if doc.approver else '—',
                       'done': bool(doc.approved_at), 'time': doc.approved_at})

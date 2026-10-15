@@ -25,6 +25,8 @@ class AnnualBalance(models.Model):
     total = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     used = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     grant_initialized = models.BooleanField(default=False)
+    total_manual = models.BooleanField(default=False)
+    grant_policy_year = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user', 'year'], name='unique_user_year')]
@@ -61,6 +63,7 @@ class Document(models.Model):
     urgency = models.CharField(max_length=10, choices=[('normal', '일반'), ('urgent', '긴급')], default='normal')
     needed_date = models.DateField(null=True, blank=True)
     shipment = models.CharField(max_length=16, choices=SHIPMENTS, blank=True, default='')
+    route_snapshot = models.JSONField(default=dict, blank=True)
     allocations = models.JSONField(default=dict, blank=True)
     charged = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     created_at = models.DateTimeField(default=timezone.now)
@@ -71,6 +74,10 @@ class Document(models.Model):
 
     class Meta:
         ordering = ['-created_at', '-pk']
+
+    @property
+    def review_required(self):
+        return self.kind == 'stock' or not self.route_snapshot.get('skip_review', False)
 
     @property
     def total_price(self):
@@ -177,3 +184,42 @@ class CompanyLeaveCharge(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['holiday', 'employee'], name='unique_company_leave_charge')]
+
+
+class RegulationLock(models.Model):
+    """Serialize regulation edits and submission snapshots."""
+    pass
+
+
+class ApprovalRule(models.Model):
+    name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=12, choices=Document.KINDS[:2])
+    amount_over = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    amount_to = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    author_ranks = models.JSONField(default=list, blank=True)
+    reviewer_ranks = models.JSONField(default=list)
+    approver_ranks = models.JSONField(default=list)
+    skip_review = models.BooleanField(default=False)
+    enabled = models.BooleanField(default=False)
+    version = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['kind', 'amount_over', 'pk']
+
+
+class AnnualPolicy(models.Model):
+    effective_year = models.PositiveIntegerField(unique=True)
+    bands = models.JSONField(default=list)
+    text = models.TextField(blank=True)
+    version = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-effective_year']
+
+
+class WelfarePolicy(models.Model):
+    benefits = models.JSONField(default=list)
+    awards = models.JSONField(default=list)
+    version = models.PositiveIntegerField(default=1)

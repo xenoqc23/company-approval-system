@@ -96,7 +96,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const sync = (clear = false) => {
       const selectedValue = clear ? '' : person.value;
       const department = picker.value;
-      const available = options.filter(option => option.dataset.department === department);
+      const allowed = person.dataset.allowedIds ? new Set(JSON.parse(person.dataset.allowedIds)) : null;
+      const available = options.filter(option => option.dataset.department === department && (!allowed || allowed.has(Number(option.value))));
       const placeholder = document.createElement('option');
       placeholder.value = '';
       placeholder.textContent = !department ? '부서를 먼저 선택하세요' : available.length ? '직원을 선택하세요' : '선택 가능한 직원이 없습니다';
@@ -127,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     form.dataset.documentKind = kind;
     const isLeave = kind === 'leave';
     const isStock = kind === 'stock';
+    const skipReview = !isStock && form.dataset.skipReview === 'true';
     const annual = id('leave_type').value === 'annual';
     document.querySelectorAll('[data-kind]').forEach(card => {
       const selected = card.dataset.kind === kind;
@@ -140,14 +142,16 @@ document.addEventListener('DOMContentLoaded', () => {
     show('#url-field', kind === 'office');
     show('#unit-price-field', kind === 'office');
     show('#approver-field', !isStock);
+    show('#reviewer-field', !skipReview);
+    document.querySelector('#approval-arrow').hidden = isStock || skipReview;
     departmentPickers.forEach(sync => sync());
     document.querySelector('#purchase-total').hidden = kind !== 'office';
     document.querySelector('#stock-explainer').hidden = !isStock;
-    document.querySelector('#approval-arrow').hidden = isStock;
+    document.querySelector('#approval-arrow').hidden = isStock || skipReview;
     document.querySelector('#approval-inputs').classList.toggle('review-only', isStock);
     document.querySelector('#quantity-price-grid').classList.toggle('single-column', isStock);
     document.querySelector('#approval-heading').textContent = isStock ? '검토자 지정' : '결재선 지정';
-    document.querySelector('#compose-intro').textContent = isStock ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
+    document.querySelector('#compose-intro').textContent = isStock ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
     document.querySelector('#approval-footnote').textContent = isStock ? 'admin을 제외한 주임 이상 검토자를 지정하세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : 'admin을 제외한 주임 이상 직원을 지정하세요. 같은 사람을 선택해도 검토와 최종 승인은 각각 진행됩니다.';
     document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
     document.querySelector('#compose-help-route').textContent = isStock ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
@@ -192,7 +196,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     form.querySelectorAll('button[type=submit], .compose-actions button').forEach(button => button.disabled = true);
   });
+  let routeTimer;
+  let routeSequence = 0;
+  const resolveRoute = async () => {
+    const sequence = ++routeSequence;
+    const params = new URLSearchParams({kind: id('kind').value,
+      total: String(Math.round(numeric(id('quantity').value) * numeric(id('unit_price').value) * 100) / 100), reviewer: id('reviewer').value});
+    try {
+      const response = await fetch(form.dataset.routeUrl + '?' + params, {cache: 'no-store'});
+      const route = await response.json();
+      if (sequence !== routeSequence) return;
+      if (!response.ok) throw new Error(route.error);
+      form.dataset.skipReview = String(route.skip_review);
+      id('reviewer').dataset.allowedIds = JSON.stringify(route.reviewer_ids);
+      id('approver').dataset.allowedIds = JSON.stringify(route.approver_ids);
+      update();
+      document.querySelector('#route-preview').textContent = `${route.name} · ${route.path}${route.note ? ' · ' + route.note : ''}`;
+      document.querySelector('#approval-footnote').textContent = route.skip_review ? '검토 없이 최종 승인자가 승인하면 완료됩니다. 자격을 충족하면 본인 승인도 가능합니다.' : '기안자 ≤ 검토자 ≤ 승인자 직급 조건을 적용합니다. 같은 사람도 단계별로 확인합니다.';
+      document.querySelector('#compose-help-route').textContent = route.skip_review ? '승인자를 선택하면 승인대기 알림이 전달됩니다.' : '담당자를 선택하면 결재 순서대로 알림이 전달됩니다.';
+    } catch (error) {
+      if (sequence === routeSequence) document.querySelector('#route-preview').textContent = error.message || '경로를 확인하지 못했습니다. 제출 시 최신 규정을 다시 확인합니다.';
+    }
+  };
+  const scheduleRoute = () => { clearTimeout(routeTimer); routeTimer = setTimeout(resolveRoute, 180); };
+  form.addEventListener('change', scheduleRoute);
+  ['quantity', 'unit_price'].forEach(name => id(name).addEventListener('input', scheduleRoute));
   update();
+  resolveRoute();
 });
 // 부재 일정의 종일 선택에 맞춰 시간 입력을 표시합니다.
 document.addEventListener('DOMContentLoaded', () => {
@@ -204,4 +234,35 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   checkbox.addEventListener('change', update);
   update();
+});
+
+// Policy table rows and a read-only delegation simulator.
+document.addEventListener('DOMContentLoaded', () => {
+  const add = document.querySelector('[data-add-policy-row]');
+  if (add) add.addEventListener('click', () => {
+    const count = document.querySelector('#id_rules-TOTAL_FORMS');
+    if (Number(count.value) >= 200) return;
+    const html = document.querySelector('#policy-empty-row').innerHTML.replaceAll('__prefix__', count.value);
+    document.querySelector('[data-policy-rows]').insertAdjacentHTML('beforeend', html);
+    count.value = Number(count.value) + 1;
+  });
+  const simulator = document.querySelector('#rule-simulator');
+  if (simulator) simulator.addEventListener('submit', async event => {
+    event.preventDefault();
+    const result = document.querySelector('#rule-simulator-result');
+    result.textContent = '규정을 확인하고 있습니다…';
+    try {
+      const response = await fetch(simulator.dataset.url + '?' + new URLSearchParams(new FormData(simulator)), {cache: 'no-store'});
+      const route = await response.json();
+      if (!response.ok) throw new Error(route.error);
+      result.replaceChildren();
+      for (const text of [route.name, route.path,
+        ...(route.skip_review ? [] : ['검토 가능 직급: ' + route.reviewers.join(' · ')]),
+        ...(simulator.elements.kind.value === 'stock' ? [] : ['승인 가능 직급: ' + (route.approvers.join(' · ') || '해당 직급 없음'), '본인 승인: ' + (route.self_allowed ? '자격 충족 시 가능' : '불가')]),
+        route.note]) {
+        if (!text) continue;
+        const paragraph = document.createElement('p'); paragraph.textContent = text; result.appendChild(paragraph);
+      }
+    } catch (error) { result.textContent = error.message || '미리보기를 불러오지 못했습니다.'; }
+  });
 });

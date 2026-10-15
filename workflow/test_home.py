@@ -12,6 +12,9 @@ from .services import save_document, act_on_document
 class HomeWorkspaceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        # Baseline regression scenarios use the explicit three-stage configuration.
+        from .models import ApprovalRule
+        ApprovalRule.objects.update(enabled=False)
         User = get_user_model()
         for key in ['owner', 'reviewer', 'approver', 'other', 'admin']:
             user = User.objects.create_user(key, first_name=key, password='1234')
@@ -124,7 +127,7 @@ class HomeWorkspaceTests(TestCase):
         response = self.client.get(reverse('dashboard'), {'progress_document': second.pk})
         self.assertEqual([s['label'] for s in response.context['progress_steps']], ['기안', '검토', '발주', '입고'])
 
-    def test_progress_chooser_can_select_completed_document_without_counting_it_as_pending(self):
+    def test_progress_chooser_excludes_completed_and_shows_empty_when_none_pending(self):
         completed = save_document(Document(owner=self.owner, kind='office', product='완료 구매', quantity=1,
             unit_price=10, url='https://example.com', reviewer=self.reviewer, approver=self.approver), self.owner, submit=True)
         act_on_document(completed.pk, self.reviewer, 'review')
@@ -134,13 +137,15 @@ class HomeWorkspaceTests(TestCase):
         self.client.force_login(self.owner)
         response = self.client.get(reverse('dashboard'), {'progress_document': completed.pk})
         self.assertEqual(response.context['progress_count'], 1)
-        self.assertEqual(response.context['progress_doc'], completed)
-        self.assertTrue(all(step['done'] for step in response.context['progress_steps']))
-        self.assertEqual(response.context['progress_groups'], [('진행 중', [pending]), ('처리 완료·종료', [completed])])
+        self.assertEqual(response.context['progress_doc'], pending)
+        self.assertFalse(all(step['done'] for step in response.context['progress_steps']))
+        self.assertEqual(response.context['progress_groups'], [('진행 중', [pending])])
         act_on_document(pending.pk, self.reviewer, 'reject', '다시 작성')
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(response.context['progress_count'], 0)
-        self.assertContains(response, '최근 기안을 표시합니다.')
+        self.assertIsNone(response.context['progress_doc'])
+        self.assertContains(response, '진행 중인 기안이 없습니다')
+        self.assertNotContains(response, 'id="progress-document"')
 
     def test_progress_chooser_rejects_foreign_hidden_and_invalid_document_ids(self):
         own = save_document(Document(owner=self.owner, kind='stock', product='내 재고', quantity=1,
@@ -156,7 +161,7 @@ class HomeWorkspaceTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.context['progress_doc'], own)
                 self.assertEqual(response.context['progress_count'], 1)
-                self.assertEqual(response.context['progress_groups'], [('진행 중', [own]), ('처리 완료·종료', [])])
+                self.assertEqual(response.context['progress_groups'], [('진행 중', [own])])
                 self.assertNotContains(response, '비공개 재고')
                 self.assertNotContains(response, '숨긴 재고')
 

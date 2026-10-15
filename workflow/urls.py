@@ -1,7 +1,11 @@
 from django.urls import path
-from . import views
+from . import views, regulation_views
 
 urlpatterns = [
+    path('regulations/', regulation_views.regulations, name='regulations'),
+    path('regulations/delegation/<int:pk>/', regulation_views.regulations, name='rule_edit'),
+    path('regulations/preview/', regulation_views.preview_route, name='preview_route'),
+    path('balances/recalculate/', regulation_views.recalculate, name='recalculate'),
     path('', views.dashboard, name='dashboard'), path('health/', views.health, name='health'),
     path('login/', views.login_view, name='login'), path('logout/', views.logout_view, name='logout'),
     path('signup/', views.signup, name='signup'), path('pending/', views.pending, name='pending'),

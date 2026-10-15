@@ -1,0 +1,14 @@
+[
+  {
+    "width": 1080,
+    "two_stage_track_uses_full_width": true
+  },
+  {
+    "width": 1366,
+    "two_stage_track_uses_full_width": true
+  },
+  {
+    "width": 1920,
+    "two_stage_track_uses_full_width": true
+  }
+]

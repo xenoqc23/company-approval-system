@@ -4,7 +4,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import AnnualBalance, Audit, Document, DocumentCounter, Notice, Profile
+from .models import AnnualBalance, Audit, Document, DocumentCounter, Notice, Profile, RANKS
 from .people import validate_approval_person
 from .notifications import can_notify
 
@@ -101,6 +101,8 @@ def make_title(document):
 
 @transaction.atomic
 def save_document(document, actor, submit=False):
+    from .models import RegulationLock
+    RegulationLock.objects.select_for_update().get_or_create(pk=1)
     # Serializes submissions by one employee, including overlap checks.
     Profile.objects.select_for_update().get(user=actor)
     if document.pk:
@@ -112,14 +114,21 @@ def save_document(document, actor, submit=False):
     if document.kind == 'stock':
         # Stock requests do not have prices, a shopping URL or final approver.
         document.unit_price, document.approver, document.url = Decimal('0'), None, ''
-    validate_approval_person(document.reviewer)
-    validate_approval_person(document.approver)
+    if not submit:
+        validate_approval_person(document.reviewer)
+        validate_approval_person(document.approver)
     document.title = make_title(document)
     if submit:
         if document.kind not in dict(Document.KINDS):
             raise ValidationError('문서 종류를 선택해 주세요.')
-        if not document.reviewer or (document.kind != 'stock' and not document.approver):
-            raise ValidationError('검토자를 선택해 주세요.' if document.kind == 'stock' else '검토자와 승인자를 선택해 주세요.')
+        from .delegation import resolve_route, validate_route_people
+        route = resolve_route(document.kind, actor.profile.rank, document.total_price)
+        validate_route_people(document, route)
+        route.update(reviewer_id=document.reviewer_id, approver_id=document.approver_id,
+            reviewer_rank=document.reviewer.profile.rank if document.reviewer else None,
+            approver_rank=document.approver.profile.rank if document.approver else None,
+            total=str(document.total_price))
+        document.route_snapshot = route
         for person in (document.reviewer, document.approver, document.recipient):
             if person and (not person.is_active or not person.profile.approved):
                 raise ValidationError('활성화된 직원만 선택할 수 있습니다.')
@@ -142,12 +151,14 @@ def save_document(document, actor, submit=False):
         counter.value += 1
         counter.save(update_fields=['value'])
         document.number = f'DOC-{day:%Y%m%d}-{counter.value:04d}'
-        document.status = 'review'
+        document.status = 'review' if document.review_required else 'approve'
         document.submitted_at = timezone.now()
     document.save()
     audit(actor, '기안 제출' if submit else '임시저장', document)
     if submit:
-        notify(document, [document.reviewer], f'{actor.first_name}님의 검토 요청이 도착했습니다.', '검토대기')
+        person = document.reviewer if document.review_required else document.approver
+        stage = '검토대기' if document.review_required else '승인대기'
+        notify(document, [person], f'{actor.first_name}님의 {stage} 요청이 도착했습니다.', stage)
     return document
 
 def adjust_charges(document, sign):
@@ -166,7 +177,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         raise ValidationError('처리 사유를 입력해 주세요.')
     now = timezone.now()
     if action == 'review':
-        if document.status != 'review' or document.reviewer_id != actor.pk:
+        if not document.review_required or document.status != 'review' or document.reviewer_id != actor.pk:
             raise PermissionDenied
         document.reviewed_at = now
         if document.kind == 'stock':
@@ -198,7 +209,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         notify(document, [document.owner], f'기안이 반려되었습니다. 사유: {reason[:100]}', '반려')
     elif action == 'cancel_review':
         expected = 'approved' if document.kind == 'stock' else 'approve'
-        if document.status != expected or document.reviewer_id != actor.pk:
+        if not document.review_required or document.status != expected or document.reviewer_id != actor.pk:
             raise PermissionDenied
         document.status = 'cancelled'
         audit(actor, '재고 요청 검토 취소' if document.kind == 'stock' else '검토 승인 취소', document, reason)
@@ -213,7 +224,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         audit(actor, '최종 승인 취소', document, f'{reason}\n연차 {document.charged}일 복원' if document.kind == 'leave' else reason)
         notify(document, [document.owner] + accountants(document), f'최종 승인이 취소되었습니다. 사유: {reason[:100]}', '승인취소')
     elif action == 'delete':
-        if document.owner_id != actor.pk or document.status not in ['draft', 'review']:
+        if document.owner_id != actor.pk or not (document.status in ['draft', 'review'] or (document.status == 'approve' and not document.review_required)):
             raise PermissionDenied
         document.status = 'deleted'
         audit(actor, '기안 삭제', document)
@@ -239,7 +250,16 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         validate_approval_person(new_person)
         field = 'reviewer' if document.status == 'review' else 'approver'
         old = getattr(document, field)
+        from .delegation import candidate_ranks, rank_index
+        route = {'author_rank': document.owner.profile.rank, 'skip_review': False,
+            'reviewer_ranks': RANKS[1:], 'approver_ranks': RANKS[1:], **document.route_snapshot}
+        review_rank = route.get('reviewer_rank') or (document.reviewer.profile.rank if document.reviewer else None)
+        if new_person.profile.rank not in candidate_ranks(route, field, review_rank):
+            raise ValidationError('새 담당자가 전결규정 또는 직급 조건을 충족하지 않습니다.')
+        if field == 'reviewer' and document.approver and rank_index(new_person.profile.rank) > rank_index(route.get('approver_rank') or document.approver.profile.rank):
+            raise ValidationError('검토자는 승인자보다 높은 직급으로 지정할 수 없습니다.')
         setattr(document, field, new_person)
+        document.route_snapshot = {**route, field + '_id': new_person.pk, field + '_rank': new_person.profile.rank}
         audit(actor, '담당자 변경', document, f'{old.first_name} → {new_person.first_name}\n{reason}')
         notify(document, [document.owner, new_person], '대기 중인 결재 담당자가 변경되었습니다.',
                ('검토대기' if document.status == 'review' else '승인대기') + ' · 담당자변경')
@@ -263,6 +283,8 @@ def edit_balance(actor, user, year, field, value, reason):
     else:
         setattr(balance, field, value)
     balance.grant_initialized = True
+    if field == 'total':
+        balance.total_manual = True
     balance.save()
     after = f'총 {balance.total} / 사용 {balance.used} / 잔여 {balance.remaining}'
     audit(actor, f'{year}년 연차 수정', detail=f'{before} → {after}\n사유: {reason}', target=user)

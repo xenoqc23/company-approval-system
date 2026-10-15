@@ -1,0 +1,40 @@
+{
+  "functional": [
+    "three-stage purchase: live rank filter rejects lower approver, reviewer confirmation and final approval both succeed",
+    "manager self-approved leave: no review step; final-only deduction; common holiday warning without auto-cancellation; final cancellation and holiday deletion restore actual charges",
+    "July joiner charged for November holiday and excluded from May holiday; missing-hire accounting notice visible"
+  ],
+  "errors": [],
+  "menus": [
+    [
+      "accounting",
+      1080,
+      true
+    ],
+    [
+      "accounting",
+      1366,
+      true
+    ],
+    [
+      "accounting",
+      1920,
+      true
+    ],
+    [
+      "admin",
+      1080,
+      true
+    ],
+    [
+      "admin",
+      1366,
+      true
+    ],
+    [
+      "admin",
+      1920,
+      true
+    ]
+  ]
+}

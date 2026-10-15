@@ -94,16 +94,16 @@ def dashboard(request):
     mine = Document.objects.filter(owner=request.user).exclude(status__in=['draft', 'deleted'])
     from .home import progress_stages
     # Keep the chooser limited to the employee's own submitted documents.
-    progress_documents = list(mine.select_related('owner', 'reviewer', 'approver'))
+    progress_documents = list(mine.filter(status__in=['review', 'approve']).order_by('-submitted_at', '-pk').select_related('owner', 'reviewer', 'approver'))
     pending_documents = [doc for doc in progress_documents if doc.status in ['review', 'approve']]
-    other_documents = [doc for doc in progress_documents if doc.status not in ['review', 'approve']]
+    progress_documents = pending_documents
     selected_id = request.GET.get('progress_document', '')
     progress_doc = next((doc for doc in progress_documents if str(doc.pk) == selected_id), None)
     if progress_doc is None:
-        progress_doc = next(iter(pending_documents or progress_documents), None)
+        progress_doc = next(iter(pending_documents), None)
     steps = progress_stages(progress_doc)
     if progress_doc and progress_doc.kind != 'stock':
-        steps = steps[:3]
+        steps = steps[:3 if progress_doc.review_required else 2]
     home_kind = request.GET.get('home_kind', 'all')
     if home_kind not in ['all', 'leave', 'office', 'stock']:
         home_kind = 'all'
@@ -117,7 +117,7 @@ def dashboard(request):
     return page(request, 'dashboard', '홈', documents=recent.select_related('owner')[:4],
                 home_kind=home_kind, home_categories=home_categories,
                 progress_doc=progress_doc, progress_steps=steps, progress_count=len(pending_documents),
-                progress_groups=[('진행 중', pending_documents), ('처리 완료·종료', other_documents)], notices=visible_notices(request.user)[:3])
+                progress_groups=[('진행 중', pending_documents)], notices=visible_notices(request.user)[:3])
 
 @login_required
 def documents(request):
@@ -259,7 +259,7 @@ def compose(request, pk=None):
         doc.owner = request.user
         try:
             save_document(doc, request.user, submit=request.POST.get('intent') == 'submit')
-            messages.success(request, '기안이 제출되었습니다.' if doc.status == 'review' else '임시저장되었습니다.')
+            messages.success(request, '기안이 제출되었습니다.' if doc.status in ['review', 'approve'] else '임시저장되었습니다.')
             return redirect('detail', pk=doc.pk)
         except ValidationError as exc:
             form.add_error(None, exc)
@@ -274,13 +274,13 @@ def detail(request, pk):
         actions += [('review', '검토확인'), ('reject', '반려')]
     if doc.kind != 'stock' and doc.status == 'approve' and doc.approver_id == u.pk:
         actions += [('approve', '승인확인'), ('reject', '반려')]
-    if doc.status == 'approve' and doc.reviewer_id == u.pk:
+    if doc.review_required and doc.status == 'approve' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 승인 취소')]
     if doc.kind == 'stock' and doc.status == 'approved' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 완료 취소')]
     if doc.kind != 'stock' and doc.status == 'approved' and doc.approver_id == u.pk:
         actions += [('cancel_approval', '최종 승인 취소')]
-    if doc.status in ['draft', 'review'] and doc.owner_id == u.pk:
+    if (doc.status in ['draft', 'review'] or (doc.status == 'approve' and not doc.review_required)) and doc.owner_id == u.pk:
         actions += [('delete', '기안 삭제')]
     if doc.status == 'approved' and doc.kind != 'leave':
         if u.profile.procure and not doc.shipment:
@@ -291,6 +291,7 @@ def detail(request, pk):
         amount = leave_amount(doc) if doc.kind == 'leave' else 0
     except ValidationError:
         amount = 0
+    common_overlaps = CompanyHoliday.objects.filter(active=True, use_annual=True, day__range=(doc.start_date, doc.end_date)) if doc.kind == 'leave' and doc.start_date and doc.end_date else []
     assignment_form = ApprovalAssignmentForm()
     procurement_log = doc.audits.filter(event='발주 처리').select_related('actor').first() if doc.kind == 'stock' else None
     review_cancelled = doc.status == 'cancelled' and (doc.kind == 'stock' or not doc.approved_at)
@@ -299,7 +300,7 @@ def detail(request, pk):
     approval_confirmed = doc.kind != 'stock' and doc.status == 'approved' and bool(doc.approved_at)
     return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
                 'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, procurement_log=procurement_log,
-                review_confirmed=review_confirmed, review_cancelled=review_cancelled,
+                common_overlaps=common_overlaps, review_confirmed=review_confirmed, review_cancelled=review_cancelled,
                 approval_confirmed=approval_confirmed, approval_cancelled=approval_cancelled,
                 my_review_confirmed=review_confirmed and doc.reviewer_id == u.pk,
                 my_approval_confirmed=approval_confirmed and doc.approver_id == u.pk,
@@ -476,8 +477,11 @@ def company_holidays(request):
             return redirect(reverse('company_holidays') + f'?year={item.day.year}')
         except ValidationError as exc:
             form.add_error(None, exc)
+    from .company_holidays import overlapping_leaves
+    items = list(CompanyHoliday.objects.filter(active=True, day__year=year).order_by('day'))
     return page(request, 'company_holidays', '회사 휴무 관리', 'company_holidays', form=form, holiday=instance,
-        selected_year=year, items=CompanyHoliday.objects.filter(active=True, day__year=year).order_by('day'),
+        selected_year=year, items=items, overlaps=overlapping_leaves(items),
+        missing_hires=User.objects.filter(is_active=True, profile__approved=True, profile__hire_date__isnull=True).exclude(username__iexact='admin').count(),
         years=range(timezone.localdate().year-2, timezone.localdate().year+3))
 
 
@@ -500,40 +504,32 @@ def welfare(request):
     tab = request.GET.get('tab', 'awards')
     if tab not in ['awards', 'benefits', 'leave']:
         tab = 'awards'
-    record = Policy.objects.first()
-    tenure_rows = [(str(low), days) for low, days in [('1년 미만', 11), ('1~3년 미만', 15), ('3~5년 미만', 16),
-        ('5~7년 미만', 17), ('7~9년 미만', 18), ('9~11년 미만', 19), ('11~13년 미만', 20),
-        ('13~15년 미만', 21), ('15~17년 미만', 22), ('17~19년 미만', 23), ('19~21년 미만', 24), ('21년 이상', 25)]]
-    return page(request, 'welfare', '직원복지', 'welfare', selected_year=year, tab=tab, awards=AWARDS,
-        benefits=BENEFITS, candidates=award_candidates(year, timezone.localdate()), policy=record, tenure_rows=tenure_rows,
-        years=range(timezone.localdate().year-2, timezone.localdate().year+3))
+    from .regulations import annual_policy, tenure_table
+    from .models import WelfarePolicy
+    record = annual_policy(year)
+    if not record or not record.text:
+        record = Policy.objects.first()
+    editable = WelfarePolicy.objects.first()
+    return page(request, 'welfare', '직원복지', 'welfare', selected_year=year, tab=tab,
+        awards=editable.awards if editable else AWARDS, benefits=editable.benefits if editable else BENEFITS,
+        candidates=award_candidates(year, timezone.localdate()), policy=record, tenure_rows=tenure_table(year),
+        applied_policy=annual_policy(year), years=range(timezone.localdate().year-2, timezone.localdate().year+3))
 
 @login_required
 def policy(request):
-    record = Policy.objects.first()
-    if not record:
-        raise ValidationError('초기 규정 데이터를 준비해 주세요.')
     if request.method == 'POST':
         if not request.user.profile.manage_leave:
             raise PermissionDenied
-        text = request.POST.get('text', '').strip()
-        tenure = request.POST.get('tenure', '').strip()
-        try:
-            parsed = [line.split('|') for line in tenure.splitlines() if line.strip()]
-            if not text or not parsed or any(len(row) != 2 or not row[0].strip() or int(row[1]) < 0 for row in parsed):
-                raise ValueError
-            with transaction.atomic():
-                before = record.tenure + '\n' + record.text
-                record.tenure, record.text, record.updated_by = tenure, text, request.user
-                record.save()
-                audit(request.user, '연차규정 수정', detail=f'변경 전\n{before}\n변경 후\n{tenure}\n{text}')
-            messages.success(request, '규정을 수정하고 변경 이력을 보관했습니다.')
-            return redirect('policy')
-        except ValueError:
-            messages.error(request, '규정 내용과 근속기간 표를 확인해 주세요. 표는 기간|일수 형식입니다.')
-    tenure_rows = [line.split('|') for line in record.tenure.splitlines() if '|' in line]
-    return page(request, 'policy', '연차규정', 'policy', policy=record, tenure_rows=tenure_rows,
-                policy_logs=Audit.objects.filter(event='연차규정 수정').select_related('actor')[:5])
+        messages.info(request, '연차규정은 규정 관리의 연차규정 탭에서 수정해 주세요.')
+        return redirect(reverse('regulations') + '?tab=annual')
+    from .regulations import annual_policy, tenure_table
+    year, _ = balance_filters(request.GET)
+    record = annual_policy(year)
+    if not record or not record.text:
+        record = Policy.objects.first()
+    return page(request, 'policy', '연차규정', 'policy', policy=record, tenure_rows=tenure_table(year),
+        applied_policy=annual_policy(year), selected_year=year,
+        policy_logs=Audit.objects.filter(event='연차 산정규정 수정').select_related('actor')[:5])
 
 @login_required
 def notices(request):
@@ -576,6 +572,9 @@ def staff(request):
                 messages.error(request, '현재 로그인한 관리자의 가입 승인, 활성화, 관리자 권한은 해제할 수 없습니다.')
                 return redirect(f'{reverse("staff")}?department={selected_group}')
         with transaction.atomic():
+            from .models import CompanyHolidayLock
+            if request.POST.get('intent') != 'reset':
+                CompanyHolidayLock.objects.select_for_update().get(pk=1)
             if request.POST.get('intent') == 'reset':
                 password = secrets.token_urlsafe(9)
                 target.set_password(password)
@@ -596,6 +595,8 @@ def staff(request):
                 target.is_active = request.POST.get('active') == 'on'
                 target.save()
                 target.profile.save()
+                from .company_holidays import reconcile_employee
+                reconcile_employee(request.user, target)
                 after = f'{target.first_name} / {department} / {rank} / 부서 확인 {target.profile.department_confirmed} / 활성화 {target.is_active} / ' + ', '.join(f'{f}={getattr(target.profile, f)}' for f in flags)
                 audit(request.user, '직원 권한 수정', detail=f'변경 전: {before}\n변경 후: {after}')
                 messages.success(request, '직원 정보와 업무 권한을 저장했습니다.')

@@ -30,11 +30,14 @@ BENEFITS = [
 
 
 def award_candidates(year, today):
+    from .models import WelfarePolicy
+    policy = WelfarePolicy.objects.first()
+    awards = policy.awards if policy else AWARDS
     result = []
     for employee in rank_order(employees().filter(profile__hire_date__isnull=False).select_related('profile')):
         hire = employee.profile.hire_date
         years = year - hire.year
-        reward = dict(AWARDS).get(years)
+        reward = dict(awards).get(years)
         if reward:
             day = date(year, hire.month, min(hire.day, calendar.monthrange(year, hire.month)[1]))
             result.append({'employee': employee, 'day': day, 'years': years, 'reward': reward,

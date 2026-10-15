@@ -1,0 +1,35 @@
+{
+  "auth_user": {
+    "rows": 8,
+    "original_columns_unchanged": true
+  },
+  "workflow_profile": {
+    "rows": 8,
+    "original_columns_unchanged": true
+  },
+  "workflow_document": {
+    "rows": 9,
+    "original_columns_unchanged": true
+  },
+  "workflow_annualbalance": {
+    "rows": 8,
+    "original_columns_unchanged": true
+  },
+  "workflow_audit": {
+    "rows": 22,
+    "original_columns_unchanged": true
+  },
+  "workflow_notice": {
+    "rows": 30,
+    "original_columns_unchanged": true
+  },
+  "workflow_companyholiday": {
+    "rows": 0,
+    "original_columns_unchanged": true
+  },
+  "workflow_companyleavecharge": {
+    "rows": 0,
+    "original_columns_unchanged": true
+  },
+  "legacy_routes_preserved": true
+}

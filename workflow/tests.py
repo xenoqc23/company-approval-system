@@ -17,6 +17,9 @@ from workflow.management.commands.seed_demo import TENURE, POLICY
 class ApprovalTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        # Baseline regression scenarios use the explicit three-stage configuration.
+        from .models import ApprovalRule
+        ApprovalRule.objects.update(enabled=False)
         User = get_user_model()
         for key, flags in [
             ('owner', {}), ('reviewer', {}), ('approver', {}), ('stranger', {}),
@@ -197,7 +200,7 @@ class ApprovalTests(TestCase):
         form = DocumentForm()
         self.assertEqual(list(form.fields['recipient'].queryset.values_list('pk', flat=True))[:2], [self.approver.pk, self.reviewer.pk])
         low = self.finish(self.purchase())
-        high = self.finish(self.purchase(owner=self.approver))
+        high = self.finish(self.purchase(owner=self.approver, reviewer=self.approver))
         self.client.force_login(self.accounting)
         response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office'})
         self.assertEqual([doc.pk for doc in response.context['documents']], [high.pk, low.pk])
