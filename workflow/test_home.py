@@ -1,5 +1,6 @@
 from datetime import date, time
 from decimal import Decimal
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -43,6 +44,34 @@ class HomeWorkspaceTests(TestCase):
             self.assertNotIn(self.admin.pk, form_response.context['form'].fields['reviewer'].queryset.values_list('pk', flat=True))
         self.assertContains(response, '전체 문서 검색')
         self.assertContains(response, 'workspace.css')
+
+    @patch('workflow.context.timezone.localdate', return_value=date(2026, 10, 15))
+    def test_home_balance_uses_current_employee_and_year(self, _today):
+        AnnualBalance.objects.filter(user=self.owner, year=2026).update(used=Decimal('2.25'))
+        AnnualBalance.objects.create(user=self.owner, year=2025, total=99, used=0, grant_initialized=True)
+        AnnualBalance.objects.create(user=self.other, year=2026, total=23, used=1, grant_initialized=True)
+        for user, values in [(self.owner, ('15', '2.25', '12.75')), (self.other, ('23', '1', '22'))]:
+            self.client.force_login(user)
+            response = self.client.get(reverse('dashboard'))
+            for label, value in zip(['총연차', '사용연차', '잔여연차'], values):
+                self.assertContains(response, f'aria-label="{label} {value}일"')
+            self.assertNotContains(response, 'aria-label="총연차 99일"')
+
+    @patch('workflow.context.timezone.localdate', return_value=date(2026, 10, 15))
+    def test_home_balance_reflects_manual_changes_zero_and_negative_remaining(self, _today):
+        self.client.force_login(self.owner)
+        for used, expected in [('16.25', '-1.25'), ('15', '0')]:
+            AnnualBalance.objects.filter(user=self.owner, year=2026).update(used=used)
+            response = self.client.get(reverse('dashboard'))
+            self.assertContains(response, f'aria-label="잔여연차 {expected}일"')
+            self.assertNotContains(response, '연차가 아직 등록되지 않았습니다.')
+
+    @patch('workflow.context.timezone.localdate', return_value=date(2026, 10, 15))
+    def test_home_unregistered_balance_is_not_presented_as_zero_entitlement(self, _today):
+        self.client.force_login(self.other)
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, '연차가 아직 등록되지 않았습니다.')
+        self.assertNotContains(response, 'aria-label="총연차 0일"')
 
     def test_home_leave_submission_reuses_workflow_and_does_not_charge_early(self):
         self.client.force_login(self.owner)

@@ -3,7 +3,15 @@
 <div class="home-workspace">
   <section class="welcome-hero" aria-labelledby="welcome-title">
     <div class="welcome-copy"><h1 id="welcome-title">사내결재시스템</h1><h2>오늘도 좋은 하루 되세요!</h2><p>{{ user.first_name }} {{ profile.rank }}님, 빠른 결재로 더 효율적인 업무를 시작하세요.</p></div>
-    <div class="hero-message" aria-hidden="true">함께 만드는<br>더 좋은 오늘<span></span></div>
+    <section class="home-leave-summary" aria-labelledby="my-leave-title">
+      <div class="leave-summary-heading"><h2 id="my-leave-title">나의 연차 현황</h2><span>{{ current_year }}년</span></div>
+      {% if balance %}<dl class="personal-leave-values">
+        <div><dt>총연차</dt><dd aria-label="총연차 {{ balance.total|amount }}일">{{ balance.total|amount }}<small>일</small></dd></div>
+        <div><dt>사용연차</dt><dd aria-label="사용연차 {{ balance.used|amount }}일">{{ balance.used|amount }}<small>일</small></dd></div>
+        <div class="remaining{% if remaining < 0 %} overdrawn{% endif %}"><dt>잔여연차</dt><dd aria-label="잔여연차 {{ remaining|amount }}일">{{ remaining|amount }}<small>일</small></dd></div>
+      </dl><p class="personal-leave-note">공용연차 포함 · 최종 승인 및 경리 수정 내용 반영</p>
+      {% else %}<p class="personal-leave-empty">연차가 아직 등록되지 않았습니다.<br>경리 담당자에게 문의해 주세요.</p>{% endif %}
+    </section>
   </section>
 
   <section class="home-shortcuts" aria-label="기안 바로가기">
