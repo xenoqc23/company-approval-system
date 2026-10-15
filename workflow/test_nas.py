@@ -1,10 +1,12 @@
 from io import StringIO
 import json
+import runpy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from zipfile import ZipFile
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
@@ -13,6 +15,25 @@ from workflow.nas_backup import verified_sql, restore_mariadb, prune_scheduled_b
 
 
 class NasSafetyTests(TestCase):
+    def test_installer_prepares_all_bind_directories_and_preserves_existing_data(self):
+        script = str(settings.BASE_DIR / 'deploy/nas/init_config.py')
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            def initialize():
+                with patch('pathlib.Path', return_value=root), patch('os.chown'):
+                    runpy.run_path(script)
+            initialize()
+            for name in ['data/mariadb', 'data/app', 'backups']:
+                self.assertTrue((root / name).is_dir())
+            config = (root / '.env').read_bytes()
+            password = (root / 'data/app/initial-admin-password.txt').read_bytes()
+            sentinel = root / 'data/mariadb/existing-data'
+            sentinel.write_bytes(b'existing database files')
+            initialize()
+            self.assertEqual((root / '.env').read_bytes(), config)
+            self.assertEqual((root / 'data/app/initial-admin-password.txt').read_bytes(), password)
+            self.assertEqual(sentinel.read_bytes(), b'existing database files')
+
     def test_bootstrap_only_creates_admin_and_never_resets_existing_password(self):
         with TemporaryDirectory() as folder, override_settings(PRODUCTION=True):
             path = Path(folder) / 'secret'

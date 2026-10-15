@@ -151,3 +151,12 @@ DJANGO_TRUST_PROXY=1
 - 100만원 초과 규정과 적격 승인자가 없는 경우의 별도 예외는 확정되지 않았다. 기존 기본 결재 경로와 허용 직급을 확인한 뒤 정식 사용한다.
 - 경조사 구간의 경계(근속 2년/10년)는 제공된 표의 표현을 유지한다. 실제 지급 판단은 담당자 확인이 필요하다.
 - 사용자가 확정한 숫자만 포함한 4자 이상 비밀번호, 같은 직급 이상 결재선, 본인 최종 승인 허용 등의 정책은 유지한다.
+
+## 설치 중 data/mariadb 폴더 오류가 나온 경우
+
+초기 배포본에서 Synology 기존 Docker의 `Bind mount failed ... data/mariadb does not exist` 오류가 나면 다음 두 명령을 차례로 실행한다. 기존 DB 파일·`.env`·계정 암호는 삭제하지 않는다. 수정된 배포본에서는 해당 폴더를 미리 생성한다.
+
+```sh
+sudo mkdir -p /volume1/docker/company-approval/data/mariadb
+sudo sh /volume1/docker/company-approval/app/deploy/nas/nas.sh install
+```

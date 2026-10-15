@@ -5,6 +5,9 @@ import secrets
 
 root = Path('/target')
 owner = int(os.environ.get('CONFIG_OWNER', '0'))
+# Synology's legacy Docker refuses bind mounts whose host directory is missing.
+# Leave database ownership to MariaDB's entrypoint and preserve existing files.
+(root / 'data/mariadb').mkdir(parents=True, exist_ok=True)
 for name in ['data/app', 'backups']:
     folder = root / name
     folder.mkdir(parents=True, exist_ok=True)
