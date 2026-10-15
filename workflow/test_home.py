@@ -73,6 +73,35 @@ class HomeWorkspaceTests(TestCase):
         self.assertContains(response, '연차가 아직 등록되지 않았습니다.')
         self.assertNotContains(response, 'aria-label="총연차 0일"')
 
+    def test_home_kind_filter_and_counts_are_limited_to_submitted_own_documents(self):
+        office = save_document(Document(owner=self.owner, kind='office', product='내 사무용품', quantity=1,
+            unit_price=10, url='https://example.com', reviewer=self.reviewer, approver=self.approver), self.owner, submit=True)
+        stock = save_document(Document(owner=self.owner, kind='stock', product='내 재고요청', quantity=1,
+            reviewer=self.reviewer), self.owner, submit=True)
+        save_document(Document(owner=self.other, kind='office', product='타인 비공개 품목', quantity=1,
+            unit_price=10, url='https://example.com', reviewer=self.reviewer, approver=self.approver), self.other, submit=True)
+        for status in ['draft', 'deleted']:
+            Document.objects.create(owner=self.owner, kind='office', status=status, product='숨긴 품목')
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse('dashboard'), {'home_kind': 'office'})
+        self.assertEqual(list(response.context['documents']), [office])
+        self.assertEqual({row['key']: row['count'] for row in response.context['home_categories']},
+                         {'all': 2, 'leave': 0, 'office': 1, 'stock': 1})
+        self.assertNotContains(response, '타인 비공개 품목')
+        self.assertNotContains(response, '숨긴 품목')
+        response = self.client.get(reverse('dashboard'), {'home_kind': 'stock'})
+        self.assertEqual(list(response.context['documents']), [stock])
+        response = self.client.get(reverse('dashboard'), {'home_kind': 'leave'})
+        self.assertContains(response, '해당 종류의 문서가 없습니다')
+        self.assertEqual(list(response.context['documents']), [])
+
+    def test_unknown_home_kind_safely_defaults_to_all(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse('dashboard'), {'home_kind': 'not-a-document-kind'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['home_kind'], 'all')
+        self.assertContains(response, '아직 작성한 문서가 없습니다')
+
     def test_home_leave_submission_reuses_workflow_and_does_not_charge_early(self):
         self.client.force_login(self.owner)
         response = self.client.post(reverse('compose'), self.payload())

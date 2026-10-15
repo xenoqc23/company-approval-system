@@ -1,0 +1,42 @@
+[
+  {
+    "selector": ".nav-item.active",
+    "contrast": 10.79
+  },
+  {
+    "selector": ".mint-quick-card.leave",
+    "contrast": 10.79
+  },
+  {
+    "selector": ".badge.approved",
+    "contrast": 5.13
+  },
+  {
+    "selector": ".badge.rejected",
+    "contrast": 4.7
+  },
+  {
+    "selector": ".badge.approve",
+    "contrast": 5.11
+  },
+  {
+    "selector": ".mint-document-title",
+    "contrast": 11.88
+  },
+  {
+    "selector": ".mint-document-date",
+    "contrast": 4.98
+  },
+  {
+    "selector": ".personal-leave-values dt",
+    "contrast": 7.03
+  },
+  {
+    "selector": ".mint-kind-tabs a:not(.selected)",
+    "contrast": 5.17
+  },
+  {
+    "selector": ".sidebar-inspiration p",
+    "contrast": 8.98
+  }
+]

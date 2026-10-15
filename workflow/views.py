@@ -8,7 +8,7 @@ from django.contrib.auth import authenticate, login, logout, get_user_model, upd
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -99,7 +99,17 @@ def dashboard(request):
     steps = progress_stages(progress_doc)
     if progress_doc and progress_doc.kind != 'stock':
         steps = steps[:3]
-    return page(request, 'dashboard', '홈', documents=mine.select_related('owner')[:4],
+    home_kind = request.GET.get('home_kind', 'all')
+    if home_kind not in ['all', 'leave', 'office', 'stock']:
+        home_kind = 'all'
+    kind_counts = dict(mine.order_by().values_list('kind').annotate(n=Count('pk')))
+    home_categories = [
+        {'key': key, 'label': label, 'count': sum(kind_counts.values()) if key == 'all' else kind_counts.get(key, 0),
+         'url': reverse('dashboard') + '?home_kind=' + key + '#recent-documents'}
+        for key, label in [('all', '전체'), ('leave', '휴가원'), ('office', '구매요청서'), ('stock', '생산 재고')]]
+    recent = mine if home_kind == 'all' else mine.filter(kind=home_kind)
+    return page(request, 'dashboard', '홈', documents=recent.select_related('owner')[:4],
+                home_kind=home_kind, home_categories=home_categories,
                 progress_doc=progress_doc, progress_steps=steps, notices=visible_notices(request.user)[:3])
 
 @login_required

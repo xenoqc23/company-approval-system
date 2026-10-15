@@ -1,0 +1,45 @@
+[
+  {
+    "role": "accounting",
+    "width": 1080,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "accounting",
+    "width": 1280,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "accounting",
+    "width": 1366,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "accounting",
+    "width": 1920,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "admin",
+    "width": 1080,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "admin",
+    "width": 1280,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "admin",
+    "width": 1366,
+    "all_role_menus_visible": true
+  },
+  {
+    "role": "admin",
+    "width": 1920,
+    "all_role_menus_visible": true
+  },
+  {
+    "history_back": "compose controls usable"
+  }
+]

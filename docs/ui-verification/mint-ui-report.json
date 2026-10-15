@@ -1,0 +1,979 @@
+{
+  "routes": [
+    {
+      "role": "employee",
+      "path": "/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=office",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=stock",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=pending",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=drafts",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=archive",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=stock",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=receive",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=history",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/notices/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/absence/new/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=benefits",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=leave",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/account/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/12/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/leave/4/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=office",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=stock",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=pending",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=drafts",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=archive",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=stock",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=receive",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=history",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/notices/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/absence/new/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=benefits",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=leave",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/account/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/12/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/leave/4/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=office",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=stock",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=pending",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=drafts",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=archive",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=stock",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=receive",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=history",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/notices/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/absence/new/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=benefits",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=leave",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/account/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/12/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/leave/4/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=office",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=stock",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=pending",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=drafts",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=archive",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=stock",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=receive",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=history",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/notices/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/absence/new/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=benefits",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=leave",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/account/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/12/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/leave/4/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=office",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/compose/?kind=stock",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=pending",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=drafts",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=archive",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=stock",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=receive",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/?mode=history",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/notices/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/absence/new/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=benefits",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/welfare/?tab=leave",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/account/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/documents/12/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "employee",
+      "path": "/calendar/leave/4/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/2/history/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/company-holidays/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting&kind=office",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/policy/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/10/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/2/history/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/company-holidays/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting&kind=office",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/policy/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/10/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/2/history/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/company-holidays/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting&kind=office",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/policy/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/10/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/2/history/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/company-holidays/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting&kind=office",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/policy/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/10/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/balances/2/history/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/company-holidays/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/?mode=accounting&kind=office",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/policy/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "accounting",
+      "path": "/documents/10/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=개발팀",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=생산팀",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/backups/",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/documents/?mode=all",
+      "width": 1080,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=개발팀",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=생산팀",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/backups/",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/documents/?mode=all",
+      "width": 1280,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=개발팀",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=생산팀",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/backups/",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/documents/?mode=all",
+      "width": 1366,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=개발팀",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=생산팀",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/backups/",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/documents/?mode=all",
+      "width": 1440,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=개발팀",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/staff/?department=생산팀",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/backups/",
+      "width": 1920,
+      "passed": true
+    },
+    {
+      "role": "admin",
+      "path": "/documents/?mode=all",
+      "width": 1920,
+      "passed": true
+    }
+  ],
+  "widths": [
+    1080,
+    1280,
+    1366,
+    1440,
+    1920
+  ],
+  "errors": [],
+  "functional": [
+    "empty states and permission boundaries",
+    "home type filters, counts, notifications and locally loaded font",
+    "department picker, no admin approver, live purchase total, actual draft save",
+    "actual leave submit, 3-day preview, review/approval dialogs, final cancellation restores original balance",
+    "finance department filter, annual history, real annual and selected purchase XLSX downloads"
+  ]
+}

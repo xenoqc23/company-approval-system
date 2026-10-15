@@ -122,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const update = () => {
     const kind = id('kind').value;
+    form.dataset.documentKind = kind;
     const isLeave = kind === 'leave';
     const isStock = kind === 'stock';
     const annual = id('leave_type').value === 'annual';
