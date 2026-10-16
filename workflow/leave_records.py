@@ -64,7 +64,7 @@ def leave_usage_summaries(employees, year):
     ids = [employee.pk for employee in employees]
     if not ids:
         return {}
-    events = {pk: [] for pk in ids}
+    events = {pk: {'personal': [], 'common': []} for pk in ids}
     labels = {'annual': '연차', 'am': '반차', 'pm': '반차', 'outing': '외출'}
     first, last = date(year, 1, 1), date(year, 12, 31)
     documents = Document.objects.filter(owner_id__in=ids, kind='leave', status='approved',
@@ -79,16 +79,17 @@ def leave_usage_summaries(employees, year):
         day, end = max(first, doc['start_date']), min(last, doc['end_date'])
         while day <= end:
             if day.weekday() < 5:
-                events[doc['owner_id']].append((day, label))
+                events[doc['owner_id']]['personal'].append((day, label))
             day += timedelta(days=1)
     for usage in ManualLeaveUsage.objects.filter(employee_id__in=ids, used_date__year=year,
             cancelled_at__isnull=True).values('employee_id', 'used_date', 'leave_type'):
         label = labels.get(usage['leave_type'])
         if label:
-            events[usage['employee_id']].append((usage['used_date'], label))
+            events[usage['employee_id']]['personal'].append((usage['used_date'], label))
     for charge in CompanyLeaveCharge.objects.filter(employee_id__in=ids, year=year, active=True,
             amount__gt=0, holiday__day__range=(first, last)).values('employee_id', 'holiday__day'):
-        events[charge['employee_id']].append((charge['holiday__day'], '공용연차'))
-    return {pk: ', '.join(f'{day.month}/{day.day}({label})'
-                for day, label in sorted(items, key=lambda item: item[0], reverse=True))
-            for pk, items in events.items()}
+        events[charge['employee_id']]['common'].append((charge['holiday__day'], '공용연차'))
+    return {pk: {category: ', '.join(f'{day.month}/{day.day}({label})'
+                    for day, label in sorted(items, key=lambda item: item[0], reverse=True))
+                 for category, items in categories.items()}
+            for pk, categories in events.items()}

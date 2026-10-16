@@ -58,18 +58,18 @@ class LeaveExportTests(TestCase):
         cancelled = self.manual(date(2026,10,7))
         cancel_manual_leave(self.finance, self.employee, cancelled.pk, 'PRIVATE_CANCEL_REASON')
         summary = leave_usage_summaries([self.employee], 2026)[self.employee.pk]
-        self.assertEqual(summary, '10/16(연차), 10/9(공용연차), 10/8(연차), 9/2(반차), 9/1(반차), 8/28(외출)')
+        self.assertEqual(summary, {'personal':'10/16(연차), 10/8(연차), 9/2(반차), 9/1(반차), 8/28(외출)', 'common':'10/9(공용연차)'})
 
     def test_multi_day_and_year_boundary_match_weekday_charges(self):
         self.document(date(2026,12,31), end_date=date(2027,1,4), allocations={'2026':'1','2027':'2'})
         self.manual(date(2027,1,5))
         self.common(date(2027,1,6))
-        self.assertEqual(leave_usage_summaries([self.employee],2026)[self.employee.pk], '12/31(연차)')
+        self.assertEqual(leave_usage_summaries([self.employee],2026)[self.employee.pk], {'personal':'12/31(연차)', 'common':''})
         self.assertEqual(leave_usage_summaries([self.employee],2027)[self.employee.pk],
-            '1/6(공용연차), 1/5(연차), 1/4(연차), 1/1(연차)')
+            {'personal':'1/5(연차), 1/4(연차), 1/1(연차)', 'common':'1/6(공용연차)'})
         self.document(date(2026,10,16), end_date=date(2026,10,19), allocations={'2026':'2'})
         self.assertEqual(leave_usage_summaries([self.employee],2026)[self.employee.pk],
-            '12/31(연차), 10/19(연차), 10/16(연차)')
+            {'personal':'12/31(연차), 10/19(연차), 10/16(연차)', 'common':''})
 
     def test_real_download_both_sheets_numbers_wrap_filters_and_read_only_balances(self):
         self.document(date(2026,10,16))
@@ -81,21 +81,28 @@ class LeaveExportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         workbook = load_workbook(BytesIO(response.content))
         main, overview = workbook.worksheets
-        summary = '10/16(연차), 10/9(공용연차), 10/8(연차)'
+        summary = '10/16(연차), 10/8(연차)'
         self.assertEqual(main.max_row, 2)
         self.assertEqual(main['H1'].value, '공용연차')
         self.assertEqual(main['H2'].value, .5)
         self.assertEqual(main['H2'].number_format, '#,##0.##')
+        self.assertEqual(main['I1'].value, '개인 사용내역')
         self.assertEqual(main['I2'].value, summary)
+        self.assertEqual(main['J1'].value, '공용연차 내역')
+        self.assertEqual(main['J2'].value, '10/9(공용연차)')
         self.assertEqual(overview['D1'].value, '공용연차')
         self.assertEqual(overview['D2'].value, .5)
+        self.assertEqual(overview['G1'].value, '개인 사용내역')
         self.assertEqual(overview['G2'].value, summary)
-        for sheet, column, columns in [(main,'I',9), (overview,'G',7)]:
+        self.assertEqual(overview['H1'].value, '공용연차 내역')
+        self.assertEqual(overview['H2'].value, '10/9(공용연차)')
+        for sheet, column, last in [(main,'I','J'), (overview,'G','H')]:
             self.assertEqual(sheet[f'{column}2'].data_type, 's')
             self.assertTrue(sheet[f'{column}2'].alignment.wrap_text)
             self.assertEqual(sheet.freeze_panes, 'A2')
-            self.assertEqual(sheet.max_column, columns)
-            self.assertEqual(sheet.auto_filter.ref, f'A1:{column}2')
+            self.assertEqual(sheet.max_column, 10 if sheet == main else 8)
+            self.assertTrue(sheet[f'{last}2'].alignment.wrap_text)
+            self.assertEqual(sheet.auto_filter.ref, f'A1:{last}2')
             self.assertIn('사용 예정', sheet[f'{column}1'].comment.text)
         all_text = ' '.join(str(cell.value) for sheet in workbook for row in sheet for cell in row)
         self.assertNotIn('PRIVATE_', all_text)
@@ -103,7 +110,7 @@ class LeaveExportTests(TestCase):
 
     def test_no_fabricated_usage_for_old_balance_adjustments_and_no_rows(self):
         histories = leave_usage_summaries([self.employee],2026)
-        self.assertEqual(histories[self.employee.pk], '')
+        self.assertEqual(histories[self.employee.pk], {'personal':'', 'common':''})
         workbook = leave_balances_workbook(balance_rows(2026,'품질팀'),2026)
         self.assertEqual(workbook.active['I2'].value, '—')
         self.assertEqual(workbook.active['F2'].value, Decimal('3.25'))
@@ -115,7 +122,14 @@ class LeaveExportTests(TestCase):
         self.document(date(2026,10,16))
         with self.assertNumQueries(3):
             histories = leave_usage_summaries([self.employee,self.finance],2026)
-        self.assertEqual(histories[self.employee.pk], '10/16(연차)')
-        self.assertEqual(histories[self.finance.pk], '')
+        self.assertEqual(histories[self.employee.pk], {'personal':'10/16(연차)', 'common':''})
+        self.assertEqual(histories[self.finance.pk], {'personal':'', 'common':''})
         with self.assertNumQueries(0):
             self.assertEqual(leave_usage_summaries([],2026), {})
+
+    def test_common_only_leave_stays_out_of_personal_history_on_both_sheets(self):
+        self.common(date(2026,5,4))
+        workbook = leave_balances_workbook(balance_rows(2026,'품질팀'),2026)
+        for sheet, personal, common in [(workbook.active,'I','J'), (workbook['인원별 연차표'],'G','H')]:
+            self.assertEqual(sheet[f'{personal}2'].value, '—')
+            self.assertEqual(sheet[f'{common}2'].value, '5/4(공용연차)')

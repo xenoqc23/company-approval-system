@@ -50,20 +50,20 @@ DB/기존 app 폴더 삭제·재설치·임의 복원을 실행하지 마세요.
 '''
 
 
-def build():
-    output = ROOT / 'releases' / f'{NAME}.zip'
+def build(*, name=NAME, instructions=INSTRUCTIONS):
+    output = ROOT / 'releases' / f'{name}.zip'
     payload = {f'app/{name}': (ROOT / name).read_bytes() for name in FILES}
     payload['APPLY_LEAVE_EXCEL.sh'] = APPLY.encode()
-    payload['NAS_LEAVE_EXCEL.txt'] = INSTRUCTIONS.encode()
+    payload['NAS_LEAVE_EXCEL.txt'] = instructions.encode()
     payload['SHA256SUMS'] = ''.join(
         f'{sha256(data).hexdigest()}  {name}\n' for name, data in payload.items()).encode()
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:
         for name, data in payload.items():
-            archive.writestr(f'{NAME}/{name}', data)
+            archive.writestr(f'{output.stem}/{name}', data)
     with ZipFile(output) as archive:
         assert archive.testzip() is None
         for name, data in payload.items():
-            assert archive.read(f'{NAME}/{name}') == data
+            assert archive.read(f'{output.stem}/{name}') == data
     print(f'{output.name}: {output.stat().st_size} bytes; {len(FILES)} runtime files verified.')
     return output
 
