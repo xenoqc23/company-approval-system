@@ -1,0 +1,22 @@
+{% extends 'workflow/base.html' %}{% load static ui %}
+{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/manual-leave.css' %}"><script src="{% static 'workflow/manual-leave.js' %}" defer></script>{% endblock %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">MANUAL LEAVE</div><h1>연차 사용 직접 등록</h1><p>{{ employee.first_name }} · {{ employee.profile.department }} · {{ employee.profile.rank }}</p></div><a class="btn secondary" href="{% url 'leave_history' employee.pk %}?year={{ selected_year }}">사용 내역으로 돌아가기</a></div>
+<section class="panel manual-leave-panel">
+  <div class="panel-heading"><h2>시스템 밖에서 신청한 휴가</h2></div>
+  <p class="leave-records-note">종이 신청서·구두 신청 등으로 사용한 연차를 등록하세요. 등록한 일수만큼 사용연차가 늘고 잔여연차가 줄어듭니다. 여러 날을 사용했다면 날짜별로 등록해 주세요.</p>
+  <form method="post" class="manual-leave-form" data-manual-leave-form>
+    {% csrf_token %}{{ form.request_key }}{{ form.request_key.errors }}
+    {% if form.non_field_errors %}<div class="message error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="manual-leave-fields">
+    {% for field in form.visible_fields %}<div class="field{% if field.name == 'reason' %} manual-leave-reason{% endif %}" {% if field.name == 'start_time' or field.name == 'end_time' %}data-manual-time{% endif %}>
+      {{ field.label_tag }}{{ field }}{% if field.errors %}<div role="alert">{{ field.errors }}</div>{% endif %}
+    </div>{% endfor %}
+    </div>
+    <p class="manual-leave-preview" role="status" aria-live="polite" data-manual-preview>연차 1일 · 반차 0.5일 · 외출 0.25일을 실제 사용일의 연도에서 차감합니다.</p>
+    <p class="muted">{{ selected_year }}년 현재: 총 {{ employee_balance.total|default:0|amount }}일 / 사용 {{ employee_balance.used|default:0|amount }}일 / 잔여 {{ employee_balance.remaining|default:0|amount }}일</p>
+    <p class="manual-leave-warning">이미 사용연차 수동 수정으로 반영한 휴가는 다시 등록하면 중복 차감됩니다. 기존 잔액과 내역을 먼저 확인해 주세요. 잔여연차가 부족해도 실제 사용 내역은 등록되며 잔여연차가 음수로 표시됩니다.</p>
+    <div class="manual-leave-actions"><button class="btn" type="submit">사용 등록 · 잔여연차 차감</button><a class="btn secondary" href="{% url 'leave_history' employee.pk %}?year={{ selected_year }}">돌아가기</a></div>
+  </form>
+</section>
+{% endblock %}

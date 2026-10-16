@@ -1,0 +1,52 @@
+{
+  "passed": 9,
+  "results": [
+    {
+      "width": 320,
+      "scenario": "annual registration, replay, cancel, retained history and balance restoration",
+      "passed": true
+    },
+    {
+      "width": 320,
+      "scenario": "half-day times, overlapping date rejection, retained form and exact restoration",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "scenario": "annual registration, replay, cancel, retained history and balance restoration",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "scenario": "half-day times, overlapping date rejection, retained form and exact restoration",
+      "passed": true
+    },
+    {
+      "width": 768,
+      "scenario": "annual registration, replay, cancel, retained history and balance restoration",
+      "passed": true
+    },
+    {
+      "width": 768,
+      "scenario": "half-day times, overlapping date rejection, retained form and exact restoration",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "annual registration, replay, cancel, retained history and balance restoration",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "half-day times, overlapping date rejection, retained form and exact restoration",
+      "passed": true
+    },
+    {
+      "scenario": "native registration and cancellation without JavaScript",
+      "passed": true
+    }
+  ],
+  "javascript_errors": [],
+  "data": "fictional seed_demo only",
+  "static_delivery": "DEBUG=0, WhiteNoise compressed manifest"
+}

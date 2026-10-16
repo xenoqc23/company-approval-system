@@ -1,27 +1,42 @@
-{% extends 'workflow/base.html' %}{% load ui %}
+{% extends 'workflow/base.html' %}{% load static ui %}
+{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/manual-leave.css' %}">{% endblock %}
 {% block content %}
-<div class="page-heading"><div><div class="eyebrow">LEAVE HISTORY</div><h1>{{ employee.first_name }} 연차 사용 내역</h1><p>{{ employee.profile.department }} · {{ employee.profile.rank }} · {{ selected_year }}년</p></div><div class="leave-history-tools"><form method="get" class="balance-filters"><input type="hidden" name="mode" value="{{ mode }}"><label>조회 연도<select name="year" onchange="this.form.submit()">{% for y in years %}<option {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></label><noscript><button class="btn secondary">조회</button></noscript></form><a class="btn secondary" href="{{ back_url }}">직원별 연차 관리</a></div></div>
+<div class="page-heading"><div><div class="eyebrow">LEAVE HISTORY</div><h1>{{ employee.first_name }} 연차 사용 내역</h1><p>{{ employee.profile.department }} · {{ employee.profile.rank }} · {{ selected_year }}년</p></div><div class="leave-history-tools"><form method="get" class="balance-filters"><input type="hidden" name="mode" value="{{ mode }}"><label>조회 연도<select name="year" onchange="this.form.submit()">{% for y in years %}<option {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></label><noscript><button class="btn secondary">조회</button></noscript></form><a class="btn" href="{% url 'manual_leave_new' employee.pk %}?year={{ selected_year }}">연차 사용 직접 등록</a><a class="btn secondary" href="{{ back_url }}">직원별 연차 관리</a></div></div>
 <div class="leave-summary">
   <div class="panel"><small>총연차</small><strong>{{ employee_balance.total|default:0|amount }}일</strong></div>
   <div class="panel"><small>사용연차 · 수동 조정 포함</small><strong>{{ employee_balance.used|default:0|amount }}일</strong></div>
   <div class="panel"><small>잔여연차</small><strong class="{% if employee_balance.remaining < 0 %}negative{% endif %}">{{ employee_balance.remaining|default:0|amount }}일</strong></div>
 </div>
 <section class="panel">
-  <nav class="list-tabs" aria-label="연차 이력 종류"><a class="{% if mode == 'approved' %}selected{% endif %}" href="?year={{ selected_year }}&mode=approved">승인된 휴가</a><a class="{% if mode == 'all' %}selected{% endif %}" href="?year={{ selected_year }}&mode=all">전체 신청 이력</a></nav>
-  <p class="leave-records-note">{{ selected_year }}년에 사용일이 포함된 휴가를 표시합니다. 예정된 휴가도 승인 시 연차가 차감되어 포함됩니다. 반려·취소·대기 문서는 현재 차감 일수에 포함하지 않습니다.</p>
-  <div class="table-wrap"><table class="leave-records-table"><thead><tr><th>사용 날짜</th><th>사용 시간</th><th>휴가 종류</th><th>{{ selected_year }}년 차감</th><th>결재 상태</th><th>문서번호</th></tr></thead><tbody>
+  <nav class="list-tabs" aria-label="연차 이력 종류"><a class="{% if mode == 'approved' %}selected{% endif %}" href="?year={{ selected_year }}&mode=approved">사용 내역</a><a class="{% if mode == 'all' %}selected{% endif %}" href="?year={{ selected_year }}&mode=all">전체 이력 · 취소 포함</a></nav>
+  <p class="leave-records-note">{{ selected_year }}년에 사용일이 포함된 휴가를 표시합니다. 결재로 승인된 휴가와 경리 직접 등록을 함께 표시합니다. 예정된 휴가도 승인·등록 시 연차가 차감되어 포함됩니다. 반려·취소·대기 문서는 현재 차감 일수에 포함하지 않습니다.</p>
+  <div class="table-wrap"><table class="leave-records-table manual-history-table"><thead><tr><th>사용 날짜</th><th>사용 시간</th><th>휴가 종류</th><th>{{ selected_year }}년 차감</th><th>처리 상태</th><th>문서번호 · 등록 정보</th></tr></thead><tbody>
   {% for row in leave_rows %}<tr>
-    <td class="leave-date-cell"><strong>{{ row.doc.start_date|date:'Y.m.d' }}{% if row.doc.start_date != row.doc.end_date %} ~ {{ row.doc.end_date|date:'Y.m.d' }}{% endif %}</strong><small>{{ row.timing }}</small></td>
-    <td class="nowrap">{% if row.doc.leave_type == 'annual' %}종일{% else %}{{ row.doc.start_time|time:'H:i' }} ~ {{ row.doc.end_time|time:'H:i' }}{% endif %}</td>
-    <td>{{ row.doc.get_leave_type_display }}</td><td><strong>{{ row.charged|amount }}일</strong></td>
-    <td><span class="badge {{ row.doc.status }}">{{ row.doc.get_status_display }}</span></td>
-    <td class="document-number">{% if row.accessible %}<a class="text-link" href="{% url 'detail' row.doc.pk %}">{{ row.doc.number }}</a>{% else %}{{ row.doc.number }}{% endif %}</td>
-  </tr>{% empty %}<tr><td colspan="6"><div class="empty"><strong>해당 연도의 휴가 내역이 없습니다.</strong><p>연도나 이력 종류를 변경해 주세요.</p></div></td></tr>{% endfor %}
+  {% if row.manual %}
+    <td data-label="사용 날짜" class="leave-date-cell"><strong>{{ row.manual.used_date|date:'Y.m.d' }}</strong><small>{{ row.timing }}</small></td>
+    <td data-label="사용 시간">{% if row.manual.leave_type == 'annual' %}종일{% else %}{{ row.manual.start_time|time:'H:i' }} ~ {{ row.manual.end_time|time:'H:i' }}{% endif %}</td>
+    <td data-label="휴가 종류">{{ row.manual.get_leave_type_display }}<small class="manual-leave-info">경리 직접 등록</small></td>
+    <td data-label="차감 일수"><strong>{{ row.charged|amount }}일</strong>{% if row.manual.cancelled_at %}<small class="manual-leave-info">기존 {{ row.manual.amount|amount }}일 복원 완료</small>{% endif %}</td>
+    <td data-label="등록 상태"><span class="badge {% if row.manual.cancelled_at %}cancelled{% endif %}">{% if row.manual.cancelled_at %}등록 취소{% else %}직접 등록{% endif %}</span></td>
+    <td data-label="등록 정보">
+      <strong>직접 등록 #{{ row.manual.pk }}</strong>
+      <span class="manual-leave-info">사유: {{ row.manual.reason|linebreaksbr }}</span>
+      <small class="manual-leave-info">{{ row.manual.created_by.first_name }} · 등록 {{ row.manual.created_at|date:'Y.m.d H:i' }}</small>
+      {% if row.manual.cancelled_at %}<span class="manual-leave-info">취소 사유: {{ row.manual.cancel_reason|linebreaksbr }}</span><small class="manual-leave-info">{{ row.manual.cancelled_by.first_name }} · 취소 {{ row.manual.cancelled_at|date:'Y.m.d H:i' }}</small>
+      {% else %}<details class="manual-leave-cancel"><summary class="text-link">등록 취소 · 연차 복원</summary><form method="post" action="{% url 'manual_leave_cancel' employee.pk row.manual.pk %}">{% csrf_token %}<label for="cancel-reason-{{ row.manual.pk }}">취소 사유 (필수)</label><input id="cancel-reason-{{ row.manual.pk }}" name="reason" maxlength="1000" required placeholder="예: 결재 문서로 다시 신청"><button class="btn secondary small" type="submit">{{ row.manual.amount|amount }}일 복원하고 취소</button></form></details>{% endif %}
+    </td>
+  {% else %}
+    <td data-label="사용 날짜" class="leave-date-cell"><strong>{{ row.doc.start_date|date:'Y.m.d' }}{% if row.doc.start_date != row.doc.end_date %} ~ {{ row.doc.end_date|date:'Y.m.d' }}{% endif %}</strong><small>{{ row.timing }}</small></td>
+    <td data-label="사용 시간" class="nowrap">{% if row.doc.leave_type == 'annual' %}종일{% else %}{{ row.doc.start_time|time:'H:i' }} ~ {{ row.doc.end_time|time:'H:i' }}{% endif %}</td>
+    <td data-label="휴가 종류">{{ row.doc.get_leave_type_display }}</td><td data-label="차감 일수"><strong>{{ row.charged|amount }}일</strong></td>
+    <td data-label="결재 상태"><span class="badge {{ row.doc.status }}">{{ row.doc.get_status_display }}</span></td>
+    <td data-label="문서번호" class="document-number">{% if row.accessible %}<a class="text-link" href="{% url 'detail' row.doc.pk %}">{{ row.doc.number }}</a>{% else %}{{ row.doc.number }}{% endif %}</td>
+  {% endif %}</tr>{% empty %}<tr><td colspan="6"><div class="empty"><strong>해당 연도의 휴가 내역이 없습니다.</strong><p>연도나 이력 종류를 변경해 주세요.</p></div></td></tr>{% endfor %}
   </tbody></table></div>
-  <div class="panel-footer">승인된 휴가 문서의 {{ selected_year }}년 차감 합계: {{ document_charged|amount }}일. 연차 현황에는 수동 조정분이 포함될 수 있어 문서 합계와 다를 수 있습니다.</div>
+  <div class="panel-footer">승인된 휴가 문서의 {{ selected_year }}년 차감 합계: {{ document_charged|amount }}일. 경리 직접 등록 차감 합계: {{ manual_charged|amount }}일. 연차 현황에는 공용연차와 잔액 정정분도 포함될 수 있습니다.</div>
 </section>
 <section class="panel"><div class="panel-heading"><h2>{{ selected_year }}년 공용연차 사용</h2></div><div class="table-wrap"><table><thead><tr><th>회사 휴무 날짜</th><th>휴무명</th><th>차감</th></tr></thead><tbody>{% for charge in common_charges %}<tr><td>{{ charge.holiday.day|date:'Y.m.d' }}</td><td>{{ charge.holiday.title }}</td><td>{{ charge.amount|amount }}일</td></tr>{% empty %}<tr><td colspan="3" class="subtle-empty">해당 연도의 공용연차 차감이 없습니다.</td></tr>{% endfor %}</tbody></table></div></section>
-<section class="panel history-panel"><div class="panel-heading"><h2>{{ selected_year }}년 수동 수정 이력</h2><span class="muted">기안 없이 조정한 연차는 여기서 확인하세요</span></div><div class="history-list">
+<section class="panel history-panel"><div class="panel-heading"><h2>{{ selected_year }}년 잔액 정정 이력</h2><span class="muted">총연차·누적 사용연차·잔여연차를 직접 바꾼 기록입니다</span></div><div class="history-list">
   {% for log in logs %}<div class="history-item"><span class="history-point"></span><div><strong>{{ log.event }}</strong><p>{{ log.detail|linebreaksbr }}</p><small>수정일 {{ log.created_at|date:'Y.m.d H:i' }} · {{ log.actor.first_name }}</small></div></div>{% empty %}<p class="subtle-empty">해당 연도의 수동 수정 이력이 없습니다.</p>{% endfor %}
   <p class="panel-footer">수정일은 연차 정보가 변경된 날짜입니다. 기안 없는 휴가의 실제 사용 날짜는 수정 이력만으로 확인할 수 없습니다.</p>
 </div></section>

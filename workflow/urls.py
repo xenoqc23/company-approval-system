@@ -19,6 +19,8 @@ urlpatterns = [
     path('documents/<int:pk>/copy/', views.copy_document, name='copy'), path('balances/', views.balances, name='balances'),
     path('balances/export/', views.export_balances, name='export_balances'),
     path('balances/<int:pk>/history/', views.leave_history, name='leave_history'),
+    path('balances/<int:pk>/manual-leave/', views.manual_leave_new, name='manual_leave_new'),
+    path('balances/<int:pk>/manual-leave/<int:usage_pk>/cancel/', views.manual_leave_cancel, name='manual_leave_cancel'),
     path('policy/', views.policy, name='policy'), path('notices/', views.notices, name='notices'),
     path('notices/<int:pk>/open/', views.open_notice, name='open_notice'), path('staff/', views.staff, name='staff'),
     path('backups/', views.backups, name='backups'),

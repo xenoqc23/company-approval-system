@@ -1,4 +1,5 @@
 from decimal import Decimal
+from uuid import uuid4
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -104,6 +105,26 @@ class Document(models.Model):
 class DocumentCounter(models.Model):
     day = models.DateField(unique=True)
     value = models.PositiveIntegerField(default=0)
+
+class ManualLeaveUsage(models.Model):
+    """Dated leave taken outside the approval flow; cancellation retains the record."""
+    employee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='manual_leaves')
+    used_date = models.DateField()
+    leave_type = models.CharField(max_length=12, choices=Document.LEAVES)
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    amount = models.DecimalField(max_digits=3, decimal_places=2)
+    reason = models.CharField(max_length=1000)
+    request_key = models.UUIDField(default=uuid4, unique=True, editable=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='registered_manual_leaves')
+    created_at = models.DateTimeField(default=timezone.now)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='cancelled_manual_leaves')
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.CharField(max_length=1000, blank=True)
+
+    class Meta:
+        ordering = ['-used_date', '-created_at', '-pk']
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0, amount__lte=1), name='manual_leave_positive_amount')]
 
 class AccountingReadState(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)

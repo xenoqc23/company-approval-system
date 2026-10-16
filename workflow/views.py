@@ -19,7 +19,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST
-from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm
+from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm, ManualLeaveForm
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile, Absence, CompanyHoliday, CompanyLeaveCharge
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 from .people import approval_people, rank_order
@@ -424,17 +424,61 @@ def leave_history(request, pk):
     year, _ = balance_filters(request.GET)
     mode = 'all' if request.GET.get('mode') == 'all' else 'approved'
     rows = employee_leave_records(employee, year, mode)
-    accessible = set(visible_documents(request.user).filter(pk__in=[row['doc'].pk for row in rows]).values_list('pk', flat=True))
+    accessible = set(visible_documents(request.user).filter(pk__in=[row['doc'].pk for row in rows if row.get('doc')]).values_list('pk', flat=True))
     for row in rows:
-        row['accessible'] = row['doc'].pk in accessible
+        row['accessible'] = bool(row.get('doc') and row['doc'].pk in accessible)
     balance = AnnualBalance.objects.filter(user=employee, year=year).first()
     back_url = reverse('balances') + '?' + urlencode({'year': year, 'department': employee.profile.department})
     return page(request, 'leave_history', f'{employee.first_name} 연차 사용 내역', 'balances', employee=employee,
         selected_year=year, years=range(timezone.localdate().year - 2, timezone.localdate().year + 2),
         mode=mode, leave_rows=rows, employee_balance=balance, back_url=back_url,
-        document_charged=sum((row['charged'] for row in rows), Decimal('0')),
+        document_charged=sum((row['charged'] for row in rows if row.get('doc')), Decimal('0')),
+        manual_charged=sum((row['charged'] for row in rows if row.get('manual')), Decimal('0')),
         common_charges=CompanyLeaveCharge.objects.filter(employee=employee, year=year, active=True).select_related('holiday').order_by('-holiday__day'),
         logs=Audit.objects.filter(target=employee, event=f'{year}년 연차 수정').select_related('actor')[:30])
+
+
+@login_required
+def manual_leave_new(request, pk):
+    if not request.user.profile.manage_leave:
+        raise PermissionDenied
+    employee = get_object_or_404(User.objects.select_related('profile'), pk=pk, profile__approved=True)
+    year, _ = balance_filters(request.GET)
+    from uuid import uuid4
+    today = timezone.localdate()
+    form = ManualLeaveForm(request.POST if request.method == 'POST' else None,
+        initial={'used_date': today if today.year == year else date(year, 1, 1),
+                 'leave_type': 'annual', 'request_key': uuid4()})
+    if request.method == 'POST' and form.is_valid():
+        from .manual_leave import register_manual_leave
+        try:
+            usage, created = register_manual_leave(request.user, employee, form.cleaned_data, form.cleaned_data['request_key'])
+        except ValidationError as exc:
+            form.add_error(None, ' '.join(exc.messages))
+        else:
+            messages.success(request, f'{usage.amount}일 사용을 등록하고 잔여연차에서 차감했습니다.' if created else '이미 처리된 등록입니다. 사용 내역을 확인해 주세요.')
+            return redirect(reverse('leave_history', args=[pk]) + '?' + urlencode({'year': usage.used_date.year}))
+    return page(request, 'manual_leave_form', '연차 사용 직접 등록', 'balances',
+                employee=employee, form=form, selected_year=year,
+                employee_balance=AnnualBalance.objects.filter(user=employee, year=year).first())
+
+
+@login_required
+@require_POST
+def manual_leave_cancel(request, pk, usage_pk):
+    if not request.user.profile.manage_leave:
+        raise PermissionDenied
+    from .models import ManualLeaveUsage
+    from .manual_leave import cancel_manual_leave
+    employee = get_object_or_404(User, pk=pk, profile__approved=True)
+    usage = get_object_or_404(ManualLeaveUsage, pk=usage_pk, employee=employee)
+    try:
+        cancel_manual_leave(request.user, employee, usage.pk, request.POST.get('reason', ''))
+    except ValidationError as exc:
+        messages.error(request, ' '.join(exc.messages))
+    else:
+        messages.success(request, f'직접 등록을 취소하고 {usage.amount}일을 복원했습니다.')
+    return redirect(reverse('leave_history', args=[pk]) + '?' + urlencode({'year': usage.used_date.year, 'mode': 'all'}))
 
 
 @login_required

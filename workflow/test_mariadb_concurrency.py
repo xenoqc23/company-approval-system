@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from threading import Barrier
+from uuid import uuid4
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import close_old_connections, connection
@@ -9,6 +10,8 @@ from django.test import TransactionTestCase, skipUnlessDBFeature
 from workflow.models import AnnualBalance, ApprovalRule, CompanyHolidayLock, Document, Profile, RegulationLock
 from workflow.services import act_on_document, save_document
 from workflow.company_holidays import save_company_holiday
+from workflow.manual_leave import register_manual_leave, cancel_manual_leave
+from workflow.models import ManualLeaveUsage
 
 
 @skipUnlessDBFeature('has_select_for_update')
@@ -77,4 +80,38 @@ class MariaDBConcurrencyTests(TransactionTestCase):
         self.assertEqual(self.run_parallel(
             lambda: act_on_document(doc.pk, self.people['approver'], 'approve'),
             lambda: save_company_holiday(self.people['finance'], values)), ['ok', 'ok'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'], year=2026).used, 2)
+
+    def manual(self, day, key=None):
+        return register_manual_leave(self.people['finance'], self.people['owner'],
+            {'used_date': day, 'leave_type': 'annual', 'reason': '종이 신청서'}, key or uuid4())
+
+    def test_two_manual_registrations_preserve_both_charges(self):
+        self.assertEqual(self.run_parallel(
+            lambda: self.manual(date(2026,10,19)), lambda: self.manual(date(2026,10,20))), ['ok','ok'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'], year=2026).used, 2)
+
+    def test_replayed_manual_request_charges_once(self):
+        key = uuid4()
+        operation = lambda: self.manual(date(2026,10,19), key)
+        self.assertEqual(self.run_parallel(operation, operation), ['ok','ok'])
+        self.assertEqual(ManualLeaveUsage.objects.count(), 1)
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'], year=2026).used, 1)
+
+    def test_simultaneous_manual_and_submission_cannot_double_book(self):
+        self.assertCountEqual(self.run_parallel(
+            lambda: self.manual(date(2026,10,19)), lambda: self.leave(date(2026,10,19))), ['ok','refused'])
+        self.assertEqual(ManualLeaveUsage.objects.count() + Document.objects.count(), 1)
+
+    def test_simultaneous_cancellation_restores_once(self):
+        usage, _ = self.manual(date(2026,10,19))
+        operation = lambda: cancel_manual_leave(self.people['finance'], self.people['owner'], usage.pk, '취소')
+        self.assertCountEqual(self.run_parallel(operation, operation), ['ok','refused'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'], year=2026).used, 0)
+
+    def test_manual_and_approval_on_other_day_preserve_both_charges(self):
+        doc = self.ready(date(2026,10,19))
+        self.assertEqual(self.run_parallel(
+            lambda: self.manual(date(2026,10,20)),
+            lambda: act_on_document(doc.pk, self.people['approver'], 'approve')), ['ok','ok'])
         self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'], year=2026).used, 2)

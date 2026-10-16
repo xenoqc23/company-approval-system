@@ -54,6 +54,23 @@ class CompanyHolidayForm(forms.ModelForm):
 class HireDateForm(forms.Form):
     hire_date = forms.DateField(label='입사일', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
 
+class ManualLeaveForm(forms.Form):
+    used_date = forms.DateField(label='실제 사용 날짜', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
+    leave_type = forms.ChoiceField(label='휴가 종류 · 사용 일수', choices=[
+        ('annual', '연차 · 1일'), ('am', '오전반차 · 0.5일'), ('pm', '오후반차 · 0.5일'), ('outing', '외출 · 0.25일')])
+    start_time = forms.TimeField(label='시작 시간 (반차·외출)', required=False, widget=forms.TimeInput(attrs={'type': 'time'}))
+    end_time = forms.TimeField(label='종료 시간 (반차·외출)', required=False, widget=forms.TimeInput(attrs={'type': 'time'}))
+    reason = forms.CharField(label='등록 사유', max_length=1000, widget=forms.Textarea(attrs={
+        'rows': 3, 'placeholder': '예: 종이 신청서로 접수한 연차'}))
+    request_key = forms.UUIDField(widget=forms.HiddenInput)
+
+    def clean(self):
+        data = super().clean()
+        if not self.errors:
+            from .manual_leave import validate_values
+            data.update(validate_values(data))
+        return data
+
 class SignupForm(UserCreationForm):
     first_name = forms.CharField(label='이름', max_length=80)
     department = forms.ChoiceField(label='부서', choices=[(x, x) for x in DEPARTMENTS])

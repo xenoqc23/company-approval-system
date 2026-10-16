@@ -76,6 +76,8 @@ def leave_amount(document):
     return sum((Decimal(x) for x in allocations(document).values()), Decimal('0'))
 
 def check_overlap(document):
+    from .manual_leave import check_manual_overlap
+    check_manual_overlap(document)
     days = set(weekdays(document.start_date, document.end_date))
     existing = Document.objects.filter(owner=document.owner, kind='leave', status__in=['review', 'approve', 'approved'],
         start_date__lte=document.end_date, end_date__gte=document.start_date).exclude(pk=document.pk)
@@ -194,6 +196,10 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         if document.kind == 'stock' or document.status != 'approve' or document.approver_id != actor.pk:
             raise PermissionDenied
         if document.kind == 'leave':
+            # Serialize against off-system registrations before checking their dates.
+            Profile.objects.select_for_update().get(user=document.owner)
+            from .manual_leave import check_manual_overlap
+            check_manual_overlap(document)
             document.allocations = allocations(document)
             document.charged = leave_amount(document)
             adjust_charges(document, 1)

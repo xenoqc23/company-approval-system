@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 from django.utils import timezone
-from .models import AnnualBalance, DEPARTMENTS, Document, CompanyLeaveCharge
+from .models import AnnualBalance, DEPARTMENTS, Document, CompanyLeaveCharge, ManualLeaveUsage
 from .annual_grants import completed_years, entitlement, employees
 from django.db.models import Sum
 from .people import rank_order
@@ -47,5 +47,13 @@ def employee_leave_records(employee, year, mode='approved'):
     for doc in documents.order_by('-start_date', '-start_time', '-pk'):
         amount = Decimal(doc.allocations.get(str(year), '0')) if doc.status == 'approved' else Decimal('0')
         timing = '사용 예정' if doc.start_date > today else '사용 완료' if doc.end_date < today else '사용 기간 중'
-        rows.append({'doc': doc, 'charged': amount, 'timing': timing if doc.status == 'approved' else '—'})
-    return rows
+        rows.append({'doc': doc, 'charged': amount, 'timing': timing if doc.status == 'approved' else '—',
+                     'used_date': doc.start_date, 'sort_time': doc.start_time})
+    manual = ManualLeaveUsage.objects.filter(employee=employee, used_date__year=year)
+    if mode != 'all':
+        manual = manual.filter(cancelled_at__isnull=True)
+    for usage in manual.select_related('created_by', 'cancelled_by'):
+        rows.append({'manual': usage, 'charged': usage.amount if usage.cancelled_at is None else Decimal('0'),
+                     'timing': '취소됨' if usage.cancelled_at else '사용 예정' if usage.used_date > today else '사용 완료',
+                     'used_date': usage.used_date, 'sort_time': usage.start_time})
+    return sorted(rows, key=lambda row: (row['used_date'], row['sort_time'] or time.min), reverse=True)
