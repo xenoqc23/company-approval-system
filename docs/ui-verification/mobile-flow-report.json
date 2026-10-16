@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "mobile office draft and total calculation",
+    "draft edit and submit",
+    "mobile review and confirmation feedback",
+    "mobile approval and confirmation feedback",
+    "cancel dialog and return without mutation",
+    "mobile leave submission",
+    "mobile stock submission without hidden approver fields",
+    "mobile select-all and purchase Excel download",
+    "navigation, Back and backdrop dismissal"
+  ],
+  "passed": 9
+}

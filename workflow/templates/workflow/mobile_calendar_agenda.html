@@ -1,0 +1,15 @@
+<section class="mobile-calendar-agenda" aria-labelledby="mobile-agenda-title">
+  <h2 id="mobile-agenda-title">{{ selected_month }}월 일정 목록</h2>
+  <p class="mobile-agenda-intro">달력의 점은 등록된 일정이 있는 날입니다.</p>
+  {% for week in weeks %}{% for day in week %}{% if not day.outside %}{% if day.holidays or day.events %}
+  <div class="mobile-agenda-day">
+    <h3>{{ day.date|date:'n월 j일 (D)' }}{% if day.today %} · 오늘{% endif %}</h3>
+    {% for holiday in day.holidays %}<p class="mobile-agenda-holiday">{{ holiday }}</p>{% endfor %}
+    {% for event in day.events %}
+      {% if event.url %}<a href="{{ event.url }}" class="calendar-event {{ event.kind }}">{% else %}<div class="calendar-event {{ event.kind }}">{% endif %}
+      <strong>{{ event.label }}</strong><small>{{ event.subtitle }}</small>
+      {% if event.url %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}{% endif %}{% endfor %}{% endfor %}
+</section>

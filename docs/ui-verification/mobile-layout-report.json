@@ -1,0 +1,3274 @@
+{
+  "layout_checks": 235,
+  "desktop_pixel_comparisons": 32,
+  "menu_roles": [
+    "employee",
+    "accounting",
+    "admin"
+  ],
+  "javascript_errors": [],
+  "checks": [
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/documents/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/documents/?mode=pending",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/compose/?kind=leave",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/compose/?kind=office",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/compose/?kind=stock",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/documents/1/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/calendar/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/welfare/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/policy/",
+      "viewport": 355,
+      "scroll": 355,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/account/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/notices/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 320,
+      "url": "/calendar/absence/new/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/documents/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/documents/?mode=pending",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/compose/?kind=leave",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/compose/?kind=office",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/compose/?kind=stock",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/documents/1/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/calendar/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/welfare/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/policy/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/account/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/notices/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 360,
+      "url": "/calendar/absence/new/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/documents/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/documents/?mode=pending",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/compose/?kind=leave",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/compose/?kind=office",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/compose/?kind=stock",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/documents/1/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/calendar/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/welfare/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/policy/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/account/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/notices/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 390,
+      "url": "/calendar/absence/new/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/documents/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/documents/?mode=pending",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/compose/?kind=leave",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/compose/?kind=office",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/compose/?kind=stock",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/documents/1/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/calendar/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/welfare/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/policy/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/account/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/notices/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 430,
+      "url": "/calendar/absence/new/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/documents/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/documents/?mode=pending",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/compose/?kind=leave",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/compose/?kind=office",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/compose/?kind=stock",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/documents/1/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/calendar/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/welfare/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/policy/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/account/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/notices/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 600,
+      "url": "/calendar/absence/new/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/documents/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/documents/?mode=pending",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/compose/?kind=leave",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/compose/?kind=office",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/compose/?kind=stock",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/documents/1/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/calendar/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/welfare/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/policy/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/account/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/notices/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 768,
+      "url": "/calendar/absence/new/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/documents/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/documents/?mode=pending",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/documents/?mode=search&q=A4",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/compose/?kind=leave",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/compose/?kind=office",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/compose/?kind=stock",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/documents/1/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/calendar/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/welfare/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/policy/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/account/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/notices/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1024,
+      "url": "/calendar/absence/new/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1080,
+      "url": "/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "progress-document",
+          "progress_document",
+          "12px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1080,
+      "url": "/documents/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "q",
+          "13.5px"
+        ],
+        [
+          "",
+          "kind",
+          "13.5px"
+        ],
+        [
+          "",
+          "status",
+          "13.5px"
+        ],
+        [
+          "",
+          "from",
+          "13px"
+        ],
+        [
+          "",
+          "to",
+          "13px"
+        ],
+        [
+          "",
+          "shipment",
+          "13.5px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1080,
+      "url": "/compose/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "id_leave_type",
+          "leave_type",
+          "13px"
+        ],
+        [
+          "id_start_date",
+          "start_date",
+          "13px"
+        ],
+        [
+          "id_end_date",
+          "end_date",
+          "13px"
+        ],
+        [
+          "id_reason",
+          "reason",
+          "13px"
+        ],
+        [
+          "id_reviewer_department",
+          "reviewer_department",
+          "13px"
+        ],
+        [
+          "id_reviewer",
+          "reviewer",
+          "13px"
+        ],
+        [
+          "id_approver_department",
+          "approver_department",
+          "13px"
+        ],
+        [
+          "id_approver",
+          "approver",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1080,
+      "url": "/documents/1/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1366,
+      "url": "/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "progress-document",
+          "progress_document",
+          "12px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1366,
+      "url": "/documents/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "q",
+          "13.5px"
+        ],
+        [
+          "",
+          "kind",
+          "13.5px"
+        ],
+        [
+          "",
+          "status",
+          "13.5px"
+        ],
+        [
+          "",
+          "from",
+          "13px"
+        ],
+        [
+          "",
+          "to",
+          "13px"
+        ],
+        [
+          "",
+          "shipment",
+          "13.5px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1366,
+      "url": "/compose/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "id_leave_type",
+          "leave_type",
+          "13px"
+        ],
+        [
+          "id_start_date",
+          "start_date",
+          "13px"
+        ],
+        [
+          "id_end_date",
+          "end_date",
+          "13px"
+        ],
+        [
+          "id_reason",
+          "reason",
+          "13px"
+        ],
+        [
+          "id_reviewer_department",
+          "reviewer_department",
+          "13px"
+        ],
+        [
+          "id_reviewer",
+          "reviewer",
+          "13px"
+        ],
+        [
+          "id_approver_department",
+          "approver_department",
+          "13px"
+        ],
+        [
+          "id_approver",
+          "approver",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1366,
+      "url": "/documents/1/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1920,
+      "url": "/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "progress-document",
+          "progress_document",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1920,
+      "url": "/documents/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "",
+          "q",
+          "14.625px"
+        ],
+        [
+          "",
+          "kind",
+          "14.625px"
+        ],
+        [
+          "",
+          "status",
+          "14.625px"
+        ],
+        [
+          "",
+          "from",
+          "14.0833px"
+        ],
+        [
+          "",
+          "to",
+          "14.0833px"
+        ],
+        [
+          "",
+          "shipment",
+          "14.625px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1920,
+      "url": "/compose/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "id_leave_type",
+          "leave_type",
+          "14.0833px"
+        ],
+        [
+          "id_start_date",
+          "start_date",
+          "14.0833px"
+        ],
+        [
+          "id_end_date",
+          "end_date",
+          "14.0833px"
+        ],
+        [
+          "id_reason",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "id_reviewer_department",
+          "reviewer_department",
+          "14.0833px"
+        ],
+        [
+          "id_reviewer",
+          "reviewer",
+          "14.0833px"
+        ],
+        [
+          "id_approver_department",
+          "approver_department",
+          "14.0833px"
+        ],
+        [
+          "id_approver",
+          "approver",
+          "14.0833px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 1920,
+      "url": "/documents/1/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 2560,
+      "url": "/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ],
+        [
+          "progress-document",
+          "progress_document",
+          "15px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 2560,
+      "url": "/documents/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 2560,
+      "url": "/compose/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "employee",
+      "width": 2560,
+      "url": "/documents/1/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/balances/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/company-holidays/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/regulations/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/regulations/?tab=annual",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/regulations/?tab=awards",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/balances/recalculate/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 320,
+      "url": "/balances/2/history/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/balances/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/company-holidays/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/regulations/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/regulations/?tab=annual",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/regulations/?tab=awards",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/balances/recalculate/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 360,
+      "url": "/balances/2/history/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/balances/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/company-holidays/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/regulations/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/regulations/?tab=annual",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/regulations/?tab=awards",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/balances/recalculate/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 390,
+      "url": "/balances/2/history/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/balances/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/company-holidays/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/regulations/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/regulations/?tab=annual",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/regulations/?tab=awards",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/balances/recalculate/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 430,
+      "url": "/balances/2/history/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/balances/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/company-holidays/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/regulations/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/regulations/?tab=annual",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/regulations/?tab=awards",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/balances/recalculate/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 600,
+      "url": "/balances/2/history/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/balances/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/company-holidays/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/regulations/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/regulations/?tab=annual",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/regulations/?tab=awards",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/balances/recalculate/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 768,
+      "url": "/balances/2/history/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/balances/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/company-holidays/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/regulations/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/regulations/?tab=annual",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/regulations/?tab=benefits",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/regulations/?tab=awards",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/balances/recalculate/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/documents/?mode=accounting&kind=office",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1024,
+      "url": "/balances/2/history/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1080,
+      "url": "/balances/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "department",
+          "13px"
+        ],
+        [
+          "",
+          "year",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1080,
+      "url": "/company-holidays/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "id_title",
+          "title",
+          "13px"
+        ],
+        [
+          "id_day",
+          "day",
+          "13px"
+        ],
+        [
+          "id_description",
+          "description",
+          "13px"
+        ],
+        [
+          "",
+          "year",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1366,
+      "url": "/balances/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "department",
+          "13px"
+        ],
+        [
+          "",
+          "year",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ],
+        [
+          "",
+          "hire_date",
+          "13px"
+        ],
+        [
+          "",
+          "field",
+          "12px"
+        ],
+        [
+          "",
+          "value",
+          "13px"
+        ],
+        [
+          "",
+          "reason",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1366,
+      "url": "/company-holidays/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "id_title",
+          "title",
+          "13px"
+        ],
+        [
+          "id_day",
+          "day",
+          "13px"
+        ],
+        [
+          "id_description",
+          "description",
+          "13px"
+        ],
+        [
+          "",
+          "year",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1920,
+      "url": "/balances/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "",
+          "department",
+          "14.0833px"
+        ],
+        [
+          "",
+          "year",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ],
+        [
+          "",
+          "hire_date",
+          "14.0833px"
+        ],
+        [
+          "",
+          "field",
+          "13px"
+        ],
+        [
+          "",
+          "value",
+          "14.0833px"
+        ],
+        [
+          "",
+          "reason",
+          "14.0833px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 1920,
+      "url": "/company-holidays/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "id_title",
+          "title",
+          "14.0833px"
+        ],
+        [
+          "id_day",
+          "day",
+          "14.0833px"
+        ],
+        [
+          "id_description",
+          "description",
+          "14.0833px"
+        ],
+        [
+          "",
+          "year",
+          "14.0833px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 2560,
+      "url": "/balances/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ],
+        [
+          "",
+          "field",
+          "15px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "accounting",
+      "width": 2560,
+      "url": "/company-holidays/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 320,
+      "url": "/staff/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 320,
+      "url": "/staff/?department=개발팀",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 320,
+      "url": "/backups/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 320,
+      "url": "/documents/?mode=all",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 360,
+      "url": "/staff/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 360,
+      "url": "/staff/?department=개발팀",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 360,
+      "url": "/backups/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 360,
+      "url": "/documents/?mode=all",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "url": "/staff/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "url": "/staff/?department=개발팀",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "url": "/backups/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 390,
+      "url": "/documents/?mode=all",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 430,
+      "url": "/staff/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 430,
+      "url": "/staff/?department=개발팀",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 430,
+      "url": "/backups/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 430,
+      "url": "/documents/?mode=all",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 600,
+      "url": "/staff/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 600,
+      "url": "/staff/?department=개발팀",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 600,
+      "url": "/backups/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 600,
+      "url": "/documents/?mode=all",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "url": "/staff/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "url": "/staff/?department=개발팀",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "url": "/backups/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 768,
+      "url": "/documents/?mode=all",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1024,
+      "url": "/staff/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1024,
+      "url": "/staff/?department=개발팀",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1024,
+      "url": "/backups/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1024,
+      "url": "/documents/?mode=all",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1080,
+      "url": "/staff/",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "name",
+          "12px"
+        ],
+        [
+          "",
+          "department",
+          "12px"
+        ],
+        [
+          "",
+          "rank",
+          "12px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1080,
+      "url": "/staff/?department=개발팀",
+      "viewport": 1080,
+      "scroll": 1080,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "name",
+          "12px"
+        ],
+        [
+          "",
+          "department",
+          "12px"
+        ],
+        [
+          "",
+          "rank",
+          "12px"
+        ],
+        [
+          "",
+          "name",
+          "12px"
+        ],
+        [
+          "",
+          "department",
+          "12px"
+        ],
+        [
+          "",
+          "rank",
+          "12px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1366,
+      "url": "/staff/",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "name",
+          "12px"
+        ],
+        [
+          "",
+          "department",
+          "12px"
+        ],
+        [
+          "",
+          "rank",
+          "12px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1366,
+      "url": "/staff/?department=개발팀",
+      "viewport": 1366,
+      "scroll": 1366,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "12.5px"
+        ],
+        [
+          "",
+          "name",
+          "12px"
+        ],
+        [
+          "",
+          "department",
+          "12px"
+        ],
+        [
+          "",
+          "rank",
+          "12px"
+        ],
+        [
+          "",
+          "name",
+          "12px"
+        ],
+        [
+          "",
+          "department",
+          "12px"
+        ],
+        [
+          "",
+          "rank",
+          "12px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1920,
+      "url": "/staff/",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "",
+          "name",
+          "13px"
+        ],
+        [
+          "",
+          "department",
+          "13px"
+        ],
+        [
+          "",
+          "rank",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 1920,
+      "url": "/staff/?department=개발팀",
+      "viewport": 1920,
+      "scroll": 1920,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "13.5417px"
+        ],
+        [
+          "",
+          "name",
+          "13px"
+        ],
+        [
+          "",
+          "department",
+          "13px"
+        ],
+        [
+          "",
+          "rank",
+          "13px"
+        ],
+        [
+          "",
+          "name",
+          "13px"
+        ],
+        [
+          "",
+          "department",
+          "13px"
+        ],
+        [
+          "",
+          "rank",
+          "13px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 2560,
+      "url": "/staff/",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ],
+        [
+          "",
+          "name",
+          "15px"
+        ],
+        [
+          "",
+          "department",
+          "15px"
+        ],
+        [
+          "",
+          "rank",
+          "15px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "admin",
+      "width": 2560,
+      "url": "/staff/?department=개발팀",
+      "viewport": 2560,
+      "scroll": 2560,
+      "smallInputs": [
+        [
+          "",
+          "q",
+          "15.625px"
+        ],
+        [
+          "",
+          "name",
+          "15px"
+        ],
+        [
+          "",
+          "department",
+          "15px"
+        ],
+        [
+          "",
+          "rank",
+          "15px"
+        ],
+        [
+          "",
+          "name",
+          "15px"
+        ],
+        [
+          "",
+          "department",
+          "15px"
+        ],
+        [
+          "",
+          "rank",
+          "15px"
+        ]
+      ],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 320,
+      "url": "/login/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 320,
+      "url": "/signup/",
+      "viewport": 320,
+      "scroll": 320,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 360,
+      "url": "/login/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 360,
+      "url": "/signup/",
+      "viewport": 360,
+      "scroll": 360,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 390,
+      "url": "/login/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 390,
+      "url": "/signup/",
+      "viewport": 390,
+      "scroll": 390,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 430,
+      "url": "/login/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 430,
+      "url": "/signup/",
+      "viewport": 430,
+      "scroll": 430,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 600,
+      "url": "/login/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 600,
+      "url": "/signup/",
+      "viewport": 600,
+      "scroll": 600,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 768,
+      "url": "/login/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 768,
+      "url": "/signup/",
+      "viewport": 768,
+      "scroll": 768,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 1024,
+      "url": "/login/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    },
+    {
+      "role": "anonymous",
+      "width": 1024,
+      "url": "/signup/",
+      "viewport": 1024,
+      "scroll": 1024,
+      "smallInputs": [],
+      "clipped": []
+    }
+  ]
+}

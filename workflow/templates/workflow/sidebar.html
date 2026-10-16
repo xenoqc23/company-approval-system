@@ -1,5 +1,5 @@
 {% load static %}
-<aside class="sidebar portal-sidebar"><a class="brand" href="{% url 'dashboard' %}"><img class="company-logo" src="{% static 'workflow/images/xenosys-logo-refined.png' %}" alt="Xenosys"><span class="brand-title">사내결재시스템</span></a>
+<aside class="sidebar portal-sidebar" id="workspace-navigation"><a class="brand" href="{% url 'dashboard' %}"><img class="company-logo" src="{% static 'workflow/images/xenosys-logo-refined.png' %}" alt="Xenosys"><span class="brand-title">사내결재시스템</span></a>
 <nav class="portal-navigation" aria-label="주 메뉴"><a class="nav-item {% if section == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><svg><use href="#i-home"/></svg>홈</a>
 <a class="nav-item {% if section == 'pending' %}active{% endif %}" href="{% url 'documents' %}?mode=pending"><svg><use href="#i-check"/></svg>결재함{% if nav_waiting %}<span class="nav-count">{{ nav_waiting }}</span>{% endif %}</a>
 <a class="nav-item {% if section == 'mine' %}active{% endif %}" href="{% url 'documents' %}"><svg><use href="#i-archive"/></svg>내 문서함</a>
