@@ -226,7 +226,7 @@ class CalendarWelfareTests(TestCase):
         output = BytesIO()
         leave_balances_workbook(rows, 2026).save(output)
         book = load_workbook(BytesIO(output.getvalue()))
-        self.assertEqual(list(book['인원별 연차표'].values)[0], ('성명', '근무연수', '연차일수', '공통사용연차', '사용가능연차', '잔여연차'))
+        self.assertEqual(list(book['인원별 연차표'].values)[0], ('성명', '근무연수', '연차일수', '공용연차', '사용가능연차', '잔여연차', '사용내역'))
 
     def test_all_new_templates_and_calendar_bad_parameters_render(self):
         self.client.force_login(self.accounting)

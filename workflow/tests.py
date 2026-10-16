@@ -237,9 +237,9 @@ class ApprovalTests(TestCase):
         self.assertEqual(response.status_code, 200)
         sheet = load_workbook(BytesIO(response.content)).active
         self.assertEqual(list(sheet.values), [
-            ('연도', '성명', '부서', '직급', '총연차', '사용연차', '잔여연차'),
-            (2026, 'reviewer', '품질팀', '팀장', 0, 0, 0),
-            (2026, '=SUM(1,2)', '품질팀', '대리', 1, 3.25, -2.25),
+            ('연도', '성명', '부서', '직급', '총연차', '사용연차', '잔여연차', '공용연차', '사용내역'),
+            (2026, 'reviewer', '품질팀', '팀장', 0, 0, 0, 0, '—'),
+            (2026, '=SUM(1,2)', '품질팀', '대리', 1, 3.25, -2.25, 0, '—'),
         ])
         self.assertEqual(sheet['B3'].data_type, 's')
         self.assertEqual(sheet['G3'].data_type, 'n')

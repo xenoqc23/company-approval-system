@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 from django.utils import timezone
 from .models import AnnualBalance, DEPARTMENTS, Document, CompanyLeaveCharge, ManualLeaveUsage
@@ -57,3 +57,38 @@ def employee_leave_records(employee, year, mode='approved'):
                      'timing': '취소됨' if usage.cancelled_at else '사용 예정' if usage.used_date > today else '사용 완료',
                      'used_date': usage.used_date, 'sort_time': usage.start_time})
     return sorted(rows, key=lambda row: (row['used_date'], row['sort_time'] or time.min), reverse=True)
+
+
+def leave_usage_summaries(employees, year):
+    """Fetch export-only dates in batches; never infer usage dates from balance edits."""
+    ids = [employee.pk for employee in employees]
+    if not ids:
+        return {}
+    events = {pk: [] for pk in ids}
+    labels = {'annual': '연차', 'am': '반차', 'pm': '반차', 'outing': '외출'}
+    first, last = date(year, 1, 1), date(year, 12, 31)
+    documents = Document.objects.filter(owner_id__in=ids, kind='leave', status='approved',
+        start_date__lte=last, end_date__gte=first).values(
+            'owner_id', 'leave_type', 'start_date', 'end_date', 'allocations')
+    for doc in documents:
+        if Decimal(doc['allocations'].get(str(year), '0')) <= 0:
+            continue
+        label = labels.get(doc['leave_type'])
+        if not label:
+            continue
+        day, end = max(first, doc['start_date']), min(last, doc['end_date'])
+        while day <= end:
+            if day.weekday() < 5:
+                events[doc['owner_id']].append((day, label))
+            day += timedelta(days=1)
+    for usage in ManualLeaveUsage.objects.filter(employee_id__in=ids, used_date__year=year,
+            cancelled_at__isnull=True).values('employee_id', 'used_date', 'leave_type'):
+        label = labels.get(usage['leave_type'])
+        if label:
+            events[usage['employee_id']].append((usage['used_date'], label))
+    for charge in CompanyLeaveCharge.objects.filter(employee_id__in=ids, year=year, active=True,
+            amount__gt=0, holiday__day__range=(first, last)).values('employee_id', 'holiday__day'):
+        events[charge['employee_id']].append((charge['holiday__day'], '공용연차'))
+    return {pk: ', '.join(f'{day.month}/{day.day}({label})'
+                for day, label in sorted(items, key=lambda item: item[0], reverse=True))
+            for pk, items in events.items()}
