@@ -2,7 +2,7 @@
   <h2 id="mobile-agenda-title">{{ selected_month }}월 일정 목록</h2>
   <p class="mobile-agenda-intro">달력의 점은 등록된 일정이 있는 날입니다.</p>
   {% for week in weeks %}{% for day in week %}{% if not day.outside %}{% if day.holidays or day.events %}
-  <div class="mobile-agenda-day">
+  <div class="mobile-agenda-day{% if day.common_leave %} common-leave-day{% endif %}">
     <h3>{{ day.date|date:'n월 j일 (D)' }}{% if day.today %} · 오늘{% endif %}</h3>
     {% for holiday in day.holidays %}<p class="mobile-agenda-holiday">{{ holiday }}</p>{% endfor %}
     {% for event in day.events %}

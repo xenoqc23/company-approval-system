@@ -1,4 +1,5 @@
 {% extends 'workflow/base.html' %}{% load static ui %}
+{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/work-status.css' %}">{% endblock %}
 {% block content %}
 <div class="mint-home">
   <header class="mint-home-heading"><h1>내 업무 <svg aria-hidden="true"><use href="#i-clip"/></svg></h1><p>오늘도 좋은 하루예요, <strong>{{ user.first_name }} {{ profile.rank }}님!</strong></p></header>
@@ -17,7 +18,10 @@
       <div class="table-wrap"><table class="mint-recent-table"><thead><tr><th>문서 유형</th><th>제목</th><th>신청일</th><th>상태</th><th><span class="sr-only">상세</span></th></tr></thead><tbody>{% for doc in documents %}<tr><td>{% include 'workflow/document_kind.html' %}</td><td><a class="mint-document-title" title="{{ doc.title }}" href="{% url 'detail' doc.pk %}">{% if doc.kind == 'leave' %}{{ doc.get_leave_type_display }} 신청{% else %}{{ doc.product }}{% endif %}<small>{{ doc.number }}</small></a></td><td class="mint-document-date">{{ doc.submitted_at|date:'Y.m.d' }}</td><td><span class="badge {{ doc.status }}">{{ doc.status_label }}</span></td><td><a class="row-arrow" href="{% url 'detail' doc.pk %}" aria-label="{{ doc.title }} 상세"><svg><use href="#i-arrow"/></svg></a></td></tr>{% empty %}<tr><td colspan="5"><div class="empty"><svg><use href="#i-file"/></svg><strong>{% if home_kind == 'all' %}아직 작성한 문서가 없습니다{% else %}해당 종류의 문서가 없습니다{% endif %}</strong><p>빠른 신청에서 첫 기안을 작성해 보세요.</p></div></td></tr>{% endfor %}</tbody></table></div>
     </section>
     <section class="panel mint-progress" id="approval-progress" aria-labelledby="progress-title"><div class="mint-progress-heading"><h2 id="progress-title">결재 진행 상태</h2>{% if progress_doc %}<span class="badge {{ progress_doc.status }}">{{ progress_doc.status_label }}</span>{% endif %}</div>
-      <p class="mint-progress-count" role="status">진행 중 <strong>{{ progress_count }}건</strong></p>
+      <a class="pending-approval-summary{% if nav_waiting %} has-pending{% endif %}" href="{% url 'documents' %}?mode=pending" aria-label="내가 처리할 미결 {{ nav_waiting }}건">
+        <span>미결 <strong>{{ nav_waiting }}건</strong></span><small>내가 검토·승인할 문서 <span aria-hidden="true">↗</span></small>
+      </a>
+      <p class="mint-progress-count" role="status">내 기안 진행 중 <strong>{{ progress_count }}건</strong></p>
       {% if progress_doc %}<form class="mint-progress-picker" method="get" action="{% url 'dashboard' %}#approval-progress">
         <input type="hidden" name="home_kind" value="{{ home_kind }}">
         <label for="progress-document">확인할 기안 선택</label>

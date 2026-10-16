@@ -1,0 +1,12 @@
+/* Pending actions are separate from progress on the employee's own drafts. */
+.pending-approval-summary{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.4rem .75rem;margin:.9rem 0;padding:.9rem 1rem;border:1px solid #d3e5dc;border-radius:.75rem;background:#f4faf6;color:#225e48;text-decoration:none}
+.pending-approval-summary strong{font-size:1.4rem;margin-left:.25rem}
+.pending-approval-summary small{font-size:.75rem}
+.pending-approval-summary.has-pending{background:#fff4e5;border-color:#d8a357;color:#79450b}
+.pending-approval-summary:focus-visible{outline:3px solid #225e48;outline-offset:3px}
+/* Match the common-leave date to the company-holiday legend and indicator. */
+.calendar-panel{--company-leave-color:#b06e16}
+.calendar-panel .legend.company:before{background:var(--company-leave-color)}
+.calendar-panel .calendar-event.company{border-left-color:var(--company-leave-color)}
+.month-calendar .common-leave-day .calendar-day-number,
+.mobile-agenda-day.common-leave-day h3{color:var(--company-leave-color)}

@@ -31,6 +31,7 @@ def balance_rows(year, department='', user=None):
              'used': balances[employee.pk].used if employee.pk in balances else Decimal('0'),
              'tenure': completed_years(employee.profile.hire_date, date(year, 1, 1)) if employee.profile.hire_date else None,
              'calculated': entitlement(employee.profile.hire_date, year) if employee.profile.hire_date else None,
+             'personal_used': (balances[employee.pk].used if employee.pk in balances else Decimal('0')) - common.get(employee.pk, Decimal('0')),
              'common': common.get(employee.pk, Decimal('0')),
              'available': (balances[employee.pk].total if employee.pk in balances else Decimal('0')) - common.get(employee.pk, Decimal('0')),
              'remaining': balances[employee.pk].remaining if employee.pk in balances else Decimal('0')}
