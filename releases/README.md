@@ -1,5 +1,9 @@
 # 설치된 NAS용 화면 수정 파일
 
+[xenosys-login-fix-20261016.zip](xenosys-login-fix-20261016.zip)은 모바일 업데이트 후 반복되는 로그인 CSRF 오류를 보완한다. 전용 쿠키·캐시 방지·로그인 직전 토큰 갱신을 포함하며 CSRF 검사는 유지한다. [수정 내용·검증·NAS 적용 안내](../docs/LOGIN_FIX_20261016.md)를 확인한다.
+
+생성: `python3 packaging/build_login_fix_patch.py` · 적용 시험: `python3 packaging/test_login_fix_patch.py`
+
 [xenosys-mobile-ui-20261016.zip](xenosys-mobile-ui-20261016.zip)은 휴대폰 화면용 CSS·JavaScript·템플릿 7개와 NAS 적용 스크립트를 포함한다. 기존 화면 파일을 백업하고 `nas.sh update`로 반영한다. [모바일 화면 검증 및 적용 안내](../docs/UI_MOBILE_20261016.md)를 확인한다.
 
 생성: `python3 packaging/build_mobile_ui_patch.py` · 적용 안전성 확인: `python3 packaging/test_mobile_ui_patch.py`

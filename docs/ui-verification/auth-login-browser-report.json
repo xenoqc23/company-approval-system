@@ -1,0 +1,60 @@
+{
+  "passed": 11,
+  "results": [
+    {
+      "width": 390,
+      "scenario": "four login/logout/relogin cycles",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "scenario": "stale cross-tab form refreshed before POST",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "scenario": "foreign default cookie names isolated",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "scenario": "refresh network failure and retry",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "scenario": "login after navigation history",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "four login/logout/relogin cycles",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "stale cross-tab form refreshed before POST",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "foreign default cookie names isolated",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "refresh network failure and retry",
+      "passed": true
+    },
+    {
+      "width": 1366,
+      "scenario": "login after navigation history",
+      "passed": true
+    },
+    {
+      "scenario": "three native form cycles without JavaScript",
+      "passed": true
+    }
+  ],
+  "javascript_errors": []
+}

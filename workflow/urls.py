@@ -8,6 +8,7 @@ urlpatterns = [
     path('balances/recalculate/', regulation_views.recalculate, name='recalculate'),
     path('', views.dashboard, name='dashboard'), path('health/', views.health, name='health'),
     path('login/', views.login_view, name='login'), path('logout/', views.logout_view, name='logout'),
+    path('login/csrf/', views.login_csrf, name='login_csrf'),
     path('signup/', views.signup, name='signup'), path('pending/', views.pending, name='pending'),
     path('password/', views.password, name='password'), path('documents/', views.documents, name='documents'),
     path('account/', views.account, name='account'),

@@ -6,7 +6,7 @@ class AccountGateMiddleware:
 
     def __call__(self, request):
         if request.user.is_authenticated and not request.path.startswith('/static/'):
-            allowed = {'/login/', '/logout/', '/signup/', '/password/', '/pending/', '/health/'}
+            allowed = {'/login/', '/login/csrf/', '/logout/', '/signup/', '/password/', '/pending/', '/health/'}
             profile = request.user.profile
             if not profile.approved and request.path not in allowed:
                 return redirect('pending')

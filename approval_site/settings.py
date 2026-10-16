@@ -65,6 +65,9 @@ APP_VERSION = os.environ.get('APP_VERSION', 'pc')
 CSRF_TRUSTED_ORIGINS = [x for x in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if x]
 SESSION_COOKIE_SECURE = os.environ.get('DJANGO_SECURE_COOKIES', '0') == '1'
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+# Cookies are scoped to a host, not a port. Keep other NAS apps isolated.
+SESSION_COOKIE_NAME = 'xenosys_approval_sessionid'
+CSRF_COOKIE_NAME = 'xenosys_approval_csrftoken'
 SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SSL_REDIRECT', '0') == '1'
 SECURE_REDIRECT_EXEMPT = [r'^health/$']
 if os.environ.get('DJANGO_TRUST_PROXY', '0') == '1':
@@ -74,3 +77,11 @@ LOGIN_URL = 'login'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 X_FRAME_OPTIONS = 'DENY'
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'csrf_console': {'class': 'logging.StreamHandler'}},
+    'loggers': {'django.security.csrf': {
+        'handlers': ['csrf_console'], 'level': 'WARNING', 'propagate': False,
+    }},
+}

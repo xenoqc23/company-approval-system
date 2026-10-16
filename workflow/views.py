@@ -14,7 +14,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
-from django.views.decorators.http import require_POST
+from django.utils.cache import add_never_cache_headers
+from django.middleware.csrf import get_token
+from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.http import require_GET, require_POST
 from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile, Absence, CompanyHoliday, CompanyLeaveCharge
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
@@ -27,8 +31,11 @@ from .leave_records import balance_filters, balance_rows, employee_leave_records
 User = get_user_model()
 
 def page(request, template, title, section='dashboard', **context):
-    return render(request, f'workflow/{template}.html', {'title': title, 'section': section,
+    response = render(request, f'workflow/{template}.html', {'title': title, 'section': section,
         'auth_layout': template in ['login', 'signup', 'pending', 'password'], **context})
+    # These HTML pages contain session-specific forms and rotating CSRF tokens.
+    add_never_cache_headers(response)
+    return response
 
 def health(request):
     from django.db import connection
@@ -36,6 +43,8 @@ def health(request):
         cursor.execute('SELECT 1')
     return HttpResponse('ok', content_type='text/plain')
 
+@never_cache
+@sensitive_post_parameters('password')
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
@@ -47,6 +56,14 @@ def login_view(request):
         messages.error(request, '아이디 또는 비밀번호를 확인해 주세요.')
     return page(request, 'login', '로그인', 'login')
 
+@never_cache
+@require_GET
+def login_csrf(request):
+    # A saved tab may predate a login (and token rotation) in another tab.
+    # This does not authenticate or submit anything; POST stays CSRF protected.
+    return JsonResponse({'token': get_token(request)})
+
+@never_cache
 @require_POST
 def logout_view(request):
     logout(request)
