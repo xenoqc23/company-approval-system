@@ -233,6 +233,7 @@ class AnnualPolicy(models.Model):
     effective_year = models.PositiveIntegerField(unique=True)
     bands = models.JSONField(default=list)
     text = models.TextField(blank=True)
+    hire_year_monthly = models.BooleanField(default=True)
     version = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
 

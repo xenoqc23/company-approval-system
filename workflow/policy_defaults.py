@@ -1,6 +1,6 @@
 """Company-provided starting policy; editable through regulation management."""
 
-TENURE = '''0~1년|11
+TENURE = '''0~1년|12
 1년~2년|15
 3년~4년|16
 5년~6년|17

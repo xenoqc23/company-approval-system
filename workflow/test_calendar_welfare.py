@@ -50,9 +50,9 @@ class CalendarWelfareTests(TestCase):
         hire = date(2023, 10, 15)
         self.assertEqual(entitlement(hire, 2026), 15)
         self.assertEqual(entitlement(hire, 2027), 16)
-        self.assertEqual(entitlement(date(2026, 10, 1), 2026), 11)
+        self.assertEqual(entitlement(date(2026, 10, 1), 2026), 3)
         self.assertEqual(entitlement(date(1990, 1, 1), 2026), 25)
-        for years, days in [(0, 11), (1, 15), (2, 15), (3, 16), (4, 16), (5, 17), (21, 25), (40, 25)]:
+        for years, days in [(0, 12), (1, 12), (2, 15), (3, 16), (4, 16), (5, 17), (21, 25), (40, 25)]:
             self.assertEqual(entitlement(date(2026-years, 1, 1), 2026), days)
 
     def test_rollover_preserves_preapproved_usage_no_carry_no_repeat(self):

@@ -19,9 +19,18 @@ def completed_years(hire_date, reference):
 def entitlement(hire_date, year):
     if not hire_date or hire_date.year > year:
         return Decimal('0')
+    from .regulations import annual_policy, DEFAULT_BANDS
+    policy = annual_policy(year)
+    bands = policy.bands if policy else DEFAULT_BANDS
+    if not policy or policy.hire_year_monthly:
+        if hire_date.year == year:
+            # Grant hire month through December immediately, regardless of day of month.
+            return Decimal(13 - hire_date.month)
+        if hire_date.year + 1 == year:
+            # The entire year after hire uses the base band, including January 1 hires.
+            return Decimal(bands[0][1])
     years = completed_years(hire_date, date(year, 1, 1))
-    from .regulations import bands_for
-    return Decimal(next(days for low, days in reversed(bands_for(year)) if years >= low))
+    return Decimal(next(days for low, days in reversed(bands) if years >= low))
 
 
 def ensure_balance(employee, year):

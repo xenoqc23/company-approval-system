@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from .models import AnnualPolicy, AnnualBalance, ApprovalRule, RegulationLock, WelfarePolicy, RANKS
 
-DEFAULT_BANDS = [[0, 11], [1, 15], [3, 16], [5, 17], [7, 18], [9, 19],
+DEFAULT_BANDS = [[0, 12], [1, 15], [3, 16], [5, 17], [7, 18], [9, 19],
                  [11, 20], [13, 21], [15, 22], [17, 23], [19, 24], [21, 25]]
 
 

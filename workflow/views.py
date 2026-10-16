@@ -397,8 +397,10 @@ def balances(request):
         logs = logs.filter(target=request.user)
     elif department:
         logs = logs.filter(target__profile__department=department)
+    from .regulations import annual_policy
     return page(request, 'balances', '직원별 연차 관리' if p.manage_leave else '나의 연차', 'balances',
                 rows=rows, selected_year=year, departments=DEPARTMENTS, selected_department=department,
+                applied_policy=annual_policy(year),
                 years=range(timezone.localdate().year - 2, timezone.localdate().year + 2), logs=logs.select_related('actor', 'target')[:20])
 
 @login_required
