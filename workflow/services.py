@@ -106,7 +106,7 @@ def save_document(document, actor, submit=False):
     from .models import RegulationLock
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     # Serializes submissions by one employee, including overlap checks.
-    Profile.objects.select_for_update().get(user=actor)
+    actor.profile = Profile.objects.select_for_update().get(user=actor)
     if document.pk:
         current = Document.objects.select_for_update().get(pk=document.pk)
         if current.owner_id != actor.pk or current.status != 'draft':
@@ -116,6 +116,9 @@ def save_document(document, actor, submit=False):
     if document.kind == 'stock':
         # Stock requests do not have prices, a shopping URL or final approver.
         document.unit_price, document.approver, document.url = Decimal('0'), None, ''
+    if document.approval_mode != 'base':
+        from .delegation import resolve_route
+        resolve_route(document.kind, actor.profile.rank, document.total_price, owner=actor, mode=document.approval_mode)
     if not submit:
         validate_approval_person(document.reviewer)
         validate_approval_person(document.approver)
@@ -124,7 +127,7 @@ def save_document(document, actor, submit=False):
         if document.kind not in dict(Document.KINDS):
             raise ValidationError('문서 종류를 선택해 주세요.')
         from .delegation import resolve_route, validate_route_people
-        route = resolve_route(document.kind, actor.profile.rank, document.total_price)
+        route = resolve_route(document.kind, actor.profile.rank, document.total_price, owner=actor, mode=document.approval_mode)
         validate_route_people(document, route)
         route.update(reviewer_id=document.reviewer_id, approver_id=document.approver_id,
             reviewer_rank=document.reviewer.profile.rank if document.reviewer else None,
@@ -157,7 +160,10 @@ def save_document(document, actor, submit=False):
         document.submitted_at = timezone.now()
     document.save()
     audit(actor, '기안 제출' if submit else '임시저장', document)
-    if submit:
+    if submit and document.route_snapshot.get('self_complete'):
+        document = act_on_document(document.pk, actor, 'approve')
+        audit(actor, '본인 전결', document, f'규정: {document.route_snapshot["name"]} / 버전 {document.route_snapshot["version"]}')
+    elif submit:
         person = document.reviewer if document.review_required else document.approver
         stage = '검토대기' if document.review_required else '승인대기'
         notify(document, [person], f'{actor.first_name}님의 {stage} 요청이 도착했습니다.', stage)

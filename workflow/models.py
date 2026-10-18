@@ -43,6 +43,7 @@ class Document(models.Model):
               ('approved', '결재완료'), ('rejected', '반려'), ('cancelled', '취소'), ('deleted', '삭제')]
     SHIPMENTS = [('', '구매·발주 전'), ('shipping', '배송중'), ('ordered', '발주완료·입고대기'),
                  ('received', '수령완료')]
+    approval_mode = models.CharField(max_length=12, choices=[('base', '규정 기본'), ('skip', '검토 생략'), ('self', '본인 전결')], default='base')
     number = models.CharField(max_length=40, unique=True, null=True, blank=True)
     title = models.CharField(max_length=220, blank=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='owned_documents')
@@ -220,6 +221,13 @@ class ApprovalRule(models.Model):
     author_ranks = models.JSONField(default=list, blank=True)
     reviewer_ranks = models.JSONField(default=list)
     approver_ranks = models.JSONField(default=list)
+    author_departments = models.JSONField(default=list, blank=True)
+    authors = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='approval_rules')
+    allow_skip_review = models.BooleanField(default=False)
+    allow_self_approval = models.BooleanField(default=False)
+    fixed_reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_review_rules')
+    fixed_approver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_approve_rules')
+    approver_is_author = models.BooleanField(default=False)
     skip_review = models.BooleanField(default=False)
     enabled = models.BooleanField(default=False)
     version = models.PositiveIntegerField(default=1)

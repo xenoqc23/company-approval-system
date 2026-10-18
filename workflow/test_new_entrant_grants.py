@@ -119,7 +119,7 @@ class NewEntrantMigrationTests(TransactionTestCase):
         after = [('workflow','0011_hire_year_monthly')]
         executor = MigrationExecutor(connection)
         executor.migrate(before)
-        self.addCleanup(lambda: MigrationExecutor(connection).migrate(after))
+        self.addCleanup(lambda: MigrationExecutor(connection).migrate(MigrationExecutor(connection).loader.graph.leaf_nodes()))
         old_apps = executor.loader.project_state(before).apps
         Policy = old_apps.get_model('workflow','AnnualPolicy')
         ProfileModel = old_apps.get_model('workflow','Profile')

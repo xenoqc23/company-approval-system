@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from django import forms
+from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import signing
@@ -32,13 +33,21 @@ def preview_route(request):
         rank = request.GET.get('rank', request.user.profile.rank) if manager(request.user) else request.user.profile.rank
         if rank not in RANKS:
             raise ValueError
-        route = route_preview(kind, rank, total)
+        owner = request.user
+        raw_author = request.GET.get('author', '')
+        if manager(request.user) and raw_author.isascii() and raw_author.isdigit() and len(raw_author) <= 18:
+            owner = get_object_or_404(get_user_model().objects.select_related('profile'), pk=raw_author, is_active=True, profile__approved=True)
+            rank = owner.profile.rank
+        elif manager(request.user) and 'rank' in request.GET:
+            owner = None  # Rank-only simulation cannot impersonate staff-specific rules.
+        mode = request.GET.get('mode', 'base')
+        route = route_preview(kind, rank, total, owner=owner, mode=mode)
         reviewer = None
-        raw = request.GET.get('reviewer', '')
+        raw = str(route['fixed_reviewer_id']) if route.get('fixed_reviewer_id') else request.GET.get('reviewer', '')
         if raw.isascii() and raw.isdigit() and len(raw) <= 18:
             reviewer = route_people(route, 'reviewer').filter(pk=raw).first()
         review_rank = reviewer.profile.rank if reviewer else None
-        route = route_preview(kind, rank, total, review_rank)
+        route = route_preview(kind, rank, total, review_rank, owner=owner, mode=mode)
         route['reviewer_ids'] = list(route_people(route, 'reviewer').values_list('pk', flat=True))
         route['approver_ids'] = list(route_people(route, 'approver', review_rank).values_list('pk', flat=True)) if kind != 'stock' else []
         route['self_allowed'] = rank in route['approvers'] and kind != 'stock'
@@ -103,7 +112,8 @@ def regulations(request, pk=None):
         except ValidationError as exc:
             messages.error(request, ' '.join(exc.messages))
     return page(request, 'regulations', '규정 관리', 'regulations', tab=tab, rule_form=form, rule_formset=formset,
-        rules=ApprovalRule.objects.all(), selected_year=year, years=years,
+        rule_authors=get_user_model().objects.filter(is_active=True, profile__approved=True, profile__manage_system=False).select_related('profile').order_by('first_name'),
+        rules=ApprovalRule.objects.prefetch_related('authors').all(), selected_year=year, years=years,
         annual=annual, policy_text=request.POST.get('text', '') if data else (annual.text if annual and annual.text else legacy.text if legacy else ''),
         logs=Audit.objects.filter(event__in=['전결규정 수정', '연차 산정규정 수정', '경조사비 규정 수정', '장기근속 포상규정 수정']).select_related('actor')[:12], ranks=RANKS)
 

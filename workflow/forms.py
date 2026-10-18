@@ -92,6 +92,10 @@ class EmployeeChoice(forms.ModelChoiceField):
     def label_from_instance(self, user):
         return f'{user.first_name} · {user.profile.department} {user.profile.rank}'
 
+class EmployeeMultipleChoice(forms.ModelMultipleChoiceField):
+    def label_from_instance(self, user):
+        return f'{user.first_name} · {user.profile.department} {user.profile.rank}'
+
 class DepartmentEmployeeSelect(forms.Select):
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
         option = super().create_option(name, value, label, selected, index, subindex, attrs)
@@ -121,7 +125,7 @@ class DocumentForm(forms.ModelForm):
 
     class Meta:
         model = Document
-        fields = ['kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason',
+        fields = ['approval_mode', 'kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason',
                   'product', 'quantity', 'unit_price', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
         widgets = {x: forms.DateInput(attrs={'type': 'date'}) for x in ['start_date', 'end_date', 'needed_date']}
         widgets.update({x: forms.TimeInput(attrs={'type': 'time'}) for x in ['start_time', 'end_time']})
@@ -151,9 +155,49 @@ class DocumentForm(forms.ModelForm):
             f.required = False
         self.fields['kind'].required = True
         self.fields['quantity'].initial = 1
+        from .delegation import simplified_eligible
+        self.simplified_eligible = simplified_eligible(self.instance.owner) if self.instance.owner_id else False
+        self.fields['approval_mode'].label = '결재방식'
+        self.fields['approval_mode'].required = False
+        self.fields['approval_mode'].initial = 'base'
+        if not self.is_bound and self.instance.owner_id:
+            from .delegation import resolve_route
+            kind = self.initial.get('kind', self.instance.kind)
+            try:
+                route = resolve_route(kind, self.instance.owner.profile.rank, self.instance.total_price, owner=self.instance.owner)
+            except forms.ValidationError:
+                route = {'available_modes': ['base']}  # Preview and submission show the actionable rule error.
+            self.fields['approval_mode'].choices = [(key, label) for key, label in self.fields['approval_mode'].choices if key in route['available_modes']]
+            for stage in ['reviewer', 'approver']:
+                fixed = route.get('fixed_' + stage + '_id')
+                if fixed:
+                    person = User.objects.select_related('profile').get(pk=fixed)
+                    self.initial[stage] = person.pk
+                    self.initial[stage + '_department'] = person.profile.department
+
+        if not self.simplified_eligible:
+            self.fields['approval_mode'].choices = [('base', '규정 기본')]
+            self.fields['approval_mode'].widget = forms.HiddenInput()
 
     def clean(self):
         data = super().clean()
+        data['approval_mode'] = data.get('approval_mode') or 'base'
+        route = None
+        if self.instance.owner_id and data.get('kind'):
+            from .delegation import resolve_route
+            try:
+                route = resolve_route(data['kind'], self.instance.owner.profile.rank,
+                    (data.get('quantity') or 1) * (data.get('unit_price') or 0),
+                    owner=self.instance.owner, mode=data['approval_mode'])
+                for stage in ['reviewer', 'approver']:
+                    fixed = route.get('fixed_' + stage + '_id')
+                    if fixed:
+                        data[stage] = User.objects.select_related('profile').get(pk=fixed)
+                        data[stage + '_department'] = data[stage].profile.department
+                if route['skip_review']:
+                    data['reviewer'] = None
+            except forms.ValidationError as exc:
+                self.add_error(None, exc)
         for key in ['reviewer', 'approver']:
             person, department = data.get(key), data.get(f'{key}_department')
             if person and department and person.profile.department != department:
@@ -173,16 +217,9 @@ class DocumentForm(forms.ModelForm):
                 data['unit_price'], data['approver'], data['url'] = 0, None, ''
         if self.submit:
             required = ['reviewer']
-            if self.instance.owner_id:
-                from .delegation import resolve_route
-                try:
-                    route = resolve_route(data.get('kind'), self.instance.owner.profile.rank,
-                        (data.get('quantity') or 1) * (data.get('unit_price') or 0))
-                    if route['skip_review']:
-                        data['reviewer'] = None
-                        required = []
-                except forms.ValidationError as exc:
-                    self.add_error(None, exc)
+            if route and route['skip_review']:
+                data['reviewer'] = None
+                required = []
             if data.get('kind') != 'stock':
                 required += ['approver']
             if data.get('kind') == 'leave':
@@ -207,17 +244,34 @@ class ApprovalRuleForm(forms.ModelForm):
     approver_ranks = forms.MultipleChoiceField(label='승인 가능 직급', choices=[(x, x) for x in RANKS[1:]],
         widget=forms.CheckboxSelectMultiple)
 
+    author_departments = forms.MultipleChoiceField(label='적용 부서 (미선택: 전체)', choices=[(x, x) for x in DEPARTMENTS], required=False, widget=forms.CheckboxSelectMultiple)
+    authors = EmployeeMultipleChoice(label='특정 직원 (미선택: 공통 규정)', queryset=User.objects.none(), required=False, widget=forms.CheckboxSelectMultiple)
+    fixed_reviewer = EmployeeChoice(label='검토자 고정 (빈칸: 기안 시 선택)', queryset=User.objects.none(), required=False)
+    fixed_approver = EmployeeChoice(label='최종 승인자 고정 (빈칸: 기안 시 선택)', queryset=User.objects.none(), required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['authors'].queryset = rank_order(User.objects.filter(is_active=True, profile__approved=True, profile__manage_system=False).exclude(username__iexact='admin').select_related('profile'))
+        for stage in ['fixed_reviewer', 'fixed_approver']:
+            self.fields[stage].queryset = approval_people()
+
     class Meta:
         from .models import ApprovalRule
         model = ApprovalRule
-        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'skip_review', 'reviewer_ranks', 'approver_ranks', 'enabled']
+        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'author_departments', 'authors', 'skip_review', 'allow_skip_review', 'allow_self_approval', 'reviewer_ranks', 'approver_ranks', 'fixed_reviewer', 'fixed_approver', 'approver_is_author', 'enabled']
         labels = {'name': '규정명', 'kind': '문서 종류', 'amount_over': '구매 총금액 하한 (초과)',
-            'amount_to': '구매 총금액 상한 (이하, 빈칸: 제한 없음)', 'skip_review': '검토 생략 (기안 → 승인)', 'enabled': '규정 사용'}
+            'amount_to': '구매 총금액 상한 (이하, 빈칸: 제한 없음)', 'skip_review': '규정 기본 경로에서 검토 생략', 'allow_skip_review': '과장급 이상에게 검토 생략 선택 허용', 'allow_self_approval': '과장급 이상에게 본인 전결 선택 허용', 'approver_is_author': '최종 승인자를 기안자 본인으로 지정', 'enabled': '규정 사용'}
 
     def clean(self):
         data = super().clean()
         if not data.get('skip_review') and not data.get('reviewer_ranks'):
             self.add_error('reviewer_ranks', '검토 가능 직급을 선택해 주세요.')
+        if data.get('approver_is_author') and data.get('fixed_approver'):
+            self.add_error('fixed_approver', '기안자 본인과 고정 승인자를 동시에 지정할 수 없습니다.')
+        for stage in ['reviewer', 'approver']:
+            person = data.get('fixed_' + stage)
+            if person and person.profile.rank not in data.get(stage + '_ranks', []):
+                self.add_error('fixed_' + stage, '해당 담당자의 직급을 허용 직급에 포함해 주세요.')
         low, high = data.get('amount_over'), data.get('amount_to')
         if low is not None and (low < 0 or (high is not None and high <= low)):
             self.add_error('amount_to', '상한은 하한보다 커야 합니다.')

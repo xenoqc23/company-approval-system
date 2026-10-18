@@ -115,3 +115,23 @@ class MariaDBConcurrencyTests(TransactionTestCase):
             lambda: self.manual(date(2026,10,20)),
             lambda: act_on_document(doc.pk, self.people['approver'], 'approve')), ['ok','ok'])
         self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'], year=2026).used, 2)
+
+    def self_draft(self):
+        ApprovalRule.objects.create(name='동시 전결 검증',kind='leave',reviewer_ranks=['과장'],approver_ranks=['과장'],allow_self_approval=True,enabled=True)
+        return save_document(Document(owner=self.people['owner'],approval_mode='self',kind='leave',
+            start_date=date(2026,10,19),end_date=date(2026,10,19),reason='동시 전결'),self.people['owner'])
+
+    def test_simultaneous_self_submission_of_same_draft_charges_once(self):
+        doc=self.self_draft()
+        def submit():
+            save_document(Document.objects.get(pk=doc.pk),self.people['owner'],submit=True)
+        self.assertCountEqual(self.run_parallel(submit,submit),['ok','refused'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,1)
+        self.assertEqual(Document.objects.get(pk=doc.pk).status,'approved')
+
+    def test_self_completion_and_manual_registration_cannot_double_book(self):
+        doc=self.self_draft()
+        self.assertCountEqual(self.run_parallel(
+            lambda: save_document(Document.objects.get(pk=doc.pk),self.people['owner'],submit=True),
+            lambda: self.manual(date(2026,10,19))),['ok','refused'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,1)

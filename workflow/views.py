@@ -276,7 +276,7 @@ def compose(request, pk=None):
         doc.owner = request.user
         try:
             save_document(doc, request.user, submit=request.POST.get('intent') == 'submit')
-            messages.success(request, '기안이 제출되었습니다.' if doc.status in ['review', 'approve'] else '임시저장되었습니다.')
+            messages.success(request, '본인 전결로 제출·완료되었습니다.' if doc.status == 'approved' else '기안이 제출되었습니다.' if doc.status in ['review', 'approve'] else '임시저장되었습니다.')
             return redirect('detail', pk=doc.pk)
         except ValidationError as exc:
             form.add_error(None, exc)

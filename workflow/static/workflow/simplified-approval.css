@@ -1,0 +1,4 @@
+.approval-mode-picker{padding-bottom:0}.approval-mode-picker select{max-width:28rem}.approval-mode-picker p{margin:.6rem 0;line-height:1.7}
+.regulation-form #id_authors{max-height:16rem;overflow:auto;padding:.5rem;border:1px solid #dbe5df;border-radius:.5rem}
+.regulation-form #id_authors label{overflow-wrap:anywhere}.regulation-form .checkbox-field{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+@media(max-width:600px){.regulation-form .checkbox-field{align-items:flex-start}.approval-mode-picker select{max-width:100%}}

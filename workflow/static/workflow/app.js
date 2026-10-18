@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const departmentPickers = [...document.querySelectorAll('[data-department-picker]')].map(picker => {
     const person = document.getElementById(picker.dataset.personField);
     const options = [...person.options].filter(option => option.value).map(option => option.cloneNode(true));
+    person.dataset.departments = JSON.stringify(Object.fromEntries(options.map(option => [option.value, option.dataset.department])));
     const selected = options.find(option => option.value === person.value);
     if (!picker.value && selected) picker.value = selected.dataset.department;
     const sync = (clear = false) => {
@@ -128,7 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
     form.dataset.documentKind = kind;
     const isLeave = kind === 'leave';
     const isStock = kind === 'stock';
-    const skipReview = !isStock && form.dataset.skipReview === 'true';
+    const selfComplete = !isStock && id('approval_mode')?.value === 'self';
+    const skipReview = selfComplete || (!isStock && form.dataset.skipReview === 'true');
     const annual = id('leave_type').value === 'annual';
     document.querySelectorAll('[data-kind]').forEach(card => {
       const selected = card.dataset.kind === kind;
@@ -141,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     show('#end-date-field', isLeave && annual);
     show('#url-field', kind === 'office');
     show('#unit-price-field', kind === 'office');
-    show('#approver-field', !isStock);
+    show('#approver-field', !isStock && !selfComplete);
     show('#reviewer-field', !skipReview);
     document.querySelector('#approval-arrow').hidden = isStock || skipReview;
     departmentPickers.forEach(sync => sync());
@@ -151,11 +153,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#approval-inputs').classList.toggle('review-only', isStock);
     document.querySelector('#quantity-price-grid').classList.toggle('single-column', isStock);
     document.querySelector('#approval-heading').textContent = isStock ? '검토자 지정' : '결재선 지정';
-    document.querySelector('#compose-intro').textContent = isStock ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
-    document.querySelector('#approval-footnote').textContent = isStock ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
+    document.querySelector('#compose-intro').textContent = selfComplete ? '신청 내용을 확인하세요. 본인 전결은 제출 즉시 완료됩니다.' : isStock ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
+    document.querySelector('#approval-footnote').textContent = selfComplete ? '본인 전결로 제출하면 즉시 완료됩니다. 처리자·시각과 적용 규정이 기록됩니다.' : isStock ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
     document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
-    document.querySelector('#compose-help-route').textContent = isStock ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
-    document.querySelector('#submit-label').textContent = isStock ? '재고 요청 제출' : '기안 제출';
+    document.querySelector('#compose-help-route').textContent = selfComplete ? '전결로 제출·완료를 누르면 최종 승인과 동일하게 처리됩니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : isStock ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
+    document.querySelector('#submit-label').textContent = selfComplete ? '전결로 제출·완료' : isStock ? '재고 요청 제출' : '기안 제출';
     id('product').placeholder = isStock ? '예: 제품 사용자 매뉴얼, 제품 보관함' : '예: A4 복사용지';
     document.querySelector('#leave-preview').hidden = !isLeave;
     document.querySelector('#start-date-label').innerHTML = (annual ? '시작일' : '사용 날짜') + ' <em>*</em>';
@@ -184,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   document.querySelectorAll('[data-kind] input').forEach(input => input.addEventListener('change', () => {
     id('kind').value = input.value;
+    if (id('approval_mode')) id('approval_mode').value = 'base';
     update();
   }));
   form.addEventListener('input', update);
@@ -201,19 +204,39 @@ document.addEventListener('DOMContentLoaded', () => {
   const resolveRoute = async () => {
     const sequence = ++routeSequence;
     const params = new URLSearchParams({kind: id('kind').value,
-      total: String(Math.round(numeric(id('quantity').value) * numeric(id('unit_price').value) * 100) / 100), reviewer: id('reviewer').value});
+      total: String(Math.round(numeric(id('quantity').value) * numeric(id('unit_price').value) * 100) / 100), reviewer: id('reviewer').value, mode: id('approval_mode')?.value || 'base'});
     try {
       const response = await fetch(form.dataset.routeUrl + '?' + params, {cache: 'no-store'});
       const route = await response.json();
       if (sequence !== routeSequence) return;
       if (!response.ok) throw new Error(route.error);
       form.dataset.skipReview = String(route.skip_review);
+      const modePicker = document.querySelector('#approval-mode-picker');
+      if (modePicker) {
+        modePicker.hidden = route.available_modes.length < 2;
+        const select = id('approval_mode');
+        const selectedMode = select.value || 'base';
+        const labels = {base:'규정 기본', skip:'검토 생략', self:'본인 전결'};
+        select.replaceChildren(...route.available_modes.map(value => new Option(labels[value], value)));
+        select.value = route.available_modes.includes(selectedMode) ? selectedMode : 'base';
+      }
+      for (const stage of ['reviewer', 'approver']) {
+        const fixed = route['fixed_' + stage + '_id'];
+        if (fixed) {
+          const department = JSON.parse(id(stage).dataset.departments || '{}')[String(fixed)];
+          if (department) id(stage + '_department').value = department;
+        }
+      }
       id('reviewer').dataset.allowedIds = JSON.stringify(route.reviewer_ids);
       id('approver').dataset.allowedIds = JSON.stringify(route.approver_ids);
       update();
+      for (const stage of ['reviewer', 'approver']) {
+        const fixed = route['fixed_' + stage + '_id'];
+        if (fixed) id(stage).value = String(fixed);
+      }
       document.querySelector('#route-preview').textContent = `${route.name} · ${route.path}${route.note ? ' · ' + route.note : ''}`;
-      document.querySelector('#approval-footnote').textContent = route.skip_review ? '검토 없이 최종 승인자가 승인하면 완료됩니다. 자격을 충족하면 본인 승인도 가능합니다.' : '기안자 ≤ 검토자 ≤ 승인자 직급 조건을 적용합니다. 같은 사람도 단계별로 확인합니다.';
-      document.querySelector('#compose-help-route').textContent = route.skip_review ? '승인자를 선택하면 승인대기 알림이 전달됩니다.' : '담당자를 선택하면 결재 순서대로 알림이 전달됩니다.';
+      document.querySelector('#approval-footnote').textContent = route.self_complete ? '본인 전결로 제출하면 즉시 완료됩니다. 처리자·시각과 적용 규정이 기록됩니다.' : route.skip_review ? '검토 없이 최종 승인자가 승인하면 완료됩니다. 자격을 충족하면 본인 승인도 가능합니다.' : '기안자 ≤ 검토자 ≤ 승인자 직급 조건을 적용합니다. 같은 사람도 단계별로 확인합니다.';
+      document.querySelector('#compose-help-route').textContent = route.self_complete ? '전결로 제출·완료를 누르면 최종 승인과 동일하게 처리됩니다.' : route.skip_review ? '승인자를 선택하면 승인대기 알림이 전달됩니다.' : '담당자를 선택하면 결재 순서대로 알림이 전달됩니다.';
     } catch (error) {
       if (sequence === routeSequence) document.querySelector('#route-preview').textContent = error.message || '경로를 확인하지 못했습니다. 제출 시 최신 규정을 다시 확인합니다.';
     }
