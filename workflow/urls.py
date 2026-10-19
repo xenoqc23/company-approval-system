@@ -1,7 +1,14 @@
 from django.urls import path
-from . import views, regulation_views
+from . import views, regulation_views, notification_views
 
 urlpatterns = [
+    path('notifications/status/',notification_views.status,name='notification_status'),
+    path('notifications/preferences/',notification_views.preferences,name='notification_preferences'),
+    path('notifications/push/config/',notification_views.push_config,name='push_config'),
+    path('notifications/push/subscribe/',notification_views.subscribe,name='push_subscribe'),
+    path('notifications/push/unsubscribe/',notification_views.unsubscribe,name='push_unsubscribe'),
+    path('notifications/push/test/',notification_views.test_push,name='push_test'),
+    path('notifications-sw.js',notification_views.service_worker,name='notifications_sw'),
     path('regulations/', regulation_views.regulations, name='regulations'),
     path('regulations/delegation/<int:pk>/', regulation_views.regulations, name='rule_edit'),
     path('regulations/delegation/<int:pk>/delete/', regulation_views.rule_delete, name='rule_delete'),

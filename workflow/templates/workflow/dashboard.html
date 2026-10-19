@@ -21,7 +21,7 @@
     </section>
     <section class="panel mint-progress" id="approval-progress" aria-labelledby="progress-title"><div class="mint-progress-heading"><h2 id="progress-title">결재 진행 상태</h2>{% if progress_doc %}<span class="badge {{ progress_doc.status }}">{{ progress_doc.status_label }}</span>{% endif %}</div>
       <a class="pending-approval-summary{% if nav_waiting %} has-pending{% endif %}" href="{% url 'documents' %}?mode=pending" aria-label="내가 처리할 미결 {{ nav_waiting }}건">
-        <span>미결 <strong>{{ nav_waiting }}건</strong></span><small>내가 검토·승인할 문서 <span aria-hidden="true">↗</span></small>
+        <span>미결 <strong><span data-live-count="waiting" data-keep-zero>{{ nav_waiting }}</span>건</strong></span><small>내가 검토·승인할 문서 <span aria-hidden="true">↗</span></small>
       </a>
       <p class="mint-progress-count" role="status">내 기안 진행 중 <strong>{{ progress_count }}건</strong></p>
       {% if progress_doc %}<form class="mint-progress-picker" method="get" action="{% url 'dashboard' %}#approval-progress">

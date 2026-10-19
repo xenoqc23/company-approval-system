@@ -33,8 +33,10 @@ def notify(document, users, text, stage, stages_by_user=None):
            can_notify(u, document, stages_by_user.get(u.pk, stage))}
     kind = {'leave': '휴가원', 'office': '구매요청서', 'stock': '생산 재고 요청서'}[document.kind]
     subject = f'{document.owner.first_name or document.owner.username} - {document.owner.profile.rank} - {kind}'
-    Notice.objects.bulk_create([Notice(user_id=i, document=document, text=text, subject=subject,
+    notices = Notice.objects.bulk_create([Notice(user_id=i, document=document, text=text, subject=subject,
         stage=stages_by_user.get(i, stage)) for i in ids])
+    from .push import enqueue
+    enqueue(notices)
 
 def accountants(document):
     query = Q(profile__view_accounting=True)

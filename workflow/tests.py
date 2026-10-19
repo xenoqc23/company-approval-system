@@ -744,7 +744,7 @@ class ApprovalTests(TestCase):
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'stock'}).status_code, 403)
 
-    def test_accounting_unread_tabs_acknowledge_each_kind_and_all_per_user(self):
+    def test_accounting_unread_tabs_require_individual_document_receipts_per_user(self):
         self.finish(self.leave())
         self.finish(self.purchase())
         self.finish(self.purchase(kind='stock'))
@@ -757,6 +757,9 @@ class ApprovalTests(TestCase):
         self.assertTrue(all(states().values()))
         self.assertFalse(AccountingReadState.objects.exists())  # Polling never clears indicators.
         self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office'})
+        self.assertTrue(all(states().values()))  # Filtering never acknowledges documents.
+        for doc in Document.objects.filter(status='approved',kind='office'):
+            self.client.get(reverse('detail',args=[doc.pk]))
         self.assertEqual(states(), {'all': True, 'leave': True, 'office': False, 'stock': True})
         self.client.logout()
         self.client.force_login(self.accounting)
@@ -766,7 +769,8 @@ class ApprovalTests(TestCase):
         self.client.force_login(self.owner)
         self.assertTrue(states()['office'])  # Independent for each accountant.
         self.client.force_login(self.accounting)
-        self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'all'})
+        for doc in Document.objects.filter(status='approved'):
+            self.client.get(reverse('detail',args=[doc.pk]))
         self.assertFalse(any(states().values()))
         self.client.force_login(self.stranger)
         self.assertEqual(self.client.get(reverse('accounting_tab_status')).status_code, 403)
@@ -790,7 +794,9 @@ class ApprovalTests(TestCase):
         self.assertFalse(tabs['office']['unread'])
         self.assertTrue(tabs['all']['unread'])
         response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'stock'})
-        self.assertFalse(any(tab['unread'] for tab in response.context['accounting_categories']))
+        self.assertTrue(any(tab['unread'] for tab in response.context['accounting_categories']))
+        self.client.get(reverse('detail',args=[pending_stock.pk]))
+        self.assertFalse(any(tab['unread'] for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']))
 
     def test_document_department_dropdown_removed_without_losing_leave_filter(self):
         doc = self.finish(self.purchase())

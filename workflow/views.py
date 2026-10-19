@@ -8,7 +8,7 @@ from django.contrib.auth import authenticate, login, logout, get_user_model, upd
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Exists, OuterRef
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -66,8 +66,17 @@ def login_csrf(request):
 @never_cache
 @require_POST
 def logout_view(request):
+    from .models import PushSubscription
+    import hashlib
+    device=request.get_signed_cookie('xenosys_push_device',default='')
+    PushSubscription.objects.filter(user=request.user,endpoint_hash=device).update(enabled=False)
+    endpoint=request.POST.get('push_endpoint','')
+    if endpoint:
+        PushSubscription.objects.filter(user=request.user,endpoint_hash=hashlib.sha256(endpoint.encode()).hexdigest()).update(enabled=False)
     logout(request)
-    return redirect('login')
+    response=redirect('login')
+    response.delete_cookie('xenosys_push_device',samesite='Lax')
+    return response
 
 def signup(request):
     form = SignupForm(request.POST or None)
@@ -174,13 +183,13 @@ def documents(request):
     elif mode == 'accounting':
         if not request.user.profile.view_accounting:
             raise PermissionDenied
-        qs = qs.filter(status='approved')
+        from .accounting import accounting_documents
+        qs = accounting_documents(request.user)
         selected_kind = request.GET.get('kind', 'all')
         if selected_kind not in ['all', *dict(Document.KINDS)]:
             selected_kind = 'all'
-        # Opening the menu shows new markers; choosing a tab acknowledges it.
-        read_kind = selected_kind if request.GET.get('kind') == selected_kind else None
-        for category in accounting_tabs(request.user, read_kind):
+        # Tabs only filter; each document has its own receipt.
+        for category in accounting_tabs(request.user):
             key = category['key']
             params = request.GET.copy()
             params['mode'], params['kind'] = 'accounting', key
@@ -222,6 +231,7 @@ def documents(request):
                 qs = qs.filter(**{lookup: date.fromisoformat(request.GET[key])})
         except ValueError:
             messages.error(request, '검색 날짜 형식을 확인해 주세요.')
+    qs=qs.annotate(has_new_notice=Exists(visible_notices(request.user).filter(document_id=OuterRef('pk'),read=False)))
     qs = rank_order(qs, 'owner__')
     stock_final_routes = mode == 'stock' and qs.filter(route_snapshot__stock_final_approval=True).exists()
     return page(request, 'documents', titles[mode], mode, documents=qs[:100], document_count=qs.count(),
@@ -293,6 +303,9 @@ def compose(request, pk=None):
 @login_required
 def detail(request, pk):
     doc = get_object_or_404(visible_documents(request.user), pk=pk)
+    from .accounting import acknowledge_document
+    acknowledge_document(request.user,doc)
+    visible_notices(request.user).filter(document=doc,read=False).update(read=True)
     actions = []
     u = request.user
     if doc.status == 'review' and doc.reviewer_id == u.pk:

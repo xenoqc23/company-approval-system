@@ -85,3 +85,7 @@ LOGGING = {
         'handlers': ['csrf_console'], 'level': 'WARNING', 'propagate': False,
     }},
 }
+
+# Web Push is opt-in. The private key lives outside the source tree/public ZIPs.
+WEBPUSH_PRIVATE_KEY_FILE = os.environ.get('WEBPUSH_PRIVATE_KEY_FILE', str(DATA_DIR / 'webpush-private.pem'))
+WEBPUSH_CONTACT = os.environ.get('WEBPUSH_CONTACT', 'https://localhost')

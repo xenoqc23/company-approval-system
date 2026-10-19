@@ -317,3 +317,45 @@ class WelfarePolicy(models.Model):
     benefits = models.JSONField(default=list)
     awards = models.JSONField(default=list)
     version = models.PositiveIntegerField(default=1)
+
+
+class DocumentReceipt(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    document = models.ForeignKey(Document, on_delete=models.CASCADE)
+    approval_stamp = models.DateTimeField()
+    viewed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'document'], name='unique_document_receipt')]
+
+
+class NotificationPreference(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    popup = models.BooleanField(default=True)
+    sound = models.BooleanField(default=False)
+
+
+class PushSubscription(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    endpoint = models.TextField()
+    endpoint_hash = models.CharField(max_length=64, unique=True)
+    p256dh = models.CharField(max_length=120)
+    auth = models.CharField(max_length=40)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PushDelivery(models.Model):
+    notice = models.ForeignKey(Notice, null=True, on_delete=models.CASCADE)
+    subscription = models.ForeignKey(PushSubscription, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(default=timezone.now)
+    next_attempt_at = models.DateTimeField(default=timezone.now, db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    claim = models.CharField(max_length=36, blank=True)
+    locked_until = models.DateTimeField(null=True)
+    finished_at = models.DateTimeField(null=True, db_index=True)
+    result = models.CharField(max_length=30, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['notice', 'subscription'], name='unique_notice_push_device')]

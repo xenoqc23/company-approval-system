@@ -233,3 +233,22 @@ class MariaDBConcurrencyTests(TransactionTestCase):
         self.assertEqual(outcomes[1],'ok');self.assertIn(outcomes[0],['ok','refused'])
         doc.refresh_from_db()
         self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,1 if doc.status=='approved' else 0)
+
+    def test_two_push_workers_claim_each_job_once(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch,Mock
+        from django.test import override_settings
+        from django.core.management import call_command
+        from .models import PushSubscription,PushDelivery,Notice
+        from .push import deliver_pending
+        user=self.people['reviewer']
+        sub=PushSubscription.objects.create(user=user,endpoint='https://fcm.googleapis.com/fcm/send/concurrency',endpoint_hash='a'*64,p256dh='fixture',auth='fixture')
+        # Explicit device test: no private document or external provider is involved.
+        PushDelivery.objects.create(subscription=sub)
+        with tempfile.TemporaryDirectory() as directory,override_settings(WEBPUSH_PRIVATE_KEY_FILE=str(Path(directory)/'key.pem')):
+            call_command('init_webpush',stdout=Mock())
+            with patch('workflow.push.send_subscription') as send:
+                self.assertEqual(self.run_parallel(lambda:deliver_pending(),lambda:deliver_pending()),['ok','ok'])
+                self.assertEqual(send.call_count,1)
+        job=PushDelivery.objects.get();self.assertEqual(job.result,'sent');self.assertEqual(job.attempts,1)
