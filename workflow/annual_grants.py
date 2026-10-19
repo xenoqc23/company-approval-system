@@ -7,7 +7,8 @@ from .models import AnnualBalance, Profile
 
 
 def employees():
-    return get_user_model().objects.filter(is_active=True, is_superuser=False, profile__approved=True).exclude(username__iexact='admin')
+    return get_user_model().objects.filter(is_active=True, is_superuser=False, profile__approved=True,
+        profile__representative_slot__isnull=True).exclude(username__iexact='admin')
 
 
 def completed_years(hire_date, reference):
@@ -49,7 +50,7 @@ def ensure_balance(employee, year):
     """Call within a transaction after locking the employee profile."""
     balance, _ = AnnualBalance.objects.get_or_create(user=employee, year=year)
     balance = AnnualBalance.objects.select_for_update().get(pk=balance.pk)
-    if employee.profile.hire_date and not balance.grant_initialized:
+    if employee.profile.hire_date and not employee.profile.is_representative and not balance.grant_initialized:
         balance.total = entitlement(employee.profile.hire_date, year)
         from .regulations import annual_policy
         policy = annual_policy(year)
@@ -66,7 +67,9 @@ def sync_annual_grants(today=None):
     count = 0
     ready = AnnualBalance.objects.filter(year=today.year, grant_initialized=True).values('user_id')
     for employee in employees().filter(profile__hire_date__isnull=False).exclude(pk__in=ready).select_related('profile').order_by('pk'):
-        Profile.objects.select_for_update().get(user=employee)
+        employee.profile = Profile.objects.select_for_update().get(user=employee)
+        if employee.profile.is_representative:
+            continue
         before = AnnualBalance.objects.filter(user=employee, year=today.year, grant_initialized=True).exists()
         ensure_balance(employee, today.year)
         count += not before

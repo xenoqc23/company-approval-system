@@ -6,12 +6,14 @@ from django.utils import timezone
 
 DEPARTMENTS = ['생산팀', '품질팀', '개발팀', '영업팀', '전략기획팀', '인사팀']
 RANKS = ['사원', '주임', '대리', '과장', '팀장', '부장', '이사']
+REPRESENTATIVE_DEPARTMENT = '대표이사실'
+REPRESENTATIVE_RANK = '대표'
 
 class Profile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
-    department = models.CharField(max_length=30, choices=[(x, x) for x in DEPARTMENTS])
+    department = models.CharField(max_length=30, choices=[(x, x) for x in [*DEPARTMENTS, REPRESENTATIVE_DEPARTMENT]])
     department_confirmed = models.BooleanField(default=True)
-    rank = models.CharField(max_length=20, choices=[(x, x) for x in RANKS])
+    rank = models.CharField(max_length=20, choices=[(x, x) for x in [*RANKS, REPRESENTATIVE_RANK]])
     approved = models.BooleanField(default=False)
     must_change_password = models.BooleanField(default=False)
     manage_leave = models.BooleanField(default=False)
@@ -23,6 +25,14 @@ class Profile(models.Model):
     birthday_day = models.PositiveSmallIntegerField(null=True, blank=True)
     birthday_calendar = models.CharField(max_length=5, choices=[('solar', '양력'), ('lunar', '음력')], default='solar')
     birthday_lunar_leap = models.BooleanField(default=False)
+    representative_slot = models.PositiveSmallIntegerField(null=True, blank=True, unique=True, editable=False)
+    representative_previous = models.JSONField(default=dict, blank=True)
+    representative_show_birthday = models.BooleanField(default=True)
+    representative_view_documents = models.BooleanField(default=False)
+
+    @property
+    def is_representative(self):
+        return self.representative_slot == 1
 
     class Meta:
         constraints = [models.CheckConstraint(name='profile_valid_birthday', condition=(
@@ -34,7 +44,15 @@ class Profile(models.Model):
                 (models.Q(birthday_calendar='solar', birthday_lunar_leap=False) & (
                     models.Q(birthday_month__in=[1,3,5,7,8,10,12], birthday_day__lte=31) |
                     models.Q(birthday_month__in=[4,6,9,11], birthday_day__lte=30) |
-                    models.Q(birthday_month=2, birthday_day__lte=29)))))))]
+                    models.Q(birthday_month=2, birthday_day__lte=29))))))),
+            models.CheckConstraint(name='profile_representative_slot', condition=(
+                models.Q(representative_slot__isnull=True) | models.Q(representative_slot=1))),
+            models.CheckConstraint(name='profile_representative_readonly', condition=(
+                models.Q(representative_slot__isnull=True) | models.Q(
+                    department=REPRESENTATIVE_DEPARTMENT, rank=REPRESENTATIVE_RANK,
+                    department_confirmed=True, approved=True, manage_leave=False,
+                    manage_system=False, view_accounting=False, procure=False))),
+        ]
 
 class AnnualBalance(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='balances')

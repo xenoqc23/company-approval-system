@@ -57,6 +57,14 @@ def save_rule(actor, form):
         raise PermissionDenied
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     rule = form.save(commit=False)
+    # Recheck after the shared role/rule lock: the form may predate a representative change.
+    from .people import validate_approval_person
+    for person in (rule.fixed_reviewer, rule.fixed_approver):
+        validate_approval_person(person)
+    from .models import Profile
+    if Profile.objects.filter(user_id__in=[user.pk for user in form.cleaned_data.get('authors', [])],
+            representative_slot=1).exists():
+        raise ValidationError('회사 대표 계정은 결재규정의 기안 대상자로 지정할 수 없습니다.')
     if rule.pk and ApprovalRule.objects.filter(pk=rule.pk, deleted_at__isnull=False).exists():
         raise ValidationError('삭제된 규정은 수정할 수 없습니다. 목록을 새로고침해 주세요.')
     from .delegation import rule_priority

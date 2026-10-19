@@ -113,7 +113,8 @@ def regulations(request, pk=None):
         except ValidationError as exc:
             messages.error(request, ' '.join(exc.messages))
     return page(request, 'regulations', '규정 관리', 'regulations', tab=tab, rule_form=form, rule_formset=formset,
-        rule_authors=get_user_model().objects.filter(is_active=True, profile__approved=True, profile__manage_system=False).select_related('profile').order_by('first_name'),
+        rule_authors=get_user_model().objects.filter(is_active=True, profile__approved=True, profile__manage_system=False,
+            profile__representative_slot__isnull=True).select_related('profile').order_by('first_name'),
         rules=ApprovalRule.objects.filter(deleted_at__isnull=True).prefetch_related('authors'), selected_year=year, years=years,
         annual=annual, policy_text=request.POST.get('text', '') if data else (annual.text if annual and annual.text else legacy.text if legacy else ''),
         logs=Audit.objects.filter(event__in=['전결규정 수정', '전결규정 삭제', '연차 산정규정 수정', '경조사비 규정 수정', '장기근속 포상규정 수정']).select_related('actor')[:12], ranks=RANKS)

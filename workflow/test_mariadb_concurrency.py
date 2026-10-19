@@ -150,3 +150,30 @@ class MariaDBConcurrencyTests(TransactionTestCase):
         charged=1 if doc.status=='approved' else 0
         self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,charged)
         self.assertEqual(doc.status,'approved' if outcomes[0]=='ok' else 'draft')
+
+    def representative_admin(self):
+        user=get_user_model().objects.create_user('admin',first_name='관리자',password='1234')
+        Profile.objects.create(user=user,department='개발팀',rank='이사',approved=True,manage_system=True)
+        return user
+
+    def test_concurrent_representative_designations_leave_one_holder(self):
+        from workflow.representatives import assign_representative
+        admin=self.representative_admin()
+        self.assertCountEqual(self.run_parallel(
+            lambda:assign_representative(admin,self.people['reviewer']),
+            lambda:assign_representative(admin,self.people['approver'])),['ok','refused'])
+        self.assertEqual(Profile.objects.filter(representative_slot=1).count(),1)
+
+    def test_representative_designation_and_submission_never_strand_recipient(self):
+        from workflow.representatives import assign_representative
+        admin=self.representative_admin()
+        # Cache the candidate before the parallel role change to exercise stale selectors.
+        recipient=self.people['finance'];_=recipient.profile
+        outcomes=self.run_parallel(
+            lambda:assign_representative(admin,recipient),
+            lambda:save_document(Document(owner=self.people['owner'],kind='office',product='용지',
+                reviewer=self.people['reviewer'],approver=self.people['approver'],recipient=recipient),
+                self.people['owner'],submit=True))
+        self.assertCountEqual(outcomes,['ok','refused'])
+        designated=Profile.objects.get(user=recipient).is_representative
+        self.assertEqual(Document.objects.filter(recipient=recipient,status='review').count(),0 if designated else 1)

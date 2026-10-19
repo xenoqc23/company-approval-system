@@ -10,6 +10,10 @@ from .notifications import can_notify
 
 def visible_documents(user):
     p = user.profile
+    if p.is_representative:
+        if p.representative_view_documents:
+            return Document.objects.exclude(status__in=['draft','deleted'])
+        return Document.objects.filter(Q(owner=user)|Q(reviewer=user)|Q(approver=user)|Q(recipient=user)).exclude(status='deleted')
     if p.manage_system:
         return Document.objects.all()
     related = Q(owner=user) | Q(reviewer=user) | Q(approver=user)
@@ -107,6 +111,8 @@ def save_document(document, actor, submit=False):
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     # Serializes submissions by one employee, including overlap checks.
     actor.profile = Profile.objects.select_for_update().get(user=actor)
+    if actor.profile.is_representative:
+        raise PermissionDenied('회사 대표 계정은 현재 조회 전용입니다.')
     if document.pk:
         current = Document.objects.select_for_update().get(pk=document.pk)
         if current.owner_id != actor.pk or current.status != 'draft':
@@ -137,6 +143,8 @@ def save_document(document, actor, submit=False):
             total=str(document.total_price))
         document.route_snapshot = route
         for person in (document.reviewer, document.approver, document.recipient):
+            if person and Profile.objects.filter(user=person, representative_slot=1).exists():
+                raise ValidationError('회사 대표 계정은 결재 담당자·수령자로 지정할 수 없습니다.')
             if person and (not person.is_active or not person.profile.approved):
                 raise ValidationError('활성화된 직원만 선택할 수 있습니다.')
         if document.kind == 'leave':
@@ -181,6 +189,11 @@ def adjust_charges(document, sign):
 
 @transaction.atomic
 def act_on_document(pk, actor, action, reason='', new_person=None):
+    from .models import RegulationLock
+    RegulationLock.objects.select_for_update().get_or_create(pk=1)
+    actor.profile = Profile.objects.get(user=actor)
+    if actor.profile.is_representative:
+        raise PermissionDenied('회사 대표 계정은 현재 조회 전용입니다.')
     document = Document.objects.select_for_update().get(pk=pk)
     p = actor.profile
     if action in ['reject', 'cancel_review', 'cancel_approval', 'reassign'] and not reason.strip():

@@ -22,6 +22,7 @@ def approval_people():
         is_active=True, is_superuser=False, profile__approved=True,
         profile__department_confirmed=True, profile__department__in=DEPARTMENTS,
         profile__rank__in=RANKS[1:], profile__manage_system=False,
+        profile__representative_slot__isnull=True,
     ).exclude(username__iexact='admin').select_related('profile'))
 
 

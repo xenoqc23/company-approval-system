@@ -14,7 +14,7 @@ def simplified_eligible(owner):
         return False
     profile = owner.profile
     return (owner.is_active and not owner.is_superuser and owner.username.lower() != 'admin'
-        and profile.approved and profile.department_confirmed and not profile.manage_system
+        and profile.approved and profile.department_confirmed and not profile.manage_system and not profile.is_representative
         and profile.department in DEPARTMENTS
         and profile.rank in RANKS[RANKS.index('과장'):])
 
@@ -24,6 +24,8 @@ def rule_priority(rule):
 
 
 def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base'):
+    if owner and owner.profile.is_representative:
+        raise ValidationError('회사 대표 계정은 현재 조회 전용입니다.')
     snapshot = {'name': '생산 재고 기본 경로' if kind == 'stock' else '기본 결재규정',
         'skip_review': False, 'author_rank': owner_rank, 'reviewer_ranks': RANKS[1:],
         'approver_ranks': RANKS[1:], 'rule_id': None, 'version': 1,

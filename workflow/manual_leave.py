@@ -56,6 +56,8 @@ def register_manual_leave(actor, employee, values, request_key):
         raise ValidationError('등록 화면을 다시 열어 주세요.')
     fields = validate_values(values)
     profile = Profile.objects.select_for_update().get(user=employee)
+    if profile.is_representative:
+        raise ValidationError('회사 대표 계정은 연차 직접 등록 대상이 아닙니다.')
     if not profile.approved:
         raise ValidationError('승인된 직원만 등록할 수 있습니다.')
     employee.profile = profile

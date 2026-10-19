@@ -180,7 +180,8 @@ class DocumentForm(forms.ModelForm):
     def __init__(self, *args, submit=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.submit = submit
-        people = rank_order(User.objects.filter(is_active=True, profile__approved=True).select_related('profile'))
+        people = rank_order(User.objects.filter(is_active=True, profile__approved=True,
+            profile__representative_slot__isnull=True).select_related('profile'))
         self.fields['recipient'].queryset = people
         for key in ['reviewer', 'approver']:
             self.fields[key].queryset = approval_people()
@@ -291,7 +292,7 @@ class ApprovalRuleForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['authors'].queryset = rank_order(User.objects.filter(is_active=True, profile__approved=True, profile__manage_system=False).exclude(username__iexact='admin').select_related('profile'))
+        self.fields['authors'].queryset = rank_order(User.objects.filter(is_active=True, profile__approved=True, profile__manage_system=False, profile__representative_slot__isnull=True).exclude(username__iexact='admin').select_related('profile'))
         for stage in ['fixed_reviewer', 'fixed_approver']:
             self.fields[stage].queryset = approval_people()
 

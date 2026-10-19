@@ -32,8 +32,8 @@
 {% if user.is_authenticated and not auth_layout %}
 <nav class="mobile-tabbar" aria-label="모바일 바로가기">
 <a href="{% url 'dashboard' %}" {% if section == 'dashboard' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-home"/></svg><span>홈</span></a>
-<a href="{% url 'documents' %}?mode=pending" {% if section == 'pending' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-check"/></svg><span>결재함</span>{% if nav_waiting %}<span class="mobile-tab-count" aria-label="대기 {{ nav_waiting }}건">{{ nav_waiting }}</span>{% endif %}</a>
-<a class="mobile-compose" href="{% url 'compose' %}" {% if section == 'compose' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-plus"/></svg><span>기안</span></a>
+{% if profile.is_representative %}<a href="{% url 'welfare' %}"><svg aria-hidden="true"><use href="#i-leaf"/></svg><span>직원복지</span></a><a href="{% url 'calendar' %}"><svg aria-hidden="true"><use href="#i-calendar"/></svg><span>직원 일정</span></a>{% else %}<a href="{% url 'documents' %}?mode=pending" {% if section == 'pending' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-check"/></svg><span>결재함</span>{% if nav_waiting %}<span class="mobile-tab-count" aria-label="대기 {{ nav_waiting }}건">{{ nav_waiting }}</span>{% endif %}</a>
+<a class="mobile-compose" href="{% url 'compose' %}" {% if section == 'compose' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-plus"/></svg><span>기안</span></a>{% endif %}
 <a href="{% url 'documents' %}" {% if section == 'mine' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-archive"/></svg><span>내 문서</span></a>
 <a href="{% url 'account' %}" {% if section == 'account' %}aria-current="page"{% endif %}><svg aria-hidden="true"><use href="#i-users"/></svg><span>내 계정</span></a>
 </nav>

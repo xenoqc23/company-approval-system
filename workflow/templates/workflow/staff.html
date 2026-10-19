@@ -1,4 +1,5 @@
-{% extends 'workflow/base.html' %}
+{% extends 'workflow/base.html' %}{% load static %}
+{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/birthdays.css' %}"><link rel="stylesheet" href="{% static 'workflow/representatives.css' %}"><script src="{% static 'workflow/birthdays.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">PEOPLE & ACCESS</div><h1>직원·권한 관리</h1><p>미분류 계정을 확인하고, 부서별로 직원 정보와 권한을 관리하세요.</p></div><span class="date-chip"><svg><use href="#i-users"/></svg>전체 {{ staff_total }}명</span></div>
 <div class="inline-info staff-info"><svg><use href="#i-shield"/></svg><span>부서·직급과 업무 권한은 별도로 관리합니다. 담당 업무에 따라 연차 관리·승인 문서 조회·구매 및 발주 권한을 설정해 주세요.</span></div>

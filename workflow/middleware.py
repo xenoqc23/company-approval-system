@@ -1,4 +1,5 @@
 from django.shortcuts import redirect
+from django.http import HttpResponseForbidden
 
 class AccountGateMiddleware:
     def __init__(self, get_response):
@@ -12,6 +13,12 @@ class AccountGateMiddleware:
                 return redirect('pending')
             if profile.must_change_password and request.path not in allowed:
                 return redirect('password')
+            if profile.is_representative:
+                own_account = request.path in {'/account/', '/password/', '/logout/', '/login/', '/login/csrf/', '/notices/'}
+                notice_open = request.path.startswith('/notices/') and request.path.endswith('/open/')
+                if ((request.method not in {'GET','HEAD','OPTIONS'} and not (own_account or notice_open))
+                        or request.path.startswith(('/compose/', '/calendar/absence/', '/regulations/', '/balances/recalculate/'))):
+                    return HttpResponseForbidden('회사 대표 계정은 현재 조회 전용입니다.')
             if profile.approved and request.path not in allowed:
                 from .annual_grants import sync_annual_grants
                 sync_annual_grants()

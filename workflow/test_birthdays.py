@@ -195,6 +195,6 @@ class BirthdayMigrationTests(TransactionTestCase):
         for name,rows in snapshots.items():
             fields=list(rows[0]) if rows else ['pk']
             self.assertEqual(list(current.get_model('workflow',name).objects.order_by('pk').values(*fields)),rows,name)
-        p=Profile.objects.get(user_id=user.pk)
+        p=current.get_model('workflow','Profile').objects.get(user_id=user.pk)
         self.assertEqual((p.birthday_month,p.birthday_day,p.birthday_calendar,p.birthday_lunar_leap),(None,None,'solar',False))
         self.assertEqual(get_user_model().objects.get(pk=user.pk).password,'preserved-hash')

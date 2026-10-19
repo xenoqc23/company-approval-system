@@ -60,7 +60,7 @@ def month_grid(year, month, viewer):
         while current <= end:
             days[current]['events'].append({'kind': 'absence', 'label': f'{absence.employee.first_name} · {absence.reason}',
                 'subtitle': '종일' if absence.all_day else f'{absence.start_time:%H:%M}~{absence.end_time:%H:%M}',
-                'url': reverse('absence_edit', args=[absence.pk]),
+                'url': '' if viewer.profile.is_representative else reverse('absence_edit', args=[absence.pk]),
                 'description': f'{absence.employee.profile.department} · {absence.employee.profile.rank}'})
             current += timedelta(days=1)
     prev = date(year, month, 1) - timedelta(days=1)

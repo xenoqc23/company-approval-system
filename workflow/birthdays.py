@@ -7,7 +7,8 @@ from django.db import transaction
 from django.utils import timezone
 from korean_lunar_calendar import KoreanLunarCalendar
 
-from .annual_grants import employees
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from .models import Profile
 
 
@@ -32,7 +33,16 @@ def birthday_values(month, day, calendar='solar', leap=False):
 
 
 def birthday_employees():
-    return employees().filter(profile__department_confirmed=True).select_related('profile')
+    return get_user_model().objects.filter(is_active=True, is_superuser=False,
+        profile__approved=True, profile__department_confirmed=True).filter(
+            Q(profile__representative_slot__isnull=True) | Q(profile__representative_show_birthday=True)
+        ).exclude(username__iexact='admin').select_related('profile')
+
+
+def adjacent_birthday_month(year, month, offset):
+    index = year * 12 + month - 1 + offset
+    target_year, zero_month = divmod(index, 12)
+    return (target_year, zero_month+1) if 2000 <= target_year <= 2100 else None
 
 
 def birthday_label(values):
@@ -103,6 +113,8 @@ def save_birthday(actor, employee, values):
     normalized = birthday_values(values.get('birthday_month'), values.get('birthday_day'),
         values.get('birthday_calendar', 'solar'), values.get('birthday_lunar_leap', False))
     profile = Profile.objects.select_for_update().get(user=employee)
+    if profile.is_representative:
+        raise ValidationError('회사 대표 생일은 admin 계정의 대표 설정에서 관리해 주세요.')
     before = {key: getattr(profile, key) for key in normalized}
     if before == normalized:
         return

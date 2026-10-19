@@ -20,7 +20,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST
 from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm, ManualLeaveForm, BirthdayForm
-from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile, Absence, CompanyHoliday, CompanyLeaveCharge
+from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile, Absence, CompanyHoliday, CompanyLeaveCharge, REPRESENTATIVE_DEPARTMENT
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 from .people import approval_people, rank_order
 from .exports import purchase_workbook, leave_balances_workbook
@@ -191,7 +191,8 @@ def documents(request):
     elif mode == 'receive':
         qs = qs.filter(status='approved', recipient=request.user, kind__in=['office', 'stock'])
     elif mode == 'all':
-        if not request.user.profile.manage_system:
+        if not (request.user.profile.manage_system or (request.user.profile.is_representative
+                and request.user.profile.representative_view_documents)):
             raise PermissionDenied
     elif mode == 'search':
         if not request.GET.get('q', '').strip():
@@ -310,6 +311,8 @@ def detail(request, pk):
             actions += [('place', '구매 처리' if doc.kind == 'office' else '발주 처리')]
         if doc.recipient_id == u.pk and doc.shipment in ['shipping', 'ordered']:
             actions += [('receive', '배송완료 확인' if doc.kind == 'office' else '입고완료 확인')]
+    if u.profile.is_representative:
+        actions = []
     try:
         amount = leave_amount(doc) if doc.kind == 'leave' else 0
     except ValidationError:
@@ -328,7 +331,7 @@ def detail(request, pk):
                 my_review_confirmed=review_confirmed and doc.reviewer_id == u.pk,
                 my_approval_confirmed=approval_confirmed and doc.approver_id == u.pk,
                 can_reassign=u.profile.manage_system and doc.status in ['review', 'approve'],
-                can_copy=u.pk == doc.owner_id and doc.status in ['rejected', 'cancelled'])
+                can_copy=not u.profile.is_representative and u.pk == doc.owner_id and doc.status in ['rejected', 'cancelled'])
 
 @login_required
 @require_POST
@@ -585,10 +588,11 @@ def welfare(request):
     tab = request.GET.get('tab', 'birthdays')
     if tab not in ['birthdays', 'awards', 'benefits', 'leave']:
         tab = 'birthdays'
-    from .birthdays import birthday_employees, birthday_period, birthday_rows
+    from .birthdays import birthday_employees, birthday_period, birthday_rows, adjacent_birthday_month
     today = timezone.localdate()
     birth_year, birth_month = birthday_period(request.GET, today)
-    next_year, next_month = (today.year+1, 1) if today.month == 12 else (today.year, today.month+1)
+    next_period = adjacent_birthday_month(birth_year, birth_month, 1)
+    previous_period = adjacent_birthday_month(birth_year, birth_month, -1)
     from .regulations import annual_policy, tenure_table
     from .models import WelfarePolicy
     record = annual_policy(year)
@@ -603,8 +607,11 @@ def welfare(request):
         birthday_year=birth_year, birthday_month=birth_month, birthday_months=range(1,13),
         birthday_years=sorted({today.year-1, today.year, today.year+1, birth_year}),
         birthday_current_year=today.year, birthday_current_month=today.month,
-        birthday_next_year=next_year, birthday_next_month=next_month,
-        birthday_missing=list(birthday_employees().filter(profile__birthday_month__isnull=True).order_by(
+        birthday_next_year=next_period[0] if next_period else None,
+        birthday_next_month=next_period[1] if next_period else None,
+        birthday_previous_year=previous_period[0] if previous_period else None,
+        birthday_previous_month=previous_period[1] if previous_period else None,
+        birthday_missing=list(birthday_employees().filter(profile__birthday_month__isnull=True, profile__representative_slot__isnull=True).order_by(
             'profile__department', 'first_name', 'pk')) if tab == 'birthdays' and request.user.profile.manage_leave else [],
         birthday_conversion_unavailable=not 1001 <= birth_year <= 2050)
 
@@ -648,7 +655,9 @@ def open_notice(request, pk):
 def staff(request):
     if not request.user.profile.manage_system:
         raise PermissionDenied
-    group_keys = ['unclassified'] + DEPARTMENTS
+    from .representatives import can_manage_representative, assign_representative, remove_representative
+    all_departments = [*DEPARTMENTS, REPRESENTATIVE_DEPARTMENT]
+    group_keys = ['unclassified'] + all_departments
     selected_group = request.GET.get('department')
     if selected_group not in group_keys:
         unclassified_exists = Profile.objects.filter(department_confirmed=False).exists()
@@ -657,6 +666,32 @@ def staff(request):
             DEPARTMENTS[0])
     if request.method == 'POST':
         target = get_object_or_404(User, pk=request.POST.get('user'))
+        intent = request.POST.get('intent')
+        if intent in ['representative_set', 'representative_remove']:
+            if not can_manage_representative(request.user):
+                raise PermissionDenied
+            try:
+                if intent == 'representative_remove':
+                    remove_representative(request.user, target)
+                    messages.success(request, '대표 지정을 해제했습니다. 지정 전 직원 정보로 복원하고 기존 기록은 보존했습니다.')
+                else:
+                    birthday_form = BirthdayForm(request.POST)
+                    if not birthday_form.is_valid():
+                        raise ValidationError(birthday_form.errors.as_text())
+                    assign_representative(request.user, target,
+                        show_birthday=request.POST.get('show_birthday') == 'on',
+                        view_documents=request.POST.get('view_documents') == 'on',
+                        birthday=birthday_form.cleaned_data, name=request.POST.get('name'),
+                        replace=request.POST.get('replace_confirm') == 'on',
+                        expected_id=request.POST.get('expected_representative'))
+                    messages.success(request, '회사 대표를 지정·저장했습니다. 조회 전용이며 결재선과 연차·포상 자동 산정에서는 제외됩니다.')
+            except ValidationError as exc:
+                messages.error(request, ' '.join(exc.messages))
+            return redirect(reverse('staff') + '?' + urlencode({'department': REPRESENTATIVE_DEPARTMENT
+                if Profile.objects.filter(user=target, representative_slot=1).exists() else selected_group}))
+        if target.profile.is_representative and (intent != 'reset' or not can_manage_representative(request.user)):
+            messages.error(request, '회사 대표 정보는 admin 계정의 대표 설정에서 관리해 주세요.')
+            return redirect(reverse('staff') + '?' + urlencode({'department': REPRESENTATIVE_DEPARTMENT}))
         if request.POST.get('intent') != 'reset':
             if request.POST.get('department') not in DEPARTMENTS or request.POST.get('rank') not in RANKS:
                 messages.error(request, '부서와 직급을 확인해 주세요.')
@@ -665,9 +700,14 @@ def staff(request):
                 messages.error(request, '현재 로그인한 관리자의 가입 승인, 활성화, 관리자 권한은 해제할 수 없습니다.')
                 return redirect(f'{reverse("staff")}?department={selected_group}')
         with transaction.atomic():
-            from .models import CompanyHolidayLock
+            from .models import CompanyHolidayLock, RegulationLock
+            RegulationLock.objects.select_for_update().get_or_create(pk=1)
             if request.POST.get('intent') != 'reset':
                 CompanyHolidayLock.objects.select_for_update().get(pk=1)
+            target.profile = Profile.objects.select_for_update().get(user=target)
+            if target.profile.is_representative and (intent != 'reset' or not can_manage_representative(request.user)):
+                messages.error(request, '대표 설정이 변경되었습니다. 화면을 새로고침해 주세요.')
+                return redirect(reverse('staff') + '?' + urlencode({'department': REPRESENTATIVE_DEPARTMENT}))
             if request.POST.get('intent') == 'reset':
                 password = secrets.token_urlsafe(9)
                 target.set_password(password)
@@ -698,15 +738,21 @@ def staff(request):
         return redirect(f'{reverse("staff")}?department={selected_group}')
     members = list(rank_order(User.objects.select_related('profile')))
     groups = [{'key': 'unclassified', 'label': '미분류 계정', 'members': []}] + [
-        {'key': dept, 'label': dept, 'members': []} for dept in DEPARTMENTS]
+        {'key': dept, 'label': dept, 'members': []} for dept in all_departments]
     groups_by_key = {group['key']: group for group in groups}
     for member in members:
         key = member.profile.department if member.profile.department_confirmed else 'unclassified'
         groups_by_key.get(key, groups_by_key['unclassified'])['members'].append(member)
     selected = groups_by_key[selected_group]
+    for member in selected['members']:
+        member.representative_birthday_form = BirthdayForm(auto_id=f'id_representative_{member.pk}_%s',
+            initial={key:getattr(member.profile,key) for key in
+                ['birthday_month','birthday_day','birthday_calendar','birthday_lunar_leap']})
     return page(request, 'staff', '직원·권한 관리', 'staff', staff=selected['members'],
                 staff_groups=groups, selected_group=selected_group, selected_label=selected['label'],
-                staff_total=len(members), departments=DEPARTMENTS, ranks=RANKS)
+                staff_total=len(members), departments=DEPARTMENTS, ranks=RANKS,
+                can_manage_representative=can_manage_representative(request.user),
+                company_representative=Profile.objects.filter(representative_slot=1).select_related('user').first())
 
 @login_required
 def backups(request):

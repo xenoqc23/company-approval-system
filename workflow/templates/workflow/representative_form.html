@@ -1,0 +1,11 @@
+<form method="post" class="representative-form" data-confirm="{{ member.first_name }}님을 회사 대표로 지정·저장할까요? 결재와 업무 관리는 제한되며 기존 문서·연차 기록은 유지됩니다.">{% csrf_token %}
+<input type="hidden" name="user" value="{{ member.pk }}"><input type="hidden" name="intent" value="representative_set"><input type="hidden" name="expected_representative" value="{{ company_representative.user_id|default:'' }}">
+<p class="muted">부서 <b>대표이사실</b> · 직책 <b>대표</b>로 지정합니다. 별도 관리자 권한은 부여하지 않습니다.</p>
+<label>이름<input name="name" value="{{ member.first_name }}" maxlength="80" required></label>
+{% include 'workflow/birthday_fields.html' with birthday_form=member.representative_birthday_form %}
+<div class="permissions"><label><input type="checkbox" name="show_birthday" {% if not member.profile.is_representative or member.profile.representative_show_birthday %}checked{% endif %}>생일자 목록·홈 축하 카드에 표시</label><label><input type="checkbox" name="view_documents" {% if member.profile.representative_view_documents %}checked{% endif %}>전체 제출 문서 조회 허용</label></div>
+<p class="muted">문서 조회를 허용해도 임시저장·삭제 문서는 제외되며 작성·검토·승인은 할 수 없습니다. 기존에 본인과 관련된 문서 이력은 유지됩니다.</p>
+{% if company_representative and company_representative.user_id != member.pk %}<label class="representative-replace"><input type="checkbox" name="replace_confirm" required>현재 대표 {{ company_representative.user.first_name }}님을 해제하고 {{ member.first_name }}님으로 교체합니다.</label>{% endif %}
+<p class="muted">대기 중 결재·물품 수령 또는 전결규정의 고정 담당자가 있으면 먼저 정리해야 지정할 수 있습니다.</p>
+<button class="btn secondary full-width">{% if member.profile.is_representative %}회사 대표 설정 저장{% else %}회사 대표로 지정{% endif %}</button>
+</form>
