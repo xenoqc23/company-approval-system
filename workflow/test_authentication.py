@@ -28,6 +28,8 @@ HEADERS = {
 class AuthenticationTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         cls.user = get_user_model().objects.create_user(
             'auth-check', password='auth-regression-only', first_name='시험 직원')
         Profile.objects.create(user=cls.user, department='개발팀', rank='대리', approved=True)

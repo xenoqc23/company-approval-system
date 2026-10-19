@@ -8,7 +8,7 @@
       <div><dt>아이디</dt><dd>{{ user.username }}</dd></div>
       <div><dt>부서</dt><dd>{{ profile.department }}</dd></div>
       <div><dt>직급</dt><dd>{{ profile.rank }}</dd></div>
-      {% if profile.is_representative %}<div><dt>이용 권한</dt><dd>회사 대표 · 조회 전용</dd></div>{% endif %}
+      {% if profile.is_representative %}<div><dt>이용 권한</dt><dd>회사 대표 · {% if profile.representative_can_approve %}요청받은 문서 결재 가능{% else %}조회 전용{% endif %}</dd></div>{% endif %}
     </dl>
   </section>
   <section class="panel"><div class="panel-heading"><h2>비밀번호 변경</h2></div>

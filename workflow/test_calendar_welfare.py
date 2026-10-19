@@ -20,6 +20,8 @@ from .welfare import award_candidates, BENEFITS
 class CalendarWelfareTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         User = get_user_model()
         for key, flags in [('employee', {}), ('other', {}), ('accounting', {'manage_leave': True}),
                            ('reviewer', {}), ('approver', {}), ('admin', {'manage_system': True}),

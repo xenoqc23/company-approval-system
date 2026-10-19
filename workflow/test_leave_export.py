@@ -17,6 +17,8 @@ from .models import AnnualBalance, CompanyHoliday, CompanyLeaveCharge, Document,
 class LeaveExportTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         for name, department in [('employee','품질팀'), ('finance','인사팀')]:
             user = get_user_model().objects.create_user(name, first_name=name)
             Profile.objects.create(user=user, department=department, rank='대리', approved=True,

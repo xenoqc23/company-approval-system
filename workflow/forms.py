@@ -209,7 +209,7 @@ class DocumentForm(forms.ModelForm):
             self.fields['approval_mode'].choices = [(key, label) for key, label in self.fields['approval_mode'].choices if key in route['available_modes']]
             for stage in ['reviewer', 'approver']:
                 fixed = route.get('fixed_' + stage + '_id')
-                if fixed:
+                if fixed and not (route.get('progressive') and stage == 'approver'):
                     person = User.objects.select_related('profile').get(pk=fixed)
                     self.initial[stage] = person.pk
                     self.initial[stage + '_department'] = person.profile.department
@@ -230,7 +230,7 @@ class DocumentForm(forms.ModelForm):
                     owner=self.instance.owner, mode=data['approval_mode'])
                 for stage in ['reviewer', 'approver']:
                     fixed = route.get('fixed_' + stage + '_id')
-                    if fixed:
+                    if fixed and not (route.get('progressive') and route['mode'] == 'base' and stage == 'approver'):
                         data[stage] = User.objects.select_related('profile').get(pk=fixed)
                         data[stage + '_department'] = data[stage].profile.department
                 if route['skip_review']:
@@ -256,12 +256,25 @@ class DocumentForm(forms.ModelForm):
                 data['unit_price'], data['url'] = 0, ''
                 if not route or not route.get('stock_final_approval'):
                     data['approver'] = None
+        if route and route.get('progressive'):
+            if route['mode'] == 'base':
+                data['approver'] = None
+            if route['mode'] == 'ceo':
+                data['reviewer'] = data['approver'] = None
+            if self.submit and data.get('kind'):
+                from .progressive import prepare
+                temp = Document(owner=self.instance.owner, **{k:data.get(k) for k in ['kind','leave_type','start_date','end_date','start_time','end_time','quantity','unit_price']})
+                temp.approver = data.get('approver')
+                try:
+                    prepare(temp,route)
+                except forms.ValidationError as exc:
+                    self.add_error(None,exc)
         if self.submit:
             required = ['reviewer']
             if route and route['skip_review']:
                 data['reviewer'] = None
                 required = []
-            if data.get('kind') != 'stock' or (route and route.get('stock_final_approval')):
+            if (data.get('kind') != 'stock' or (route and route.get('stock_final_approval'))) and not (route and route.get('progressive') and route['mode'] in ['base','ceo']):
                 required += ['approver']
             if data.get('kind') == 'leave':
                 required += ['leave_type', 'start_date', 'end_date', 'reason']
@@ -288,7 +301,7 @@ class ApprovalRuleForm(forms.ModelForm):
     author_departments = forms.MultipleChoiceField(label='적용 부서 (미선택: 전체)', choices=[(x, x) for x in DEPARTMENTS], required=False, widget=forms.CheckboxSelectMultiple)
     authors = EmployeeMultipleChoice(label='특정 직원 (미선택: 공통 규정)', queryset=User.objects.none(), required=False, widget=forms.CheckboxSelectMultiple)
     fixed_reviewer = EmployeeChoice(label='검토자 고정 (빈칸: 기안 시 선택)', queryset=User.objects.none(), required=False)
-    fixed_approver = EmployeeChoice(label='최종 승인자 고정 (빈칸: 기안 시 선택)', queryset=User.objects.none(), required=False)
+    fixed_approver = EmployeeChoice(label='상위 승인자 고정 (빈칸: 검토자가 선택)', queryset=User.objects.none(), required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -299,9 +312,9 @@ class ApprovalRuleForm(forms.ModelForm):
     class Meta:
         from .models import ApprovalRule
         model = ApprovalRule
-        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'author_departments', 'authors', 'skip_review', 'allow_skip_review', 'allow_self_approval', 'reviewer_ranks', 'approver_ranks', 'fixed_reviewer', 'fixed_approver', 'approver_is_author', 'enabled']
+        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'author_departments', 'authors', 'skip_review', 'allow_skip_review', 'allow_self_approval', 'allow_review_final', 'allow_representative_direct', 'reviewer_ranks', 'approver_ranks', 'fixed_reviewer', 'fixed_approver', 'approver_is_author', 'enabled']
         labels = {'name': '규정명', 'kind': '문서 종류', 'amount_over': '구매 총금액 하한 (초과)',
-            'amount_to': '구매 총금액 상한 (이하, 빈칸: 제한 없음)', 'skip_review': '규정 기본 경로에서 검토 생략', 'allow_skip_review': '과장급 이상에게 검토 생략 선택 허용', 'allow_self_approval': '과장급 이상에게 본인 전결 선택 허용', 'approver_is_author': '최종 승인자를 기안자 본인으로 지정', 'enabled': '규정 사용'}
+            'amount_to': '구매 총금액 상한 (이하, 빈칸: 제한 없음)', 'skip_review': '기존 고정 결재선에서 검토 생략', 'allow_skip_review': '과장급 이상에게 검토 생략 선택 허용', 'allow_self_approval': '과장급 이상에게 본인 전결 선택 허용', 'allow_review_final': '검토자 전결 허용 (기안자 본인 제외)', 'allow_representative_direct': '팀장급 이상에게 대표 직접 결재 요청 허용', 'approver_is_author': '기존 고정 결재선에서 승인자를 기안자 본인으로 지정', 'enabled': '규정 사용'}
 
     def clean(self):
         data = super().clean()
@@ -334,3 +347,19 @@ class BenefitRuleForm(forms.Form):
 class AwardRuleForm(forms.Form):
     years = forms.IntegerField(label='포상 근속연수', min_value=1, max_value=100)
     reward = forms.CharField(label='포상 내용', max_length=120)
+
+
+class ApprovalFlowPolicyForm(forms.ModelForm):
+    class Meta:
+        from .models import ApprovalFlowPolicy
+        model = ApprovalFlowPolicy
+        fields = ['enabled','leave_threshold','purchase_threshold']
+        labels = {'enabled':'새 기안에 단계별 결재 적용','leave_threshold':'대표 결재 요청 선택 기준 · 연차 (일 이상)',
+                  'purchase_threshold':'대표 결재 요청 선택 기준 · 구매 총금액 (원 이상, 부가세 포함)'}
+
+    def clean(self):
+        data=super().clean()
+        for field in ['leave_threshold','purchase_threshold']:
+            if data.get(field) is not None and data[field] <= 0:
+                self.add_error(field,'0보다 큰 기준을 입력해 주세요.')
+        return data

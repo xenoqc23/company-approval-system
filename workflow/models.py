@@ -29,6 +29,7 @@ class Profile(models.Model):
     representative_previous = models.JSONField(default=dict, blank=True)
     representative_show_birthday = models.BooleanField(default=True)
     representative_view_documents = models.BooleanField(default=False)
+    representative_can_approve = models.BooleanField(default=False)
 
     @property
     def is_representative(self):
@@ -74,15 +75,18 @@ class Document(models.Model):
     KINDS = [('leave', '휴가원'), ('office', '사무·사내용품'), ('stock', '생산 재고 요청')]
     LEAVES = [('annual', '연차'), ('am', '오전반차'), ('pm', '오후반차'), ('outing', '외출')]
     STATES = [('draft', '임시저장'), ('review', '검토대기'), ('approve', '최종승인대기'),
-              ('approved', '결재완료'), ('rejected', '반려'), ('cancelled', '취소'), ('deleted', '삭제')]
+              ('executive', '대표결재대기'), ('approved', '결재완료'), ('rejected', '반려'), ('cancelled', '취소'), ('deleted', '삭제')]
     SHIPMENTS = [('', '구매·발주 전'), ('shipping', '배송중'), ('ordered', '발주완료·입고대기'),
                  ('received', '수령완료')]
-    approval_mode = models.CharField(max_length=12, choices=[('base', '규정 기본'), ('skip', '검토 생략'), ('self', '본인 전결')], default='base')
+    approval_mode = models.CharField(max_length=12, choices=[('base', '검토 요청'), ('skip', '검토 생략'), ('self', '본인 전결'), ('ceo', '대표 결재 요청')], default='base')
     number = models.CharField(max_length=40, unique=True, null=True, blank=True)
     title = models.CharField(max_length=220, blank=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='owned_documents')
     reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='review_documents', null=True, blank=True)
     approver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='approve_documents', null=True, blank=True)
+    representative = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='representative_documents', null=True, blank=True)
+    approver_decided_at = models.DateTimeField(null=True, blank=True)
+    representative_requested_at = models.DateTimeField(null=True, blank=True)
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='receive_documents', null=True, blank=True)
     kind = models.CharField(max_length=12, choices=KINDS, default='leave')
     status = models.CharField(max_length=15, choices=STATES, default='draft')
@@ -118,6 +122,10 @@ class Document(models.Model):
     @property
     def review_required(self):
         return not self.route_snapshot.get('skip_review', False) if self.final_approval_required else True
+
+    @property
+    def progressive(self):
+        return bool(self.route_snapshot.get('progressive'))
 
     @property
     def total_price(self):
@@ -263,6 +271,8 @@ class ApprovalRule(models.Model):
     authors = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='approval_rules')
     allow_skip_review = models.BooleanField(default=False)
     allow_self_approval = models.BooleanField(default=False)
+    allow_review_final = models.BooleanField(default=False)
+    allow_representative_direct = models.BooleanField(default=False)
     fixed_reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_review_rules')
     fixed_approver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_approve_rules')
     approver_is_author = models.BooleanField(default=False)
@@ -275,6 +285,18 @@ class ApprovalRule(models.Model):
 
     class Meta:
         ordering = ['kind', 'amount_over', 'pk']
+
+
+class ApprovalFlowPolicy(models.Model):
+    """Current new-submission settings; submitted documents keep their snapshot."""
+    enabled = models.BooleanField(default=True)
+    leave_threshold = models.DecimalField(max_digits=6, decimal_places=2, default=3)
+    purchase_threshold = models.DecimalField(max_digits=14, decimal_places=2, default=1000000)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [models.CheckConstraint(name='approval_flow_positive_thresholds', condition=(
+            models.Q(leave_threshold__gt=0, purchase_threshold__gt=0)))]
 
 
 class AnnualPolicy(models.Model):

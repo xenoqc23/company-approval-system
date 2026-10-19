@@ -22,6 +22,8 @@ from .services import edit_balance
 class NewEntrantGrantTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         cls.employee = get_user_model().objects.create_user('new_employee', first_name='신입직원')
         Profile.objects.create(user=cls.employee, approved=True, department='품질팀', rank='사원', hire_date=date(2026,6,1))
         cls.finance = get_user_model().objects.create_user('finance', first_name='경리직원')

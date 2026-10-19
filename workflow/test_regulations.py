@@ -18,6 +18,8 @@ from .forms import ApprovalRuleForm
 class ConfigurableRegulationTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         User = get_user_model()
         for name, rank, flags in [('owner', '대리', {}), ('reviewer', '과장', {}), ('approver', '부장', {}),
                 ('director', '이사', {}), ('junior', '주임', {}), ('finance', '과장', {'manage_leave':True,'view_accounting':True}),

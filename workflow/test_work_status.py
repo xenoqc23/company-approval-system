@@ -20,6 +20,8 @@ from .services import act_on_document, save_document, edit_balance
 class WorkStatusTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         ApprovalRule.objects.update(enabled=False)
         for name in ['employee', 'reviewer', 'approver', 'finance', 'other', 'admin']:
             user = get_user_model().objects.create_user(name, first_name=name, password='test-only-password')

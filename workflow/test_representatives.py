@@ -24,6 +24,8 @@ from .services import act_on_document, save_document, visible_documents
 class RepresentativeTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         ApprovalRule.objects.update(enabled=False)
         for key,flags in [('admin',dict(manage_system=True)),('candidate',{}),('other',{}),
                           ('manager',dict(manage_system=True,manage_leave=True)),('worker',{})]:

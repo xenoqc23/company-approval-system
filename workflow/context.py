@@ -11,5 +11,5 @@ def shell(request):
     return {'profile': request.user.profile, 'balance': balance,
             'remaining': balance.remaining if balance else 0,
             'used_percent': max(0, min(100, float(balance.used / balance.total * 100))) if balance and balance.total > 0 else 0,
-            'nav_waiting': Document.objects.filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user)).count(),
+            'nav_waiting': Document.objects.filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user) | Q(status='executive', representative=request.user)).count(),
             'unread': visible_notices(request.user).filter(read=False).count(), 'current_year': year}

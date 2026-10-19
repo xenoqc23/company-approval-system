@@ -14,6 +14,9 @@ def quick_form(user, kind, today):
 def progress_stages(doc):
     if not doc:
         return []
+    if doc.progressive:
+        from .progressive import steps
+        return steps(doc)
     steps = [{'label': '기안', 'person': doc.owner.first_name, 'done': bool(doc.submitted_at), 'time': doc.submitted_at},
              {'label': '검토', 'person': doc.reviewer.first_name if doc.reviewer else '—',
               'done': bool(doc.reviewed_at), 'time': doc.reviewed_at}]

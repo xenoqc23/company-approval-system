@@ -18,6 +18,8 @@ from .services import act_on_document, save_document
 class CommonRuleTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         ApprovalRule.objects.update(enabled=False)
         for name, rank in [('owner','과장'),('reviewer','팀장'),('approver','이사'),('finance','과장'),('other','과장')]:
             user=get_user_model().objects.create_user(name,first_name=name,password='test-only-password')

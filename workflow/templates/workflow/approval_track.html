@@ -1,4 +1,4 @@
-<section class="panel approval-track{% if doc.kind == 'stock' and doc.final_approval_required and doc.review_required %} four-stage{% elif not doc.review_required and doc.kind != 'stock' %} two-stage{% endif %}" aria-label="결재 진행상황">
+{% if doc.progressive %}{% include 'workflow/progressive_track.html' %}{% else %}<section class="panel approval-track{% if doc.kind == 'stock' and doc.final_approval_required and doc.review_required %} four-stage{% elif not doc.review_required and doc.kind != 'stock' %} two-stage{% endif %}" aria-label="결재 진행상황">
   <div class="track-step {% if doc.submitted_at %}submitted{% endif %}" data-stage="submission">
     <span class="track-circle"><svg><use href="#i-file"/></svg></span>
     <div class="track-copy"><div class="track-head"><small>01 기안</small><span class="track-state">{% if doc.status == 'draft' %}임시저장{% else %}제출{% endif %}</span></div>
@@ -29,3 +29,4 @@
   </div>
   {% endif %}
 </section>
+{% endif %}

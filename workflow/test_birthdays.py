@@ -17,6 +17,8 @@ from .models import AnnualBalance, Audit, Profile
 class BirthdayTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         cls.employee = cls.person('birthday-staff', '생일직원', month=10, day=19)
         cls.finance = cls.person('birthday-finance', '관리담당', manage_leave=True)
         cls.lunar = cls.person('birthday-lunar', '음력직원', month=9, day=9, calendar='lunar')

@@ -71,10 +71,17 @@ class Command(BaseCommand):
                            approver=fields.pop('approver', approver), recipient=fields.pop('recipient', doc_owner), **fields)
             if doc.kind == 'office' and doc.total_price <= 100000:
                 doc.approver = doc.reviewer or doc_owner
+            next_approver = doc.approver
             save_document(doc, doc_owner, submit=stage != 'draft')
             if stage in ['approve', 'approved'] and doc.review_required:
-                doc = act_on_document(doc.pk, doc.reviewer, 'review')
-            if stage == 'approved' and doc.kind != 'stock':
+                if doc.progressive:
+                    from workflow.progressive import forward_candidates
+                    candidates=forward_candidates(doc)
+                    selected=candidates.filter(pk=next_approver.pk).first() if next_approver else None
+                    doc=act_on_document(doc.pk,doc.reviewer,'forward','예시 문서 검토 완료',selected or candidates.first())
+                else:
+                    doc = act_on_document(doc.pk, doc.reviewer, 'review')
+            if stage == 'approved' and doc.final_approval_required:
                 doc = act_on_document(doc.pk, doc.approver, 'approve')
             return doc
 

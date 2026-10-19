@@ -115,15 +115,15 @@ def dashboard(request):
     mine = Document.objects.filter(owner=request.user).exclude(status__in=['draft', 'deleted'])
     from .home import progress_stages
     # Keep the chooser limited to the employee's own submitted documents.
-    progress_documents = list(mine.filter(status__in=['review', 'approve']).order_by('-submitted_at', '-pk').select_related('owner', 'reviewer', 'approver'))
-    pending_documents = [doc for doc in progress_documents if doc.status in ['review', 'approve']]
+    progress_documents = list(mine.filter(status__in=['review', 'approve', 'executive']).order_by('-submitted_at', '-pk').select_related('owner', 'reviewer', 'approver'))
+    pending_documents = [doc for doc in progress_documents if doc.status in ['review', 'approve','executive']]
     progress_documents = pending_documents
     selected_id = request.GET.get('progress_document', '')
     progress_doc = next((doc for doc in progress_documents if str(doc.pk) == selected_id), None)
     if progress_doc is None:
         progress_doc = next(iter(pending_documents), None)
     steps = progress_stages(progress_doc)
-    if progress_doc and progress_doc.final_approval_required:
+    if progress_doc and progress_doc.final_approval_required and not progress_doc.progressive:
         steps = steps[:3 if progress_doc.review_required else 2]
     home_kind = request.GET.get('home_kind', 'all')
     if home_kind not in ['all', 'leave', 'office', 'stock']:
@@ -154,14 +154,15 @@ def documents(request):
     elif mode == 'drafts':
         qs = qs.filter(owner=request.user, status='draft')
     elif mode == 'pending':
-        qs = qs.filter(Q(status='review', reviewer=request.user) | Q(status='approve', approver=request.user))
+        from .progressive import pending_for
+        qs = qs.filter(pending_for(request.user))
     elif mode == 'history':
-        qs = qs.filter(audits__actor=request.user, audits__event__in=['검토 승인', '최종 승인', '재고 요청 검토 완료']).distinct()
+        qs = qs.filter(audits__actor=request.user, audits__event__in=['검토 승인', '최종 승인', '재고 요청 검토 완료','상위 결재 요청','검토자 전결','대표 결재 요청','대표 최종 승인']).distinct()
     elif mode == 'stock':
         qs = qs.filter(kind='stock').exclude(status='draft')
         stage = request.GET.get('stock_stage')
         if stage == 'review':
-            qs = qs.filter(status__in=['review', 'approve'])
+            qs = qs.filter(status__in=['review', 'approve', 'executive'])
         elif stage == 'ready':
             qs = qs.filter(status='approved', shipment='')
         elif stage == 'ordered':
@@ -283,7 +284,7 @@ def compose(request, pk=None):
         doc.owner = request.user
         try:
             save_document(doc, request.user, submit=request.POST.get('intent') == 'submit')
-            messages.success(request, '본인 전결로 제출·완료되었습니다.' if doc.status == 'approved' else '기안이 제출되었습니다.' if doc.status in ['review', 'approve'] else '임시저장되었습니다.')
+            messages.success(request, '본인 전결로 제출·완료되었습니다.' if doc.status == 'approved' else '기안이 제출되었습니다.' if doc.status in ['review', 'approve','executive'] else '임시저장되었습니다.')
             return redirect('detail', pk=doc.pk)
         except ValidationError as exc:
             form.add_error(None, exc)
@@ -311,7 +312,24 @@ def detail(request, pk):
             actions += [('place', '구매 처리' if doc.kind == 'office' else '발주 처리')]
         if doc.recipient_id == u.pk and doc.shipment in ['shipping', 'ordered']:
             actions += [('receive', '배송완료 확인' if doc.kind == 'office' else '입고완료 확인')]
-    if u.profile.is_representative:
+    if doc.progressive:
+        from .progressive import may_review_final, may_escalate, active_representative, final_actor_id
+        actions = [(key,label) for key,label in actions if key in ['delete','place','receive']]
+        if doc.status == 'review' and doc.reviewer_id == u.pk:
+            actions += [('forward','상위 결재 요청'),('reject','반려')]
+            if may_review_final(doc,u):
+                actions.insert(0,('review_final','검토자 전결'))
+        if doc.status == 'approve' and doc.approver_id == u.pk:
+            actions += [('approve','최종 승인'),('reject','반려')]
+            if may_escalate(doc,u):
+                actions.insert(0,('escalate','대표 결재 요청'))
+        if doc.status == 'executive' and doc.representative_id == u.pk and u.profile.representative_can_approve:
+            actions += [('approve','대표 최종 승인'),('reject','반려')]
+        if doc.status == 'approve' and doc.reviewer_id == u.pk:
+            actions += [('cancel_review','검토 승인 취소')]
+        if doc.status == 'approved' and final_actor_id(doc) == u.pk:
+            actions += [('cancel_approval','최종 승인 취소')]
+    if u.profile.is_representative and not u.profile.representative_can_approve:
         actions = []
     try:
         amount = leave_amount(doc) if doc.kind == 'leave' else 0
@@ -319,13 +337,19 @@ def detail(request, pk):
         amount = 0
     common_overlaps = CompanyHoliday.objects.filter(active=True, use_annual=True, day__range=(doc.start_date, doc.end_date)) if doc.kind == 'leave' and doc.start_date and doc.end_date else []
     assignment_form = ApprovalAssignmentForm()
+    forward_form=ApprovalAssignmentForm()
+    if doc.progressive and doc.status == 'review':
+        from .progressive import forward_candidates
+        forward_form.fields['new_person'].queryset=forward_candidates(doc)
+        forward_form.fields['new_person'].label='상위 승인자'
+    from .progressive import steps as progressive_steps
     procurement_log = doc.audits.filter(event='발주 처리').select_related('actor').first() if doc.kind == 'stock' else None
     review_cancelled = doc.status == 'cancelled' and (not doc.final_approval_required or not doc.approved_at)
     review_confirmed = bool(doc.reviewed_at) and not review_cancelled
     approval_cancelled = doc.final_approval_required and doc.status == 'cancelled' and bool(doc.approved_at)
     approval_confirmed = doc.final_approval_required and doc.status == 'approved' and bool(doc.approved_at)
     return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
-                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, procurement_log=procurement_log,
+                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, forward_form=forward_form, progressive_steps=progressive_steps(doc) if doc.progressive else [], procurement_log=procurement_log,
                 common_overlaps=common_overlaps, review_confirmed=review_confirmed, review_cancelled=review_cancelled,
                 approval_confirmed=approval_confirmed, approval_cancelled=approval_cancelled,
                 my_review_confirmed=review_confirmed and doc.reviewer_id == u.pk,
@@ -339,7 +363,7 @@ def action(request, pk):
     get_object_or_404(visible_documents(request.user), pk=pk)
     try:
         new = User.objects.filter(pk=request.POST.get('new_person') or None).first()
-        if request.POST.get('action') == 'reassign' and request.POST.get('new_person_department') and new and new.profile.department != request.POST['new_person_department']:
+        if request.POST.get('action') in ['reassign','forward'] and request.POST.get('new_person_department') and new and new.profile.department != request.POST['new_person_department']:
             raise ValidationError('선택한 부서에 속한 직원을 지정해 주세요.')
         doc = act_on_document(pk, request.user, request.POST.get('action'), request.POST.get('reason', ''), new)
         if request.POST.get('action') in ['review', 'approve']:
@@ -681,10 +705,11 @@ def staff(request):
                     assign_representative(request.user, target,
                         show_birthday=request.POST.get('show_birthday') == 'on',
                         view_documents=request.POST.get('view_documents') == 'on',
+                        can_approve=request.POST.get('can_approve') == 'on',
                         birthday=birthday_form.cleaned_data, name=request.POST.get('name'),
                         replace=request.POST.get('replace_confirm') == 'on',
                         expected_id=request.POST.get('expected_representative'))
-                    messages.success(request, '회사 대표를 지정·저장했습니다. 조회 전용이며 결재선과 연차·포상 자동 산정에서는 제외됩니다.')
+                    messages.success(request, '회사 대표를 지정·저장했습니다. 대표 결재 허용 설정을 저장했으며 연차·포상 자동 산정에서는 제외됩니다.')
             except ValidationError as exc:
                 messages.error(request, ' '.join(exc.messages))
             return redirect(reverse('staff') + '?' + urlencode({'department': REPRESENTATIVE_DEPARTMENT

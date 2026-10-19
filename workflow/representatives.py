@@ -1,4 +1,4 @@
-"""A single admin-designated, read-only company representative."""
+"""A single admin-designated representative with optional assigned executive approval."""
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -18,7 +18,7 @@ def can_manage_representative(user):
 def pending_assignments(user):
     return Document.objects.filter(
         Q(status='review', reviewer=user) | Q(status='approve', approver=user) |
-        Q(status='review', approver=user) |
+        Q(status='review', approver=user) | Q(status='executive', representative=user) |
         Q(status__in=['review','approve'], kind__in=['office','stock'], recipient=user) |
         Q(status='approved', kind__in=['office','stock'], recipient=user,
           shipment__in=['', 'shipping', 'ordered']))
@@ -30,6 +30,7 @@ def _restore(profile):
         setattr(profile, field, before[field])
     profile.representative_slot = None
     profile.representative_view_documents = False
+    profile.representative_can_approve = False
     profile.representative_previous = {}
     for flag in BUSINESS_FLAGS:
         setattr(profile, flag, False)
@@ -38,7 +39,7 @@ def _restore(profile):
 
 @transaction.atomic
 def assign_representative(actor, target, *, show_birthday=True, view_documents=False,
-                          birthday=None, name=None, replace=False, expected_id=None):
+                          birthday=None, name=None, replace=False, expected_id=None, can_approve=False):
     if not can_manage_representative(actor):
         raise PermissionDenied
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
@@ -63,6 +64,10 @@ def assign_representative(actor, target, *, show_birthday=True, view_documents=F
             raise ValidationError('사용 중인 전결규정의 고정 담당자를 먼저 변경해 주세요.')
     if name is not None and len(name.strip()) > 80:
         raise ValidationError('이름은 80자 이내로 입력해 주세요.')
+    if profile.is_representative and not can_approve and Document.objects.filter(status='executive',representative=target).exists():
+        raise ValidationError('대기 중인 대표 결재를 먼저 처리한 뒤 결재 허용을 중지해 주세요.')
+    if current and current.user_id != target.pk and Document.objects.filter(status='executive',representative_id=current.user_id).exists():
+        raise ValidationError('현재 대표의 대기 결재를 먼저 처리한 뒤 교체해 주세요.')
     old_name = current.user.first_name if current else '없음'
     if current and current.user_id != target.pk:
         _restore(profiles[current.user_id])
@@ -74,6 +79,7 @@ def assign_representative(actor, target, *, show_birthday=True, view_documents=F
     profile.department_confirmed, profile.approved = True, True
     profile.representative_show_birthday = bool(show_birthday)
     profile.representative_view_documents = bool(view_documents)
+    profile.representative_can_approve = bool(can_approve)
     for flag in BUSINESS_FLAGS:
         setattr(profile, flag, False)
     if birthday is not None:
@@ -87,7 +93,7 @@ def assign_representative(actor, target, *, show_birthday=True, view_documents=F
         target.save(update_fields=['first_name'])
     from .services import audit
     audit(actor, '회사 대표 지정·설정', target=target,
-        detail=f'기존 대표 {old_name} → 현재 대표 {target.first_name} / 조회 전용 / '
+        detail=f'기존 대표 {old_name} → 현재 대표 {target.first_name} / 대표 결재 허용 {bool(can_approve)} / '
                f'생일 표시 {bool(show_birthday)} / 전체 제출 문서 조회 {bool(view_documents)} / 기존 문서·연차 보존')
     return profile
 
@@ -101,6 +107,8 @@ def remove_representative(actor, target):
     profile=Profile.objects.select_for_update().get(user=target)
     if not profile.is_representative:
         raise ValidationError('현재 회사 대표로 지정된 계정이 아닙니다.')
+    if Document.objects.filter(status='executive',representative=target).exists():
+        raise ValidationError('대기 중인 대표 결재를 먼저 처리한 뒤 지정을 해제해 주세요.')
     _restore(profile)
     from .services import audit
     audit(actor,'회사 대표 지정 해제',target=target,

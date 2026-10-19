@@ -15,8 +15,10 @@ class AccountGateMiddleware:
                 return redirect('password')
             if profile.is_representative:
                 own_account = request.path in {'/account/', '/password/', '/logout/', '/login/', '/login/csrf/', '/notices/'}
+                representative_action = (profile.representative_can_approve and request.path.startswith('/documents/')
+                    and request.path.endswith('/action/') and request.POST.get('action') in ['approve','reject','cancel_approval'])
                 notice_open = request.path.startswith('/notices/') and request.path.endswith('/open/')
-                if ((request.method not in {'GET','HEAD','OPTIONS'} and not (own_account or notice_open))
+                if ((request.method not in {'GET','HEAD','OPTIONS'} and not (own_account or notice_open or representative_action))
                         or request.path.startswith(('/compose/', '/calendar/absence/', '/regulations/', '/balances/recalculate/'))):
                     return HttpResponseForbidden('회사 대표 계정은 현재 조회 전용입니다.')
             if profile.approved and request.path not in allowed:

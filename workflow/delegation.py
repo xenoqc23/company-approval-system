@@ -31,6 +31,7 @@ def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base')
         'approver_ranks': RANKS[1:], 'rule_id': None, 'version': 1,
         'mode': mode, 'available_modes': ['base'], 'self_complete': False,
         'fixed_reviewer_id': None, 'fixed_approver_id': None}
+    selected_rule = None
     matches = []
     for rule in ApprovalRule.objects.filter(kind__in=[kind, 'all'], enabled=True, deleted_at__isnull=True).prefetch_related('authors'):
         if rule.author_ranks and owner_rank not in rule.author_ranks:
@@ -49,6 +50,7 @@ def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base')
         if len(matches) > 1:
             raise ValidationError('같은 우선순위의 전결규정이 겹칩니다. 규정 관리 담당자에게 확인을 요청해 주세요.')
         rule = matches[0]
+        selected_rule = rule
         snapshot.update(name=rule.name, rule_id=rule.pk, rule_kind=rule.kind, version=rule.version,
             stock_final_approval=kind == 'stock',
             skip_review=rule.skip_review, reviewer_ranks=rule.reviewer_ranks,
@@ -59,8 +61,12 @@ def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base')
                 snapshot['available_modes'].append('skip')
             if rule.allow_self_approval and owner_rank in candidate_ranks(snapshot, 'approver'):
                 snapshot['available_modes'].append('self')
+    from .progressive import decorate_route
+    decorate_route(snapshot, kind, owner, selected_rule)
     if mode not in snapshot['available_modes']:
         raise ValidationError('선택한 결재방식의 권한이 없거나 규정이 변경되었습니다. 과장급 이상에게 허용된 결재방식을 확인해 주세요.')
+    if mode == 'ceo':
+        snapshot.update(skip_review=True, direct_representative=True)
     if mode == 'skip':
         snapshot['skip_review'] = True
     if mode == 'self':
@@ -83,7 +89,14 @@ def route_people(route, stage, reviewer_rank=None):
 
 
 def validate_route_people(document, route):
+    if route.get('direct_representative'):
+        document.reviewer = document.approver = None
+        return
+    deferred = route.get('progressive') and route['mode'] == 'base'
     for stage in ['reviewer', 'approver']:
+        if stage == 'approver' and deferred:
+            document.approver = None
+            continue
         fixed = route.get('fixed_' + stage + '_id')
         if fixed:
             from django.contrib.auth import get_user_model
@@ -92,7 +105,7 @@ def validate_route_people(document, route):
         document.reviewer = None
     elif not document.reviewer:
         raise ValidationError('검토자를 선택해 주세요.')
-    final_required = document.kind != 'stock' or route.get('stock_final_approval', False)
+    final_required = not deferred and (document.kind != 'stock' or route.get('stock_final_approval', False))
     if final_required and not document.approver:
         raise ValidationError('승인자를 선택해 주세요.')
     for stage in ['reviewer', 'approver']:
@@ -109,6 +122,10 @@ def route_preview(kind, owner_rank, total, reviewer_rank=None, owner=None, mode=
     route = resolve_route(kind, owner_rank, total, owner=owner, mode=mode)
     final_required = kind != 'stock' or route.get('stock_final_approval', False)
     path = '본인 전결 · 제출 즉시 완료' if route['self_complete'] else '기안 → 승인' if route['skip_review'] else '기안 → 검토 → 승인' if final_required else '기안 → 검토'
+    if route.get('progressive') and mode == 'base':
+        path = '기안 → 검토자 판단 → 상위 승인 · 필요 시 대표 결재'
+    elif route.get('direct_representative'):
+        path = '기안 → 대표 최종 결재'
     if kind == 'stock':
         path += ' → 발주 → 입고'
     return {**route, 'final_approval_required': final_required,

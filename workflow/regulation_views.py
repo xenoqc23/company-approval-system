@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .models import ApprovalRule, AnnualPolicy, WelfarePolicy, Policy, DEPARTMENTS, RANKS, Audit
-from .forms import ApprovalRuleForm, AnnualBandForm, BenefitRuleForm, AwardRuleForm
+from .forms import ApprovalFlowPolicyForm, ApprovalRuleForm, AnnualBandForm, BenefitRuleForm, AwardRuleForm
 from .regulations import annual_policy, save_annual_policy, save_rule, delete_rule, save_welfare, recalc_rows, apply_recalculation
 from .delegation import route_preview, route_people
 from .views import page
@@ -49,6 +49,22 @@ def preview_route(request):
             reviewer = route_people(route, 'reviewer').filter(pk=raw).first()
         review_rank = reviewer.profile.rank if reviewer else None
         route = route_preview(kind, rank, total, review_rank, owner=owner, mode=mode)
+        if route.get('progressive'):
+            from .models import Document
+            from .progressive import representative_option
+            start=forms.DateField(required=False).clean(request.GET.get('start_date'))
+            end=forms.DateField(required=False).clean(request.GET.get('end_date'))
+            leave_type=request.GET.get('leave_type','annual')
+            temp=Document(kind=kind,unit_price=total,quantity=1,leave_type=leave_type,start_date=start,
+                end_date=end if leave_type=='annual' else start,
+                start_time=forms.TimeField(required=False).clean(request.GET.get('start_time')),
+                end_time=forms.TimeField(required=False).clean(request.GET.get('end_time')))
+            try:
+                route['representative_option']=representative_option(temp,route)
+            except ValidationError:
+                route['representative_option']=False  # Incomplete dates are validated again on submit.
+            if route['representative_option']:
+                route['note']='대표 결재 요청 선택 가능 · 허용된 전결 또는 최종 승인으로도 완료할 수 있습니다.'
         route['reviewer_ids'] = list(route_people(route, 'reviewer').values_list('pk', flat=True))
         route['approver_ids'] = list(route_people(route, 'approver', review_rank).values_list('pk', flat=True)) if route['final_approval_required'] else []
         route['self_allowed'] = rank in route['approvers'] and route['final_approval_required']
@@ -75,6 +91,18 @@ def regulations(request, pk=None):
     annual = annual_policy(year)
     legacy = Policy.objects.first()
     welfare = WelfarePolicy.objects.first()
+    from .progressive import policy as flow_policy
+    from .representatives import can_manage_representative
+    flow_form=ApprovalFlowPolicyForm(request.POST if request.method == 'POST' and request.POST.get('intent') == 'flow_policy' else None, instance=flow_policy())
+    if request.method == 'POST' and request.POST.get('intent') == 'flow_policy':
+        if not can_manage_representative(request.user):
+            raise PermissionDenied
+        if flow_form.is_valid():
+            from .regulations import save_flow_policy
+            save_flow_policy(request.user,flow_form)
+            messages.success(request,'새 기안의 단계별 결재 기준을 저장했습니다. 기존 문서는 유지됩니다.')
+            return redirect('regulations')
+        data=None
     if tab == 'delegation':
         instance = get_object_or_404(ApprovalRule, pk=pk, deleted_at__isnull=True) if pk else None
         form = ApprovalRuleForm(data, instance=instance, initial={} if instance else {'kind': 'all', 'reviewer_ranks': RANKS[1:], 'approver_ranks': RANKS[1:]})
@@ -89,7 +117,7 @@ def regulations(request, pk=None):
             initial = [dict(years=low, reward=reward) for low, reward in (welfare.awards if welfare else [])]
         Factory = forms.formset_factory(cls, extra=1, can_delete=True, max_num=200, validate_max=True, absolute_max=250)
         formset = Factory(data, initial=initial, prefix='rules')
-    if request.method == 'POST':
+    if request.method == 'POST' and request.POST.get('intent') != 'flow_policy':
         try:
             if tab == 'delegation':
                 if form.is_valid():
@@ -112,12 +140,13 @@ def regulations(request, pk=None):
                 return redirect(reverse('regulations') + f'?tab={tab}&year={year}')
         except ValidationError as exc:
             messages.error(request, ' '.join(exc.messages))
-    return page(request, 'regulations', '규정 관리', 'regulations', tab=tab, rule_form=form, rule_formset=formset,
+    return page(request, 'regulations', '규정 관리', 'regulations', tab=tab, rule_form=form, rule_formset=formset, flow_form=flow_form,
+        can_manage_flow=can_manage_representative(request.user),
         rule_authors=get_user_model().objects.filter(is_active=True, profile__approved=True, profile__manage_system=False,
             profile__representative_slot__isnull=True).select_related('profile').order_by('first_name'),
         rules=ApprovalRule.objects.filter(deleted_at__isnull=True).prefetch_related('authors'), selected_year=year, years=years,
         annual=annual, policy_text=request.POST.get('text', '') if data else (annual.text if annual and annual.text else legacy.text if legacy else ''),
-        logs=Audit.objects.filter(event__in=['전결규정 수정', '전결규정 삭제', '연차 산정규정 수정', '경조사비 규정 수정', '장기근속 포상규정 수정']).select_related('actor')[:12], ranks=RANKS)
+        logs=Audit.objects.filter(event__in=['전결규정 수정', '전결규정 삭제', '연차 산정규정 수정', '경조사비 규정 수정', '장기근속 포상규정 수정','단계별 결재 기준 수정']).select_related('actor')[:12], ranks=RANKS)
 
 
 @login_required

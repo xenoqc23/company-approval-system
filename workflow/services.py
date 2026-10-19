@@ -13,10 +13,10 @@ def visible_documents(user):
     if p.is_representative:
         if p.representative_view_documents:
             return Document.objects.exclude(status__in=['draft','deleted'])
-        return Document.objects.filter(Q(owner=user)|Q(reviewer=user)|Q(approver=user)|Q(recipient=user)).exclude(status='deleted')
+        return Document.objects.filter(Q(owner=user)|Q(reviewer=user)|Q(approver=user)|Q(recipient=user)|Q(representative=user)).exclude(status='deleted')
     if p.manage_system:
         return Document.objects.all()
-    related = Q(owner=user) | Q(reviewer=user) | Q(approver=user)
+    related = Q(owner=user) | Q(reviewer=user) | Q(approver=user) | Q(representative=user)
     related |= Q(recipient=user, status='approved', kind__in=['office', 'stock'])
     if p.view_accounting:
         related |= Q(status='approved')
@@ -83,7 +83,7 @@ def check_overlap(document):
     from .manual_leave import check_manual_overlap
     check_manual_overlap(document)
     days = set(weekdays(document.start_date, document.end_date))
-    existing = Document.objects.filter(owner=document.owner, kind='leave', status__in=['review', 'approve', 'approved'],
+    existing = Document.objects.filter(owner=document.owner, kind='leave', status__in=['review', 'approve', 'executive', 'approved'],
         start_date__lte=document.end_date, end_date__gte=document.start_date).exclude(pk=document.pk)
     for old in existing:
         if not days.intersection(weekdays(old.start_date, old.end_date)):
@@ -136,6 +136,8 @@ def save_document(document, actor, submit=False):
             raise ValidationError('문서 종류를 선택해 주세요.')
         from .delegation import resolve_route, validate_route_people
         route = resolve_route(document.kind, actor.profile.rank, document.total_price, owner=actor, mode=document.approval_mode)
+        from .progressive import prepare
+        prepare(document, route)
         validate_route_people(document, route)
         route.update(reviewer_id=document.reviewer_id, approver_id=document.approver_id,
             reviewer_rank=document.reviewer.profile.rank if document.reviewer else None,
@@ -166,7 +168,9 @@ def save_document(document, actor, submit=False):
         counter.value += 1
         counter.save(update_fields=['value'])
         document.number = f'DOC-{day:%Y%m%d}-{counter.value:04d}'
-        document.status = 'review' if document.review_required else 'approve'
+        document.status = 'executive' if route.get('direct_representative') else 'review' if document.review_required else 'approve'
+        if document.status == 'executive':
+            document.representative_requested_at = timezone.now()
         document.submitted_at = timezone.now()
     document.save()
     audit(actor, '기안 제출' if submit else '임시저장', document)
@@ -174,8 +178,8 @@ def save_document(document, actor, submit=False):
         document = act_on_document(document.pk, actor, 'approve')
         audit(actor, '본인 전결', document, f'규정: {document.route_snapshot["name"]} / 버전 {document.route_snapshot["version"]}')
     elif submit:
-        person = document.reviewer if document.review_required else document.approver
-        stage = '검토대기' if document.review_required else '승인대기'
+        person = document.representative if document.status == 'executive' else document.reviewer if document.review_required else document.approver
+        stage = '대표결재대기' if document.status == 'executive' else '검토대기' if document.review_required else '승인대기'
         notify(document, [person], f'{actor.first_name}님의 {stage} 요청이 도착했습니다.', stage)
     return document
 
@@ -192,9 +196,16 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
     from .models import RegulationLock
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     actor.profile = Profile.objects.get(user=actor)
-    if actor.profile.is_representative:
-        raise PermissionDenied('회사 대표 계정은 현재 조회 전용입니다.')
     document = Document.objects.select_for_update().get(pk=pk)
+    if actor.profile.is_representative and not (actor.profile.representative_can_approve
+            and document.progressive and document.representative_id == actor.pk
+            and action in ['approve','reject','cancel_approval']):
+        raise PermissionDenied('회사 대표 계정은 허용된 대표 결재만 처리할 수 있습니다.')
+    if document.progressive:
+        from .progressive import handle_action
+        if handle_action(document, actor, action, reason, new_person):
+            document.save()
+            return document
     p = actor.profile
     if action in ['reject', 'cancel_review', 'cancel_approval', 'reassign'] and not reason.strip():
         raise ValidationError('처리 사유를 입력해 주세요.')
@@ -273,6 +284,8 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
     elif action == 'reassign':
         if not p.manage_system or document.status not in ['review', 'approve']:
             raise PermissionDenied
+        if document.progressive and document.status == 'approve' and new_person and new_person.pk == document.owner_id:
+            raise ValidationError('상위 승인자로 기안자 본인을 지정할 수 없습니다.')
         if not new_person or not new_person.is_active or not new_person.profile.approved:
             raise ValidationError('활성화된 담당자를 선택해 주세요.')
         validate_approval_person(new_person)

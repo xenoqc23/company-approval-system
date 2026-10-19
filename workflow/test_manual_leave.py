@@ -17,6 +17,8 @@ from .services import act_on_document, save_document
 class ManualLeaveTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         ApprovalRule.objects.update(enabled=False)
         for name in ['employee', 'finance', 'other', 'approver']:
             user = get_user_model().objects.create_user(name, first_name=name, password='test-only-password')

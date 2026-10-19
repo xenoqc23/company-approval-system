@@ -17,6 +17,8 @@ from workflow.models import ManualLeaveUsage
 @skipUnlessDBFeature('has_select_for_update')
 class MariaDBConcurrencyTests(TransactionTestCase):
     def setUp(self):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         ApprovalRule.objects.update(enabled=False)
         RegulationLock.objects.get_or_create(pk=1)
         CompanyHolidayLock.objects.get_or_create(pk=1)
@@ -177,3 +179,41 @@ class MariaDBConcurrencyTests(TransactionTestCase):
         self.assertCountEqual(outcomes,['ok','refused'])
         designated=Profile.objects.get(user=recipient).is_representative
         self.assertEqual(Document.objects.filter(recipient=recipient,status='review').count(),0 if designated else 1)
+
+    def progressive_request(self):
+        from workflow.models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1,defaults={'enabled':True})
+        admin=self.representative_admin()
+        ceo=get_user_model().objects.create_user('ceo',first_name='대표',password='1234')
+        Profile.objects.create(user=ceo,department='개발팀',rank='이사',approved=True)
+        from workflow.representatives import assign_representative
+        assign_representative(admin,ceo,can_approve=True)
+        doc=save_document(Document(owner=self.people['owner'],reviewer=self.people['reviewer'],kind='leave',
+            start_date=date(2026,10,19),end_date=date(2026,10,21),reason='연차'),self.people['owner'],submit=True)
+        doc=act_on_document(doc.pk,self.people['reviewer'],'forward','검토 완료',self.people['approver'])
+        return doc,ceo,admin
+
+    def test_approver_final_and_ceo_escalation_cannot_both_finish(self):
+        doc,ceo,admin=self.progressive_request()
+        self.assertCountEqual(self.run_parallel(
+            lambda:act_on_document(doc.pk,self.people['approver'],'approve'),
+            lambda:act_on_document(doc.pk,self.people['approver'],'escalate','대표 요청')),['ok','refused'])
+        doc.refresh_from_db();used=AnnualBalance.objects.get(user=self.people['owner'],year=2026).used
+        self.assertIn(doc.status,['executive','approved']);self.assertEqual(used,3 if doc.status=='approved' else 0)
+
+    def test_duplicate_representative_approval_charges_once(self):
+        doc,ceo,admin=self.progressive_request()
+        act_on_document(doc.pk,self.people['approver'],'escalate','대표 요청')
+        operation=lambda:act_on_document(doc.pk,ceo,'approve')
+        self.assertCountEqual(self.run_parallel(operation,operation),['ok','refused'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,3)
+
+    def test_disabling_ceo_and_escalation_serialize_without_stranded_request(self):
+        from workflow.representatives import assign_representative
+        doc,ceo,admin=self.progressive_request()
+        outcomes=self.run_parallel(
+            lambda:assign_representative(admin,ceo,can_approve=False,expected_id=ceo.pk),
+            lambda:act_on_document(doc.pk,self.people['approver'],'escalate','대표 요청'))
+        self.assertCountEqual(outcomes,['ok','refused'])
+        doc.refresh_from_db();enabled=Profile.objects.get(user=ceo).representative_can_approve
+        self.assertEqual(doc.status,'executive' if enabled else 'approve')

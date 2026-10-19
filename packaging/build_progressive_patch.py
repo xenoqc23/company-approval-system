@@ -1,0 +1,102 @@
+"""NAS staged approval release; thresholds add a choice, never remove granted final authority."""
+from hashlib import sha256
+from zipfile import ZIP_DEFLATED, ZipFile
+import build_representatives_patch as previous
+ROOT=previous.ROOT
+NAME='xenosys-progressive-approval-20261019'
+FILES=(*previous.FILES,
+    'workflow/progressive.py',
+    'workflow/context.py',
+    'workflow/migrations/0017_progressive_approval.py',
+    'workflow/templates/workflow/progressive_track.html',
+    'workflow/static/workflow/progressive.css',
+    'workflow/management/commands/seed_demo.py',
+)
+assert len(FILES)==len(set(FILES))
+APPLY=(previous.APPLY.replace('\n'.join(previous.FILES),'\n'.join(FILES))
+    .replace('APPROVAL_REPRESENTATIVES_BASE','APPROVAL_PROGRESSIVE_BASE')
+    .replace('.representatives-backup.','.progressive-backup.')
+    .replace('REPRESENTATIVES_READY','PROGRESSIVE_APPROVAL_READY'))
+INSTRUCTIONS='''Xenosys 사내결재 — 잔여연차 강조·단계별 결재·대표 결재 선택 (2026-10-19)
+
+설치
+1. ZIP을 File Station /docker/company-approval에 업로드합니다.
+2. 우클릭 → 여기에 압축 풀기를 선택합니다. 기존 app·data는 삭제하지 않습니다.
+3. Windows PowerShell에서 실행합니다.
+
+ssh -t admin@192.168.1.46 "sudo sh /volume1/docker/company-approval/xenosys-progressive-approval-20261019/APPLY_PROGRESSIVE_APPROVAL.sh"
+
+4. NAS 관리자 비밀번호를 입력합니다. 두 번 물을 수 있습니다.
+5. 마지막 PROGRESSIVE_APPROVAL_READY 확인 후 PC·휴대폰 사이트를 새로고침합니다.
+
+사용자 정정 반영 — 기준 이상도 허용된 전결 유지
+- 연차 3일 이상·구매 총금액 100만원 이상은 대표 결재를 추가로 요청할 수 있는 기준입니다.
+- 기준 이상이어도 규정에서 허용한 검토자 전결·본인 전결로 완료할 수 있습니다.
+- 대표 결재를 강제하거나 기존에 부여한 전결 권한을 이 기준으로 차단하지 않습니다.
+- 승인자는 ‘최종 승인’ 또는 ‘대표 결재 요청’을 선택합니다. 반려도 가능합니다.
+- 휴가는 현재 차감 규정의 실제 신청 차감량, 구매는 수량×부가세 포함 단가로 판단합니다.
+- 3일·100만원을 포함하며, admin은 규정 관리의 단계별 결재 기준에서 변경할 수 있습니다.
+
+화면
+- 총연차·사용연차 숫자를 조금 줄이고 잔여연차 숫자를 더 크고 굵게 표시합니다.
+- 새 기안의 기본 방식에서는 기안자가 검토자만 선택합니다. 승인자는 검토자가 결정합니다.
+- 검토자는 허용된 ‘검토자 전결’, 승인자 지정 후 ‘상위 결재 요청’, ‘반려’를 선택합니다.
+- 검토자 전결은 규정에서 허용해야 하며 기안자 본인의 검토자 전결은 제한합니다.
+  본인이 완료하려면 규정에서 허용한 별도 ‘본인 전결’ 방식을 선택합니다.
+- 검토자가 상위 승인자를 지정할 때 기존 허용 직급·고정 담당자 조건을 적용합니다.
+- 상위 승인자로 기안자 본인은 선택하지 않습니다. 같은 담당자가 검토와 승인을 맡는 것은 가능합니다.
+- 팀장급 이상은 규정에서 허용하면 기안 단계에서 ‘대표 결재 요청’을 선택할 수 있습니다.
+- 과장급 이상에게 기존에 허용한 검토 생략·본인 전결도 유지합니다.
+- 검토자 전결·상위 결재 요청·대표 결재 요청·반려·취소에는 사유를 남깁니다.
+- 대표 결재 요청 시 ‘대표결재대기’로 표시하고 대표 결재함·홈 미결 건수에 포함합니다.
+- 실제 연차 차감과 경리 문서함·구매/발주 처리는 최종 결재 완료 후 반영합니다.
+- 대표에게 요청하면 대표가 승인할 때 최종 완료됩니다. 중복 승인·취소는 이중 차감/복원하지 않습니다.
+- 대기 중인 대표 결재가 있으면 결재 허용 중지·대표 교체·지정 해제 전에 처리해야 합니다.
+
+설치 후 admin 설정
+1. 대표 계정이 없으면 먼저 일반 회원가입을 신청합니다. 임의 비밀번호나 실제 계정은 자동 생성하지 않습니다.
+2. admin → 직원·권한 관리 → 해당 직원의 ‘회사 대표 지정’에서 대표를 지정합니다.
+3. 대표이사실 탭에서 ‘대표 결재 허용’을 체크하고 회사 대표 설정을 저장합니다.
+   대표는 요청받은 문서를 승인·반려할 수 있으며 일반 기안·검토·직원/연차/시스템 관리는 제한합니다.
+   전체 제출 문서 조회와 생일 표시는 기존 별도 설정을 유지합니다.
+4. 규정 관리 → 전결규정에서 대상 직원·부서·직급별로 검토자 전결, 본인 전결,
+   팀장급 이상 대표 직접 결재 요청을 필요한 범위만 허용합니다. 새 권한은 자동 부여하지 않습니다.
+5. 단계별 결재는 기본 켜짐이며 새로 제출한 문서에 적용합니다. admin에서 끄면 새 기안은 기존 고정 결재선 방식으로 돌아갑니다.
+   기존 ‘기본 경로 검토 생략·기안자 본인 승인’ 설정은 고정 결재선 방식용으로 보관합니다.
+   단계별 방식의 기본 경로는 검토부터 시작하며 본인 전결/검토 생략은 별도 허용된 방식으로 선택합니다.
+6. 검토자·승인자 조건에 맞는 사람이 없으면 규정 담당자가 허용 직급·고정 담당자 설정을 정리합니다.
+
+보존·백업
+- 0017은 문서의 대표 담당자·단계 시각, 대표 결재 허용, 규정의 새 권한 필드와
+  새 기안용 결재 기준 레코드를 추가합니다. 기존 문서·결재선·연차·암호를 초기화하지 않습니다.
+- 이미 제출된 문서는 예전 결재선과 당시 규정을 유지합니다. 진행 중인 기존 문서를 새 방식으로 변환하지 않습니다.
+- 기존 직원·생일·입사일·규정·사용연차·공용연차·개인 사용내역은 유지합니다.
+- 저장된 기존 전결 권한은 유지하며 새 권한은 기본 꺼짐입니다. 대표 결재 허용도 admin이 직접 켭니다.
+- 실제 직원·대표 계정·생일 자료·.env·비밀번호·DB는 ZIP에 포함하지 않습니다.
+- 선행 0011 소스가 설치된 NAS가 필요합니다. 이전 0012~0016 업데이트도 누적 포함하며 적용된 마이그레이션은 재실행하지 않습니다.
+- 0014가 미적용이면 앞서 승인한 입사연도별 산정 변경도 함께 적용하며 수동 총연차·사용량·과거 잔액은 보존합니다.
+- 체크섬 확인 → 기존 소스 .progressive-backup.XXXXXX 보관 → nas.sh update 순서입니다.
+- 새 이미지 빌드 후 이전 이미지로 DB 백업을 완료한 다음 마이그레이션·웹 전환을 수행합니다.
+- seed_demo.py는 개발용 예시 생성 코드이며 설치 과정에서 실행하지 않습니다.
+- 업데이트 중 접속이 잠시 중단됩니다. 실패 시 READY를 출력하지 않습니다.
+- 다른 업데이트·복구가 진행 중이면 복사 전에 중단합니다.
+- 오류가 나면 출력과 백업 경로를 보관하고 app/data 삭제·재설치·임의 DB 복원을 하지 마세요.
+
+실제 NAS에는 위 스크립트를 실행한 후 적용됩니다.
+'''
+
+def build():
+    output=ROOT/'releases'/f'{NAME}.zip'
+    payload={f'app/{name}':(ROOT/name).read_bytes() for name in FILES}
+    payload['APPLY_PROGRESSIVE_APPROVAL.sh']=APPLY.encode()
+    payload['NAS_PROGRESSIVE_APPROVAL_UPDATE.txt']=INSTRUCTIONS.encode()
+    payload['SHA256SUMS']=''.join(f'{sha256(data).hexdigest()}  {name}\n' for name,data in payload.items()).encode()
+    with ZipFile(output,'w',ZIP_DEFLATED) as archive:
+        for name,data in payload.items():archive.writestr(f'{NAME}/{name}',data)
+    with ZipFile(output) as archive:
+        assert archive.testzip() is None
+        for name,data in payload.items():assert archive.read(f'{NAME}/{name}')==data
+    print(f'{output.name}: {output.stat().st_size} bytes; {len(FILES)} runtime files verified.')
+    return output
+
+if __name__=='__main__':build()

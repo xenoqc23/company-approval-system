@@ -8,7 +8,7 @@ def accounting_completion(document, stage):
 
 def can_notify(user, document, stage):
     if document.kind == 'stock' and document.final_approval_required:
-        return (not user.profile.view_accounting or user.pk in [document.owner_id, document.reviewer_id, document.approver_id]
+        return (not user.profile.view_accounting or user.pk in [document.owner_id, document.reviewer_id, document.approver_id, document.representative_id]
                 or (user.profile.procure and accounting_completion(document, stage)))
     return (not user.profile.view_accounting or
             (document.kind != 'stock' and

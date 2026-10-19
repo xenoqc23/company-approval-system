@@ -179,3 +179,20 @@ def apply_recalculation(actor, snapshot, ids, manual_ids):
         audit(actor, f'{year}년 총연차 재계산 적용', target=user,
               detail=f'총 {before} → {balance.total} / 최신 사용 {balance.used} 유지 / 적용 규정 {balance.grant_policy_year}')
     return len(users)
+
+
+@transaction.atomic
+def save_flow_policy(actor, form):
+    from .representatives import can_manage_representative
+    from .models import ApprovalFlowPolicy
+    if not can_manage_representative(actor):
+        raise PermissionDenied
+    RegulationLock.objects.select_for_update().get_or_create(pk=1)
+    current,_=ApprovalFlowPolicy.objects.select_for_update().get_or_create(pk=1)
+    before={field:getattr(current,field) for field in ['enabled','leave_threshold','purchase_threshold','version']}
+    for field in ['enabled','leave_threshold','purchase_threshold']:
+        setattr(current,field,form.cleaned_data[field])
+    current.version+=1;current.full_clean();current.save()
+    from .services import audit
+    audit(actor,'단계별 결재 기준 수정',detail=f'변경 전 {before} / 변경 후 {form.cleaned_data} / 기존 제출 문서는 유지')
+    return current

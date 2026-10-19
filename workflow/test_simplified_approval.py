@@ -20,6 +20,8 @@ from uuid import uuid4
 class SimplifiedApprovalTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         ApprovalRule.objects.update(enabled=False)
         for name, rank, dept in [('owner','과장','개발팀'), ('junior','대리','개발팀'),
                 ('reviewer','팀장','개발팀'), ('approver','이사','전략기획팀'),

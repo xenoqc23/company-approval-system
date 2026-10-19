@@ -14,6 +14,8 @@ class HomeWorkspaceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         # Baseline regression scenarios use the explicit three-stage configuration.
+        from .models import ApprovalFlowPolicy
+        ApprovalFlowPolicy.objects.update_or_create(pk=1, defaults={'enabled':False})
         from .models import ApprovalRule
         ApprovalRule.objects.update(enabled=False)
         User = get_user_model()
