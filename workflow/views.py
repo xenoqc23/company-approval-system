@@ -19,7 +19,7 @@ from django.middleware.csrf import get_token
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST
-from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm, ManualLeaveForm
+from .forms import ApprovalAssignmentForm, DocumentForm, ProfilePasswordForm, SignupForm, AbsenceForm, CompanyHolidayForm, HireDateForm, ManualLeaveForm, BirthdayForm
 from .models import AnnualBalance, Audit, DEPARTMENTS, RANKS, Document, Notice, Policy, Profile, Absence, CompanyHoliday, CompanyLeaveCharge
 from .services import act_on_document, audit, edit_balance, leave_amount, save_document, visible_documents
 from .people import approval_people, rank_order
@@ -74,7 +74,9 @@ def signup(request):
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             user = form.save()
-            Profile.objects.create(user=user, department=form.cleaned_data['department'], rank=form.cleaned_data['rank'], department_confirmed=False)
+            Profile.objects.create(user=user, department=form.cleaned_data['department'], rank=form.cleaned_data['rank'],
+                department_confirmed=False, **{key: form.cleaned_data[key] for key in
+                    ['birthday_month', 'birthday_day', 'birthday_calendar', 'birthday_lunar_leap']})
         messages.success(request, '가입 신청이 완료되었습니다. 관리자의 승인 후 로그인해 주세요.')
         return redirect('login')
     return page(request, 'signup', '직원 가입', 'signup', form=form)
@@ -108,6 +110,8 @@ def account(request):
 
 @login_required
 def dashboard(request):
+    from .birthdays import birthday_rows
+    today = timezone.localdate()
     mine = Document.objects.filter(owner=request.user).exclude(status__in=['draft', 'deleted'])
     from .home import progress_stages
     # Keep the chooser limited to the employee's own submitted documents.
@@ -134,7 +138,8 @@ def dashboard(request):
     return page(request, 'dashboard', '홈', documents=recent.select_related('owner')[:4],
                 home_kind=home_kind, home_categories=home_categories,
                 progress_doc=progress_doc, progress_steps=steps, progress_count=len(pending_documents),
-                progress_groups=[('진행 중', pending_documents)], notices=visible_notices(request.user)[:3])
+                progress_groups=[('진행 중', pending_documents)], notices=visible_notices(request.user)[:3],
+                today_birthdays=[row for row in birthday_rows(today.year, today.month, today) if row['today']])
 
 @login_required
 def documents(request):
@@ -375,7 +380,14 @@ def balances(request):
             posted_year = int(request.POST.get('year', year))
             if not 2000 <= posted_year <= 2100:
                 raise ValueError
-            if request.POST.get('operation') == 'hire':
+            if request.POST.get('operation') == 'birthday':
+                from .birthdays import save_birthday
+                form = BirthdayForm(request.POST)
+                if not form.is_valid():
+                    raise ValidationError(form.errors.as_text())
+                save_birthday(request.user, target, form.cleaned_data)
+                messages.success(request, '생일 정보를 저장했습니다. 입사일·연차는 변경되지 않습니다.')
+            elif request.POST.get('operation') == 'hire':
                 from .annual_grants import set_hire_date
                 form = HireDateForm(request.POST)
                 if not form.is_valid():
@@ -393,6 +405,11 @@ def balances(request):
             messages.error(request, ' '.join(exc.messages) if isinstance(exc, ValidationError) else '연도와 연차 값을 확인해 주세요.')
         return redirect(reverse('balances') + '?' + urlencode({'year': year, 'department': department}))
     rows = balance_rows(year, department, user=None if p.manage_leave else request.user)
+    if p.manage_leave:
+        for row in rows:
+            row['birthday_form'] = BirthdayForm(auto_id=f'id_birthday_{row["user"].pk}_%s', initial={
+                key: getattr(row['user'].profile, key) for key in
+                ['birthday_month', 'birthday_day', 'birthday_calendar', 'birthday_lunar_leap']})
     logs = Audit.objects.filter(target__isnull=False)
     if not p.manage_leave:
         logs = logs.filter(target=request.user)
@@ -565,9 +582,13 @@ def company_holiday_delete(request, pk):
 def welfare(request):
     from .welfare import AWARDS, BENEFITS, award_candidates
     year, _ = balance_filters(request.GET)
-    tab = request.GET.get('tab', 'awards')
-    if tab not in ['awards', 'benefits', 'leave']:
-        tab = 'awards'
+    tab = request.GET.get('tab', 'birthdays')
+    if tab not in ['birthdays', 'awards', 'benefits', 'leave']:
+        tab = 'birthdays'
+    from .birthdays import birthday_employees, birthday_period, birthday_rows
+    today = timezone.localdate()
+    birth_year, birth_month = birthday_period(request.GET, today)
+    next_year, next_month = (today.year+1, 1) if today.month == 12 else (today.year, today.month+1)
     from .regulations import annual_policy, tenure_table
     from .models import WelfarePolicy
     record = annual_policy(year)
@@ -577,7 +598,15 @@ def welfare(request):
     return page(request, 'welfare', '직원복지', 'welfare', selected_year=year, tab=tab,
         awards=editable.awards if editable else AWARDS, benefits=editable.benefits if editable else BENEFITS,
         candidates=award_candidates(year, timezone.localdate()), policy=record, tenure_rows=tenure_table(year),
-        applied_policy=annual_policy(year), years=range(timezone.localdate().year-2, timezone.localdate().year+3))
+        applied_policy=annual_policy(year), years=range(timezone.localdate().year-2, timezone.localdate().year+3),
+        birthday_rows=birthday_rows(birth_year, birth_month, today) if tab == 'birthdays' else [],
+        birthday_year=birth_year, birthday_month=birth_month, birthday_months=range(1,13),
+        birthday_years=sorted({today.year-1, today.year, today.year+1, birth_year}),
+        birthday_current_year=today.year, birthday_current_month=today.month,
+        birthday_next_year=next_year, birthday_next_month=next_month,
+        birthday_missing=list(birthday_employees().filter(profile__birthday_month__isnull=True).order_by(
+            'profile__department', 'first_name', 'pk')) if tab == 'birthdays' and request.user.profile.manage_leave else [],
+        birthday_conversion_unavailable=not 1001 <= birth_year <= 2050)
 
 @login_required
 def policy(request):

@@ -19,6 +19,22 @@ class Profile(models.Model):
     procure = models.BooleanField(default=False)
     manage_system = models.BooleanField(default=False)
     hire_date = models.DateField(null=True, blank=True)
+    birthday_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    birthday_day = models.PositiveSmallIntegerField(null=True, blank=True)
+    birthday_calendar = models.CharField(max_length=5, choices=[('solar', '양력'), ('lunar', '음력')], default='solar')
+    birthday_lunar_leap = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.CheckConstraint(name='profile_valid_birthday', condition=(
+            models.Q(birthday_month__isnull=True, birthday_day__isnull=True,
+                     birthday_calendar='solar', birthday_lunar_leap=False) |
+            (models.Q(birthday_month__gte=1, birthday_month__lte=12,
+                      birthday_day__gte=1, birthday_month__isnull=False, birthday_day__isnull=False) & (
+                models.Q(birthday_calendar='lunar', birthday_day__lte=30) |
+                (models.Q(birthday_calendar='solar', birthday_lunar_leap=False) & (
+                    models.Q(birthday_month__in=[1,3,5,7,8,10,12], birthday_day__lte=31) |
+                    models.Q(birthday_month__in=[4,6,9,11], birthday_day__lte=30) |
+                    models.Q(birthday_month=2, birthday_day__lte=29)))))))]
 
 class AnnualBalance(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='balances')

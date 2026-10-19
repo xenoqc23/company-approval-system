@@ -1,8 +1,8 @@
 {% extends 'workflow/base.html' %}{% load static ui %}
-{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/work-status.css' %}">{% endblock %}
+{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/work-status.css' %}"><link rel="stylesheet" href="{% static 'workflow/birthdays.css' %}">{% endblock %}
 {% block content %}
 <div class="mint-home">
-  <header class="mint-home-heading"><h1>내 업무 <svg aria-hidden="true"><use href="#i-clip"/></svg></h1><p>오늘도 좋은 하루예요, <strong>{{ user.first_name }} {{ profile.rank }}님!</strong></p></header>
+  <div class="mint-home-header-row"><header class="mint-home-heading"><h1>내 업무 <svg aria-hidden="true"><use href="#i-clip"/></svg></h1><p>오늘도 좋은 하루예요, <strong>{{ user.first_name }} {{ profile.rank }}님!</strong></p></header>{% include 'workflow/birthday_banner.html' %}</div>
   <section class="mint-balance" aria-labelledby="my-leave-title">
     <div class="mint-balance-intro"><h2 id="my-leave-title">나의 연차 현황</h2><p>소중한 휴식이<br>더 좋은 성장을 만듭니다.</p><span class="balance-year">{{ current_year }}년 기준</span></div>
     {% if balance %}<dl class="personal-leave-values"><div><dt>총연차</dt><dd aria-label="총연차 {{ balance.total|amount }}일">{{ balance.total|amount }}<small>일</small></dd></div><div><dt>사용연차</dt><dd aria-label="사용연차 {{ balance.used|amount }}일">{{ balance.used|amount }}<small>일</small></dd></div><div class="remaining{% if remaining < 0 %} overdrawn{% endif %}"><dt>잔여연차</dt><dd aria-label="잔여연차 {{ remaining|amount }}일">{{ remaining|amount }}<small>일</small></dd></div></dl>{% else %}<p class="personal-leave-empty">연차 정보가 등록되지 않았습니다.<br>연차 관리 담당자에게 문의해 주세요.</p>{% endif %}

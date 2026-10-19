@@ -546,7 +546,7 @@ class ApprovalTests(TestCase):
 
     def test_signup_approval_and_forced_password_change(self):
         response = self.client.post(reverse('signup'), {'first_name': '신규 직원', 'username': 'new-staff',
-            'password1': 'staff-safe-password', 'password2': 'staff-safe-password', 'department': '생산팀', 'rank': '사원'})
+            'password1': 'staff-safe-password', 'password2': 'staff-safe-password', 'department': '생산팀', 'rank': '사원', 'birthday_calendar': 'solar', 'birthday_month': '10', 'birthday_day': '19'})
         self.assertRedirects(response, reverse('login'))
         new = get_user_model().objects.get(username='new-staff')
         self.client.force_login(new)
@@ -563,7 +563,7 @@ class ApprovalTests(TestCase):
 
     def test_signup_accepts_four_numeric_characters_and_rejects_short_password(self):
         data = {'first_name': '신규 직원', 'username': 'numeric-staff', 'password1': '123',
-                'password2': '123', 'department': '생산팀', 'rank': '사원'}
+                'password2': '123', 'department': '생산팀', 'rank': '사원', 'birthday_calendar': 'solar', 'birthday_month': '10', 'birthday_day': '19'}
         response = self.client.post(reverse('signup'), data)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(get_user_model().objects.filter(username='numeric-staff').exists())
@@ -612,7 +612,7 @@ class ApprovalTests(TestCase):
 
     def test_staff_groups_new_signups_then_moves_them_to_assigned_department(self):
         self.client.post(reverse('signup'), {'first_name': '신규 생산직원', 'username': 'pending-staff',
-            'password1': '1234', 'password2': '1234', 'department': '생산팀', 'rank': '사원'})
+            'password1': '1234', 'password2': '1234', 'department': '생산팀', 'rank': '사원', 'birthday_calendar': 'solar', 'birthday_month': '10', 'birthday_day': '19'})
         new = get_user_model().objects.get(username='pending-staff')
         self.client.force_login(self.admin)
         response = self.client.get(reverse('staff'))

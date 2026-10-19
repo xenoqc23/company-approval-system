@@ -54,6 +54,37 @@ class CompanyHolidayForm(forms.ModelForm):
 class HireDateForm(forms.Form):
     hire_date = forms.DateField(label='입사일', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
 
+
+def birthday_fields(required=False):
+    return {
+        'birthday_calendar': forms.ChoiceField(label='생일 기준', choices=[('solar', '양력'), ('lunar', '음력')],
+            initial='solar', widget=forms.Select(attrs={'data-birthday-calendar': ''})),
+        'birthday_month': forms.TypedChoiceField(label='생일 월', required=required, coerce=int, empty_value=None,
+            choices=[('', '월 선택')] + [(month, f'{month}월') for month in range(1,13)]),
+        'birthday_day': forms.TypedChoiceField(label='생일 일', required=required, coerce=int, empty_value=None,
+            choices=[('', '일 선택')] + [(day, f'{day}일') for day in range(1,32)]),
+        'birthday_lunar_leap': forms.BooleanField(label='음력 윤달 생일', required=False,
+            widget=forms.CheckboxInput(attrs={'data-birthday-leap': ''})),
+    }
+
+
+def clean_birthday(data):
+    from .birthdays import birthday_values
+    return birthday_values(data.get('birthday_month'), data.get('birthday_day'),
+        data.get('birthday_calendar', 'solar'), data.get('birthday_lunar_leap', False))
+
+
+class BirthdayForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.update(birthday_fields())
+
+    def clean(self):
+        data = super().clean()
+        if not self.errors:
+            data.update(clean_birthday(data))
+        return data
+
 class ManualLeaveForm(forms.Form):
     used_date = forms.DateField(label='실제 사용 날짜', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
     leave_type = forms.ChoiceField(label='휴가 종류 · 사용 일수', choices=[
@@ -87,6 +118,13 @@ class SignupForm(UserCreationForm):
         self.fields['password2'].label = '비밀번호 확인'
         for field in self.fields.values():
             field.help_text = ''
+        self.fields.update(birthday_fields(required=True))
+
+    def clean(self):
+        data = super().clean()
+        if not any(key.startswith('birthday_') for key in self.errors):
+            data.update(clean_birthday(data))
+        return data
 
 class EmployeeChoice(forms.ModelChoiceField):
     def label_from_instance(self, user):
