@@ -89,3 +89,6 @@ LOGGING = {
 # Web Push is opt-in. The private key lives outside the source tree/public ZIPs.
 WEBPUSH_PRIVATE_KEY_FILE = os.environ.get('WEBPUSH_PRIVATE_KEY_FILE', str(DATA_DIR / 'webpush-private.pem'))
 WEBPUSH_CONTACT = os.environ.get('WEBPUSH_CONTACT', 'https://localhost')
+
+# Closed-browser push is deferred on NAS; only explicitly enabled local tests use it.
+WEBPUSH_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_WEBPUSH_ENABLED', '0') == '1'

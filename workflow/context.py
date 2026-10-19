@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils import timezone
 from .models import AnnualBalance
 from .live_notifications import live_summary
@@ -11,4 +12,5 @@ def shell(request):
     return dict(profile=request.user.profile,balance=balance,remaining=balance.remaining if balance else 0,
                 used_percent=max(0,min(100,float(balance.used/balance.total*100))) if balance and balance.total>0 else 0,
                 nav_waiting=summary['waiting'],unread=summary['unread'],current_year=year,
-                accounting_unread=summary['accounting_unread'],notification_seed=summary)
+                accounting_unread=summary['accounting_unread'],notification_seed={**summary,'webpush_enabled':settings.WEBPUSH_ENABLED},
+                webpush_enabled=settings.WEBPUSH_ENABLED)

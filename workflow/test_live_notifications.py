@@ -44,7 +44,7 @@ class LiveNotificationTests(TestCase):
 
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.settings=override_settings(DATA_DIR=Path(self.tmp.name),WEBPUSH_PRIVATE_KEY_FILE=str(Path(self.tmp.name)/'key.pem'))
+        self.settings=override_settings(WEBPUSH_ENABLED=True,DATA_DIR=Path(self.tmp.name),WEBPUSH_PRIVATE_KEY_FILE=str(Path(self.tmp.name)/'key.pem'))
         self.settings.enable();self.addCleanup(self.settings.disable)
         call_command('init_webpush',stdout=Mock())
 
@@ -257,3 +257,46 @@ class ReceiptMigrationTests(TransactionTestCase):
         receipts=current.get_model('workflow','DocumentReceipt').objects
         self.assertEqual(list(receipts.values_list('document_id',flat=True)),[read.pk])
         for m,rows in snapshots.items():self.assertEqual(list(current.get_model('workflow',m).objects.order_by('pk').values()),rows,m)
+
+
+@override_settings(WEBPUSH_ENABLED=False)
+class NasInAppOnlyTests(TestCase):
+    def setUp(self):
+        ApprovalFlowPolicy.objects.update_or_create(pk=1,defaults={'enabled':True})
+        ApprovalRule.objects.update(enabled=False)
+        for name,rank in [('inapp-owner','대리'),('inapp-reviewer','팀장')]:
+            u=get_user_model().objects.create_user(name,password='isolated-fixture-password')
+            Profile.objects.create(user=u,department='개발팀',rank=rank,approved=True)
+            setattr(self,'owner' if rank=='대리' else 'reviewer',u)
+
+    def test_nas_hides_push_controls_but_keeps_popup_and_sound_preferences(self):
+        self.client.force_login(self.reviewer)
+        response=self.client.get(reverse('account'))
+        self.assertContains(response,'data-screen-test')
+        self.assertContains(response,'data-notification-popup')
+        self.assertContains(response,'data-notification-sound')
+        self.assertNotContains(response,'data-push-enable')
+        self.assertNotContains(response,'data-os-test')
+        self.assertNotContains(response,'data-push-diagnostics')
+        self.assertFalse(response.context['notification_seed']['webpush_enabled'])
+
+    def test_nas_never_queues_push_or_allows_device_registration(self):
+        sub=PushSubscription.objects.create(user=self.reviewer,**validate_subscription(subscription_data()))
+        doc=save_document(Document(owner=self.owner,reviewer=self.reviewer,kind='office',product='알림 검증',
+            unit_price=10000,url='https://example.com/test'),self.owner,submit=True)
+        self.assertTrue(Notice.objects.filter(user=self.reviewer,document=doc).exists())
+        self.assertFalse(PushDelivery.objects.exists())
+        self.client.force_login(self.reviewer)
+        for url in ['push_subscribe','push_test']:
+            response=self.client.post(reverse(url),json.dumps(subscription_data()),content_type='application/json')
+            self.assertEqual(response.status_code,503)
+        self.assertFalse(self.client.get(reverse('push_config')).json()['configured'])
+        self.assertEqual(deliver_pending(),0)
+
+    def test_production_setting_defers_push_even_if_local_flag_set(self):
+        import os,runpy
+        with tempfile.TemporaryDirectory() as directory,patch.dict(os.environ,{
+            'APPROVAL_PRODUCTION':'1','DJANGO_DEBUG':'0','DJANGO_SECRET_KEY':'x'*64,
+            'DB_ENGINE':'mariadb','DB_NAME':'test','DB_USER':'test','DB_PASSWORD':'test-only',
+            'DJANGO_ALLOWED_HOSTS':'testserver','APPROVAL_WEBPUSH_ENABLED':'1','APPROVAL_DATA_DIR':directory}):
+            self.assertFalse(runpy.run_path(str(Path(__file__).resolve().parents[1]/'approval_site/settings.py'))['WEBPUSH_ENABLED'])

@@ -125,6 +125,12 @@
       catch(error){settings=previous;popup.checked=settings.popup;soundBox.checked=settings.sound;message.textContent=error.message;}
     });
   }
+  const screenTest=document.querySelector('[data-screen-test]');
+  if(screenTest)screenTest.onclick=()=>{toast('화면 팝업 테스트입니다. 창 크기와 관계없이 표시됩니다.','/notices/');sound();};
+  document.querySelectorAll('form[action="/logout/"]').forEach(form=>form.addEventListener('submit',()=>{
+    try{sessionStorage.removeItem(reminderKey);}catch{}
+  }));
+  if(!initial.webpush_enabled)return;
   const state=document.querySelector('[data-push-state]'), enable=document.querySelector('[data-push-enable]'), disable=document.querySelector('[data-push-disable]'), test=document.querySelector('[data-push-test]');
   let configured=false, applicationKey='';
   function pushState(text,active=false){if(!state)return;state.textContent=text;enable.hidden=active;disable.hidden=!active;}
@@ -164,8 +170,6 @@
     try{const sub=await bounded(registration?.pushManager.getSubscription());if(sub){await post(runtime.dataset.unsubscribe,{endpoint:sub.endpoint});await sub.unsubscribe();}storage.remove(ownerKey);pushState('이 브라우저의 웹 푸시를 껐습니다.');}
     catch(error){state.textContent=error.message;}finally{disable.disabled=false;}
   };
-  const screenTest=document.querySelector('[data-screen-test]');
-  if(screenTest)screenTest.onclick=()=>{toast('화면 팝업 테스트입니다. 창 크기와 관계없이 표시됩니다.','/notices/');sound();};
   const osTest=document.querySelector('[data-os-test]');
   if(osTest)osTest.onclick=async()=>{
     osTest.disabled=true;

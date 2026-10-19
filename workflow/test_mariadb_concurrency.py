@@ -246,7 +246,7 @@ class MariaDBConcurrencyTests(TransactionTestCase):
         sub=PushSubscription.objects.create(user=user,endpoint='https://fcm.googleapis.com/fcm/send/concurrency',endpoint_hash='a'*64,p256dh='fixture',auth='fixture')
         # Explicit device test: no private document or external provider is involved.
         PushDelivery.objects.create(subscription=sub)
-        with tempfile.TemporaryDirectory() as directory,override_settings(DATA_DIR=Path(directory),WEBPUSH_PRIVATE_KEY_FILE=str(Path(directory)/'key.pem')):
+        with tempfile.TemporaryDirectory() as directory,override_settings(WEBPUSH_ENABLED=True,DATA_DIR=Path(directory),WEBPUSH_PRIVATE_KEY_FILE=str(Path(directory)/'key.pem')):
             call_command('init_webpush',stdout=Mock())
             with patch('workflow.push.send_subscription') as send:
                 self.assertEqual(self.run_parallel(lambda:deliver_pending(),lambda:deliver_pending()),['ok','ok'])

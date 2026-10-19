@@ -57,6 +57,7 @@ def push_config(request):
 @require_POST
 def subscribe(request):
     from .push import validate_subscription,public_key
+    if not settings.WEBPUSH_ENABLED:return JsonResponse({'error':'이번 업데이트에서는 웹 푸시를 사용하지 않습니다.'},status=503)
     if not public_key():return JsonResponse({'error':'서버의 웹 푸시 준비가 필요합니다.'},status=503)
     try:data=validate_subscription(body(request))
     except ValidationError as e:return JsonResponse({'error':' '.join(e.messages)},status=400)
@@ -92,6 +93,7 @@ def unsubscribe(request):
 def test_push(request):
     from django.utils import timezone
     from datetime import timedelta
+    if not settings.WEBPUSH_ENABLED:return JsonResponse({'error':'이번 업데이트에서는 웹 푸시를 사용하지 않습니다.'},status=503)
     try:endpoint=body(request).get('endpoint','')
     except ValidationError as e:return JsonResponse({'error':' '.join(e.messages)},status=400)
     if not isinstance(endpoint,str):return JsonResponse({'error':'잘못된 구독입니다.'},status=400)

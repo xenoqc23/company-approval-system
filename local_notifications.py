@@ -22,7 +22,7 @@ def environment():
     env.update(DB_ENGINE='sqlite',APPROVAL_DATA_DIR=str(DATA),APPROVAL_PRODUCTION='0',DJANGO_DEBUG='1',
                DJANGO_SETTINGS_MODULE='approval_site.settings',DJANGO_ALLOWED_HOSTS='localhost,127.0.0.1,testserver',
                DJANGO_SECURE_COOKIES='0',DJANGO_SSL_REDIRECT='0',DJANGO_TRUST_PROXY='0',
-               DJANGO_CSRF_TRUSTED_ORIGINS='',WEBPUSH_PRIVATE_KEY_FILE=str(DATA/'webpush-private.pem'),
+               DJANGO_CSRF_TRUSTED_ORIGINS='',APPROVAL_WEBPUSH_ENABLED='1',WEBPUSH_PRIVATE_KEY_FILE=str(DATA/'webpush-private.pem'),
                WEBPUSH_CONTACT='https://localhost',PYTHONUTF8='1',PYTHONUNBUFFERED='1')
     return env
 
@@ -35,7 +35,7 @@ def setup():
     if sys.version_info<(3,10):raise RuntimeError('Python 3.10 이상이 필요합니다.')
     if not PYTHON.is_file():venv.EnvBuilder(with_pip=True).create(ROOT/'.venv')
     command('-m','ensurepip','--upgrade')
-    command('-m','pip','install','-r','requirements-prototype.txt')
+    command('-m','pip','install','-r','requirements-prototype.txt','-r','requirements-webpush.txt')
     db=DATA/'prototype.sqlite3'
     if db.exists():
         backups=DATA/'backups';backups.mkdir(parents=True,exist_ok=True)

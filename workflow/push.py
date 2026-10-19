@@ -21,7 +21,7 @@ def key_path():
 
 
 def public_key():
-    if not key_path().is_file():return ''
+    if not settings.WEBPUSH_ENABLED or not key_path().is_file():return ''
     from cryptography.hazmat.primitives import serialization
     key=serialization.load_pem_private_key(key_path().read_bytes(),password=None)
     return base64.urlsafe_b64encode(key.public_key().public_bytes(
@@ -51,6 +51,7 @@ def validate_subscription(data):
 
 
 def enqueue(notices):
+    if not settings.WEBPUSH_ENABLED:return
     by_user={}
     for sub in PushSubscription.objects.filter(enabled=True,user_id__in=[n.user_id for n in notices]):
         by_user.setdefault(sub.user_id,[]).append(sub)
