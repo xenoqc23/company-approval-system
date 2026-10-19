@@ -217,3 +217,19 @@ class MariaDBConcurrencyTests(TransactionTestCase):
         self.assertCountEqual(outcomes,['ok','refused'])
         doc.refresh_from_db();enabled=Profile.objects.get(user=ceo).representative_can_approve
         self.assertEqual(doc.status,'executive' if enabled else 'approve')
+
+    def test_reviewer_authority_revocation_and_final_approval_serialize(self):
+        from workflow.models import ApprovalFlowPolicy
+        from workflow.regulations import delete_rule
+        ApprovalFlowPolicy.objects.update_or_create(pk=1,defaults={'enabled':True})
+        rule=ApprovalRule.objects.create(name='검토자 권한',kind='all',enabled=True,allow_review_final=True,
+            reviewer_ranks=['과장'],approver_ranks=['과장'])
+        rule.review_final_users.add(self.people['reviewer'])
+        doc=save_document(Document(owner=self.people['owner'],reviewer=self.people['reviewer'],kind='leave',
+            start_date=date(2026,10,19),end_date=date(2026,10,19),reason='검토 전결'),self.people['owner'],submit=True)
+        outcomes=self.run_parallel(
+            lambda:act_on_document(doc.pk,self.people['reviewer'],'review_final','검토 완료'),
+            lambda:delete_rule(self.people['finance'],rule.pk))
+        self.assertEqual(outcomes[1],'ok');self.assertIn(outcomes[0],['ok','refused'])
+        doc.refresh_from_db()
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,1 if doc.status=='approved' else 0)

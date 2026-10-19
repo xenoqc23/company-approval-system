@@ -65,6 +65,12 @@ def save_rule(actor, form):
     if Profile.objects.filter(user_id__in=[user.pk for user in form.cleaned_data.get('authors', [])],
             representative_slot=1).exists():
         raise ValidationError('회사 대표 계정은 결재규정의 기안 대상자로 지정할 수 없습니다.')
+    from .people import review_final_people
+    reviewers={user.pk for user in form.cleaned_data.get('review_final_users',[])}
+    if reviewers != set(review_final_people().filter(pk__in=reviewers).values_list('pk',flat=True)):
+        raise ValidationError('전결 가능한 검토자 정보가 변경되었습니다. 과장급 이상 활성 직원을 다시 선택해 주세요.')
+    if rule.allow_review_final and not reviewers:
+        raise ValidationError('전결 가능한 검토자를 선택해 주세요.')
     if rule.pk and ApprovalRule.objects.filter(pk=rule.pk, deleted_at__isnull=False).exists():
         raise ValidationError('삭제된 규정은 수정할 수 없습니다. 목록을 새로고침해 주세요.')
     from .delegation import rule_priority
@@ -85,6 +91,7 @@ def save_rule(actor, form):
     previous = ApprovalRule.objects.filter(pk=rule.pk).values().first() if rule.pk else None
     if previous:
         previous['authors'] = list(rule.authors.values_list('pk', flat=True))
+        previous['review_final_users'] = list(rule.review_final_users.values_list('pk',flat=True))
     rule.version = (previous['version'] + 1) if previous else 1
     rule.save()
     form.save_m2m()
@@ -100,7 +107,8 @@ def delete_rule(actor, pk):
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     rule = ApprovalRule.objects.select_for_update().get(pk=pk, deleted_at__isnull=True)
     before = {**ApprovalRule.objects.filter(pk=pk).values().get(),
-              'authors': list(rule.authors.values_list('pk', flat=True))}
+              'authors': list(rule.authors.values_list('pk', flat=True)),
+              'review_final_users':list(rule.review_final_users.values_list('pk',flat=True))}
     rule.enabled = False
     rule.deleted_at, rule.deleted_by = timezone.now(), actor
     rule.version += 1

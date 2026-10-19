@@ -73,9 +73,25 @@ def forward_candidates(document):
     return route_people(document.route_snapshot, 'approver', rank).exclude(pk=document.owner_id)
 
 
+def review_final_rule(document, actor):
+    """Named reviewer authority is live and independent of author-targeted route rules."""
+    from .models import ApprovalRule
+    from .people import review_final_people
+    if (not document.progressive or document.status!='review' or document.reviewer_id!=actor.pk
+            or document.owner_id==actor.pk or not review_final_people().filter(pk=actor.pk).exists()):
+        return None
+    rules=ApprovalRule.objects.filter(enabled=True,deleted_at__isnull=True,allow_review_final=True,
+        review_final_users=actor,kind__in=['all',document.kind]).order_by('pk')
+    for rule in rules:
+        if document.kind=='office' and not (document.total_price>rule.amount_over
+                and (rule.amount_to is None or document.total_price<=rule.amount_to)):
+            continue
+        return rule
+    return None
+
+
 def may_review_final(document, actor):
-    return (document.progressive and document.status == 'review' and document.reviewer_id == actor.pk
-        and document.owner_id != actor.pk and document.route_snapshot.get('allow_review_final', False))
+    return review_final_rule(document, actor) is not None
 
 
 def may_escalate(document, actor):
@@ -127,12 +143,15 @@ def handle_action(document, actor, action, reason, new_person):
         audit(actor,'상위 결재 요청',document,reason)
         notify(document,[document.owner,new_person],'검토가 완료되어 승인자에게 전달되었습니다.','승인대기')
     elif action == 'review_final':
-        if not may_review_final(document,actor):
+        authority=review_final_rule(document,actor)
+        if not authority:
             raise PermissionDenied
         document.reviewed_at = now
         document.approver = actor
         document.approver_decided_at = now
-        document.route_snapshot = {**document.route_snapshot,'reviewer_final':True}
+        document.route_snapshot = {**document.route_snapshot,'reviewer_final':True,
+            'review_final_authority':{'rule_id':authority.pk,'name':authority.name,'version':authority.version,
+                'reviewer_id':actor.pk,'reviewer_name':actor.first_name}}
         finish(document,actor,'검토자 전결',reason)
     elif action == 'escalate':
         if not may_escalate(document,actor):

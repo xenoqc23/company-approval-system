@@ -272,6 +272,7 @@ class ApprovalRule(models.Model):
     allow_skip_review = models.BooleanField(default=False)
     allow_self_approval = models.BooleanField(default=False)
     allow_review_final = models.BooleanField(default=False)
+    review_final_users = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='review_final_rules')
     allow_representative_direct = models.BooleanField(default=False)
     fixed_reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_review_rules')
     fixed_approver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_approve_rules')

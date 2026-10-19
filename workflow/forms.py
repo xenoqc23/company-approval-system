@@ -299,25 +299,31 @@ class ApprovalRuleForm(forms.ModelForm):
         widget=forms.CheckboxSelectMultiple)
 
     author_departments = forms.MultipleChoiceField(label='적용 부서 (미선택: 전체)', choices=[(x, x) for x in DEPARTMENTS], required=False, widget=forms.CheckboxSelectMultiple)
-    authors = EmployeeMultipleChoice(label='특정 직원 (미선택: 공통 규정)', queryset=User.objects.none(), required=False, widget=forms.CheckboxSelectMultiple)
+    authors = EmployeeMultipleChoice(label='기안자 제한 (검토자 전결 대상과 별도, 미선택: 공통)', queryset=User.objects.none(), required=False, widget=forms.CheckboxSelectMultiple)
+    review_final_users = EmployeeMultipleChoice(label='전결 가능한 검토자 (과장급 이상 · 체크한 직원만)', queryset=User.objects.none(), required=False, widget=forms.CheckboxSelectMultiple)
     fixed_reviewer = EmployeeChoice(label='검토자 고정 (빈칸: 기안 시 선택)', queryset=User.objects.none(), required=False)
     fixed_approver = EmployeeChoice(label='상위 승인자 고정 (빈칸: 검토자가 선택)', queryset=User.objects.none(), required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['authors'].queryset = rank_order(User.objects.filter(is_active=True, profile__approved=True, profile__manage_system=False, profile__representative_slot__isnull=True).exclude(username__iexact='admin').select_related('profile'))
+        from .people import review_final_people
+        self.fields['review_final_users'].queryset=review_final_people()
+        self.fields['review_final_users'].help_text='기안자와 관계없이, 이 직원이 검토자로 배정되면 검토자 전결을 선택할 수 있습니다. 미선택 시 누구에게도 부여하지 않습니다.'
         for stage in ['fixed_reviewer', 'fixed_approver']:
             self.fields[stage].queryset = approval_people()
 
     class Meta:
         from .models import ApprovalRule
         model = ApprovalRule
-        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'author_departments', 'authors', 'skip_review', 'allow_skip_review', 'allow_self_approval', 'allow_review_final', 'allow_representative_direct', 'reviewer_ranks', 'approver_ranks', 'fixed_reviewer', 'fixed_approver', 'approver_is_author', 'enabled']
+        fields = ['name', 'kind', 'amount_over', 'amount_to', 'author_ranks', 'author_departments', 'authors', 'skip_review', 'allow_skip_review', 'allow_self_approval', 'allow_review_final', 'review_final_users', 'allow_representative_direct', 'reviewer_ranks', 'approver_ranks', 'fixed_reviewer', 'fixed_approver', 'approver_is_author', 'enabled']
         labels = {'name': '규정명', 'kind': '문서 종류', 'amount_over': '구매 총금액 하한 (초과)',
             'amount_to': '구매 총금액 상한 (이하, 빈칸: 제한 없음)', 'skip_review': '기존 고정 결재선에서 검토 생략', 'allow_skip_review': '과장급 이상에게 검토 생략 선택 허용', 'allow_self_approval': '과장급 이상에게 본인 전결 선택 허용', 'allow_review_final': '검토자 전결 허용 (기안자 본인 제외)', 'allow_representative_direct': '팀장급 이상에게 대표 직접 결재 요청 허용', 'approver_is_author': '기존 고정 결재선에서 승인자를 기안자 본인으로 지정', 'enabled': '규정 사용'}
 
     def clean(self):
         data = super().clean()
+        if data.get('allow_review_final') and not data.get('review_final_users'):
+            self.add_error('review_final_users','전결 가능한 검토자를 한 명 이상 선택해 주세요.')
         if not data.get('skip_review') and not data.get('reviewer_ranks'):
             self.add_error('reviewer_ranks', '검토 가능 직급을 선택해 주세요.')
         if data.get('approver_is_author') and data.get('fixed_approver'):

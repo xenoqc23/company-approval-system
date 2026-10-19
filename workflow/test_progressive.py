@@ -31,6 +31,7 @@ class ProgressiveTests(TestCase):
             u.profile.save()
             AnnualBalance.objects.create(user=u,year=2026,total=20,used=0,grant_initialized=True)
             setattr(cls,key,u)
+        cls.rule.review_final_users.add(cls.reviewer,cls.approver,cls.finance,cls.lead)
         assign_representative(cls.admin,cls.ceo,can_approve=True)
 
     def fresh(self,u):return get_user_model().objects.select_related('profile').get(pk=u.pk)
@@ -51,11 +52,13 @@ class ProgressiveTests(TestCase):
         self.assertEqual(Notice.objects.filter(document=doc,stage='검토대기').get().user_id,self.reviewer.pk)
         self.assertFalse(Notice.objects.filter(document=doc,user=self.junior).exists())
 
-    def test_nonmatching_rules_never_grant_reviewer_final_or_direct_representative_rights(self):
+    def test_named_reviewer_final_is_independent_of_author_but_direct_ceo_is_not(self):
         self.rule.authors.add(self.lead)
         doc=self.leave()
         self.assertFalse(doc.route_snapshot['allow_review_final'])
-        with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.reviewer,'review_final','규정 대상 아님')
+        doc=act_on_document(doc.pk,self.reviewer,'review_final','체크된 검토자는 다른 기안자 문서도 전결')
+        self.assertEqual(doc.status,'approved')
+        self.assertEqual(doc.route_snapshot['review_final_authority']['reviewer_id'],self.reviewer.pk)
         with self.assertRaises(ValidationError):self.leave(owner=self.approver,approval_mode='ceo')
         self.rule.authors.clear();self.rule.amount_over=1000000;self.rule.save()
         from .delegation import resolve_route
@@ -193,7 +196,7 @@ class ProgressiveTests(TestCase):
         ApprovalFlowPolicy.objects.filter(pk=1).update(enabled=False,leave_threshold=10)
         self.rule.allow_review_final=False;self.rule.save()
         from .progressive import may_review_final
-        self.assertTrue(may_review_final(doc,self.reviewer))
+        self.assertFalse(may_review_final(doc,self.reviewer))
         doc=self.forward(doc);doc=act_on_document(doc.pk,self.approver,'escalate','기존 기준 적용')
         self.assertEqual(doc.status,'executive')
 

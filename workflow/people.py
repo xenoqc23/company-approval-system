@@ -29,3 +29,7 @@ def approval_people():
 def validate_approval_person(person):
     if person and not approval_people().filter(pk=person.pk).exists():
         raise ValidationError('검토자·승인자는 admin 계정을 제외한 주임 이상 직원만 지정할 수 있습니다.')
+
+
+def review_final_people():
+    return approval_people().filter(profile__rank__in=RANKS[RANKS.index('과장'):])

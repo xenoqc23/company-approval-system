@@ -8,3 +8,5 @@
 .approval-track.four-stage{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:1080px){.approval-track.four-stage{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.approval-track.four-stage{grid-template-columns:1fr}}
+
+.regulation-form #id_review_final_users{max-height:18rem;overflow:auto;padding:.65rem;border:1px solid #b9d9c6;border-radius:.5rem;background:#f5fbf7}.regulation-form #id_review_final_users label{overflow-wrap:anywhere}
