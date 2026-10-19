@@ -119,7 +119,7 @@ def dashboard(request):
     if progress_doc is None:
         progress_doc = next(iter(pending_documents), None)
     steps = progress_stages(progress_doc)
-    if progress_doc and progress_doc.kind != 'stock':
+    if progress_doc and progress_doc.final_approval_required:
         steps = steps[:3 if progress_doc.review_required else 2]
     home_kind = request.GET.get('home_kind', 'all')
     if home_kind not in ['all', 'leave', 'office', 'stock']:
@@ -156,7 +156,7 @@ def documents(request):
         qs = qs.filter(kind='stock').exclude(status='draft')
         stage = request.GET.get('stock_stage')
         if stage == 'review':
-            qs = qs.filter(status='review')
+            qs = qs.filter(status__in=['review', 'approve'])
         elif stage == 'ready':
             qs = qs.filter(status='approved', shipment='')
         elif stage == 'ordered':
@@ -216,8 +216,9 @@ def documents(request):
         except ValueError:
             messages.error(request, '검색 날짜 형식을 확인해 주세요.')
     qs = rank_order(qs, 'owner__')
+    stock_final_routes = mode == 'stock' and qs.filter(route_snapshot__stock_final_approval=True).exists()
     return page(request, 'documents', titles[mode], mode, documents=qs[:100], document_count=qs.count(),
-                mode=mode, states=[(k, '검토완료' if k == 'approved' else label) for k, label in Document.STATES if k != 'approve'] if mode == 'stock' else Document.STATES,
+                mode=mode, states=[(k, ('결재완료' if stock_final_routes else '검토완료') if k == 'approved' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES,
                 kinds=Document.KINDS, departments=DEPARTMENTS,
                 accounting_categories=accounting_categories, selected_kind=selected_kind,
                 can_export_purchases=mode == 'accounting' and selected_kind == 'office',
@@ -289,15 +290,15 @@ def detail(request, pk):
     u = request.user
     if doc.status == 'review' and doc.reviewer_id == u.pk:
         actions += [('review', '검토확인'), ('reject', '반려')]
-    if doc.kind != 'stock' and doc.status == 'approve' and doc.approver_id == u.pk:
+    if doc.final_approval_required and doc.status == 'approve' and doc.approver_id == u.pk:
         actions += [('approve', '승인확인'), ('reject', '반려')]
     if doc.review_required and doc.status == 'approve' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 승인 취소')]
-    if doc.kind == 'stock' and doc.status == 'approved' and doc.reviewer_id == u.pk:
+    if not doc.final_approval_required and doc.status == 'approved' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 완료 취소')]
-    if doc.kind != 'stock' and doc.status == 'approved' and doc.approver_id == u.pk:
+    if doc.final_approval_required and doc.status == 'approved' and doc.approver_id == u.pk:
         actions += [('cancel_approval', '최종 승인 취소')]
-    if (doc.status in ['draft', 'review'] or (doc.status == 'approve' and not doc.review_required)) and doc.owner_id == u.pk:
+    if (doc.status in ['draft', 'review', 'rejected'] or (doc.status == 'approve' and not doc.review_required)) and doc.owner_id == u.pk:
         actions += [('delete', '기안 삭제')]
     if doc.status == 'approved' and doc.kind != 'leave':
         if u.profile.procure and not doc.shipment:
@@ -311,10 +312,10 @@ def detail(request, pk):
     common_overlaps = CompanyHoliday.objects.filter(active=True, use_annual=True, day__range=(doc.start_date, doc.end_date)) if doc.kind == 'leave' and doc.start_date and doc.end_date else []
     assignment_form = ApprovalAssignmentForm()
     procurement_log = doc.audits.filter(event='발주 처리').select_related('actor').first() if doc.kind == 'stock' else None
-    review_cancelled = doc.status == 'cancelled' and (doc.kind == 'stock' or not doc.approved_at)
+    review_cancelled = doc.status == 'cancelled' and (not doc.final_approval_required or not doc.approved_at)
     review_confirmed = bool(doc.reviewed_at) and not review_cancelled
-    approval_cancelled = doc.kind != 'stock' and doc.status == 'cancelled' and bool(doc.approved_at)
-    approval_confirmed = doc.kind != 'stock' and doc.status == 'approved' and bool(doc.approved_at)
+    approval_cancelled = doc.final_approval_required and doc.status == 'cancelled' and bool(doc.approved_at)
+    approval_confirmed = doc.final_approval_required and doc.status == 'approved' and bool(doc.approved_at)
     return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
                 'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, procurement_log=procurement_log,
                 common_overlaps=common_overlaps, review_confirmed=review_confirmed, review_cancelled=review_cancelled,

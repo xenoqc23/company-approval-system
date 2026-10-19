@@ -78,8 +78,12 @@ class Document(models.Model):
         ordering = ['-created_at', '-pk']
 
     @property
+    def final_approval_required(self):
+        return self.kind != 'stock' or self.route_snapshot.get('stock_final_approval', False)
+
+    @property
     def review_required(self):
-        return self.kind == 'stock' or not self.route_snapshot.get('skip_review', False)
+        return not self.route_snapshot.get('skip_review', False) if self.final_approval_required else True
 
     @property
     def total_price(self):
@@ -215,7 +219,7 @@ class RegulationLock(models.Model):
 
 class ApprovalRule(models.Model):
     name = models.CharField(max_length=100)
-    kind = models.CharField(max_length=12, choices=Document.KINDS[:2])
+    kind = models.CharField(max_length=12, choices=[('all', '모든 문서')] + Document.KINDS, default='all')
     amount_over = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     amount_to = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
     author_ranks = models.JSONField(default=list, blank=True)
@@ -229,6 +233,8 @@ class ApprovalRule(models.Model):
     fixed_approver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='fixed_approve_rules')
     approver_is_author = models.BooleanField(default=False)
     skip_review = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='deleted_approval_rules')
     enabled = models.BooleanField(default=False)
     version = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)

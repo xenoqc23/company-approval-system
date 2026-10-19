@@ -214,13 +214,15 @@ class DocumentForm(forms.ModelForm):
             data['quantity'] = data.get('quantity') if data.get('quantity') is not None else 1
             data['unit_price'] = data.get('unit_price') or 0
             if data.get('kind') == 'stock':
-                data['unit_price'], data['approver'], data['url'] = 0, None, ''
+                data['unit_price'], data['url'] = 0, ''
+                if not route or not route.get('stock_final_approval'):
+                    data['approver'] = None
         if self.submit:
             required = ['reviewer']
             if route and route['skip_review']:
                 data['reviewer'] = None
                 required = []
-            if data.get('kind') != 'stock':
+            if data.get('kind') != 'stock' or (route and route.get('stock_final_approval')):
                 required += ['approver']
             if data.get('kind') == 'leave':
                 required += ['leave_type', 'start_date', 'end_date', 'reason']

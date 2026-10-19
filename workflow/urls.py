@@ -4,6 +4,7 @@ from . import views, regulation_views
 urlpatterns = [
     path('regulations/', regulation_views.regulations, name='regulations'),
     path('regulations/delegation/<int:pk>/', regulation_views.regulations, name='rule_edit'),
+    path('regulations/delegation/<int:pk>/delete/', regulation_views.rule_delete, name='rule_delete'),
     path('regulations/preview/', regulation_views.preview_route, name='preview_route'),
     path('balances/recalculate/', regulation_views.recalculate, name='recalculate'),
     path('', views.dashboard, name='dashboard'), path('health/', views.health, name='health'),

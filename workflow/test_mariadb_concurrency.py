@@ -135,3 +135,18 @@ class MariaDBConcurrencyTests(TransactionTestCase):
             lambda: save_document(Document.objects.get(pk=doc.pk),self.people['owner'],submit=True),
             lambda: self.manual(date(2026,10,19))),['ok','refused'])
         self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,1)
+
+    def test_rule_deletion_and_self_submission_serialize_permissions(self):
+        from workflow.regulations import delete_rule
+        doc=self.self_draft()
+        rule=ApprovalRule.objects.get(name='동시 전결 검증')
+        outcomes=self.run_parallel(
+            lambda: save_document(Document.objects.get(pk=doc.pk),self.people['owner'],submit=True),
+            lambda: delete_rule(self.people['finance'],rule.pk))
+        self.assertIn(outcomes[0],['ok','refused'])
+        self.assertEqual(outcomes[1],'ok')
+        doc.refresh_from_db();rule.refresh_from_db()
+        self.assertIsNotNone(rule.deleted_at)
+        charged=1 if doc.status=='approved' else 0
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,charged)
+        self.assertEqual(doc.status,'approved' if outcomes[0]=='ok' else 'draft')

@@ -129,8 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
     form.dataset.documentKind = kind;
     const isLeave = kind === 'leave';
     const isStock = kind === 'stock';
-    const selfComplete = !isStock && id('approval_mode')?.value === 'self';
-    const skipReview = selfComplete || (!isStock && form.dataset.skipReview === 'true');
+    const finalApproval = !isStock || form.dataset.stockFinalApproval === 'true';
+    const selfComplete = finalApproval && id('approval_mode')?.value === 'self';
+    const skipReview = finalApproval && (selfComplete || form.dataset.skipReview === 'true');
     const annual = id('leave_type').value === 'annual';
     document.querySelectorAll('[data-kind]').forEach(card => {
       const selected = card.dataset.kind === kind;
@@ -143,20 +144,20 @@ document.addEventListener('DOMContentLoaded', () => {
     show('#end-date-field', isLeave && annual);
     show('#url-field', kind === 'office');
     show('#unit-price-field', kind === 'office');
-    show('#approver-field', !isStock && !selfComplete);
+    show('#approver-field', finalApproval && !selfComplete);
     show('#reviewer-field', !skipReview);
-    document.querySelector('#approval-arrow').hidden = isStock || skipReview;
+    document.querySelector('#approval-arrow').hidden = !finalApproval || skipReview;
     departmentPickers.forEach(sync => sync());
     document.querySelector('#purchase-total').hidden = kind !== 'office';
     document.querySelector('#stock-explainer').hidden = !isStock;
-    document.querySelector('#approval-arrow').hidden = isStock || skipReview;
-    document.querySelector('#approval-inputs').classList.toggle('review-only', isStock);
+    document.querySelector('#approval-arrow').hidden = !finalApproval || skipReview;
+    document.querySelector('#approval-inputs').classList.toggle('review-only', !finalApproval);
     document.querySelector('#quantity-price-grid').classList.toggle('single-column', isStock);
-    document.querySelector('#approval-heading').textContent = isStock ? '검토자 지정' : '결재선 지정';
-    document.querySelector('#compose-intro').textContent = selfComplete ? '신청 내용을 확인하세요. 본인 전결은 제출 즉시 완료됩니다.' : isStock ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
-    document.querySelector('#approval-footnote').textContent = selfComplete ? '본인 전결로 제출하면 즉시 완료됩니다. 처리자·시각과 적용 규정이 기록됩니다.' : isStock ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
+    document.querySelector('#approval-heading').textContent = !finalApproval ? '검토자 지정' : '결재선 지정';
+    document.querySelector('#compose-intro').textContent = selfComplete ? '신청 내용을 확인하세요. 본인 전결은 제출 즉시 완료됩니다.' : !finalApproval ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
+    document.querySelector('#approval-footnote').textContent = selfComplete ? '본인 전결로 제출하면 즉시 완료됩니다. 처리자·시각과 적용 규정이 기록됩니다.' : !finalApproval ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
     document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
-    document.querySelector('#compose-help-route').textContent = selfComplete ? '전결로 제출·완료를 누르면 최종 승인과 동일하게 처리됩니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : isStock ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
+    document.querySelector('#compose-help-route').textContent = selfComplete ? '전결로 제출·완료를 누르면 최종 승인과 동일하게 처리됩니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : !finalApproval ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
     document.querySelector('#submit-label').textContent = selfComplete ? '전결로 제출·완료' : isStock ? '재고 요청 제출' : '기안 제출';
     id('product').placeholder = isStock ? '예: 제품 사용자 매뉴얼, 제품 보관함' : '예: A4 복사용지';
     document.querySelector('#leave-preview').hidden = !isLeave;
@@ -211,6 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (sequence !== routeSequence) return;
       if (!response.ok) throw new Error(route.error);
       form.dataset.skipReview = String(route.skip_review);
+      form.dataset.stockFinalApproval = String(route.stock_final_approval || false);
       const modePicker = document.querySelector('#approval-mode-picker');
       if (modePicker) {
         modePicker.hidden = route.available_modes.length < 2;
@@ -281,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
       result.replaceChildren();
       for (const text of [route.name, route.path,
         ...(route.skip_review ? [] : ['검토 가능 직급: ' + route.reviewers.join(' · ')]),
-        ...(simulator.elements.kind.value === 'stock' ? [] : ['승인 가능 직급: ' + (route.approvers.join(' · ') || '해당 직급 없음'), '본인 승인: ' + (route.self_allowed ? '자격 충족 시 가능' : '불가')]),
+        ...(!route.final_approval_required ? [] : ['승인 가능 직급: ' + (route.approvers.join(' · ') || '해당 직급 없음'), '본인 승인: ' + (route.self_allowed ? '자격 충족 시 가능' : '불가')]),
         route.note]) {
         if (!text) continue;
         const paragraph = document.createElement('p'); paragraph.textContent = text; result.appendChild(paragraph);

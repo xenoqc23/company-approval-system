@@ -9,9 +9,10 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from .models import ApprovalRule, AnnualPolicy, WelfarePolicy, Policy, DEPARTMENTS, RANKS, Audit
 from .forms import ApprovalRuleForm, AnnualBandForm, BenefitRuleForm, AwardRuleForm
-from .regulations import annual_policy, save_annual_policy, save_rule, save_welfare, recalc_rows, apply_recalculation
+from .regulations import annual_policy, save_annual_policy, save_rule, delete_rule, save_welfare, recalc_rows, apply_recalculation
 from .delegation import route_preview, route_people
 from .views import page
 from .leave_records import balance_filters
@@ -49,8 +50,8 @@ def preview_route(request):
         review_rank = reviewer.profile.rank if reviewer else None
         route = route_preview(kind, rank, total, review_rank, owner=owner, mode=mode)
         route['reviewer_ids'] = list(route_people(route, 'reviewer').values_list('pk', flat=True))
-        route['approver_ids'] = list(route_people(route, 'approver', review_rank).values_list('pk', flat=True)) if kind != 'stock' else []
-        route['self_allowed'] = rank in route['approvers'] and kind != 'stock'
+        route['approver_ids'] = list(route_people(route, 'approver', review_rank).values_list('pk', flat=True)) if route['final_approval_required'] else []
+        route['self_allowed'] = rank in route['approvers'] and route['final_approval_required']
         response = JsonResponse(route)
     except (ValueError, InvalidOperation, ValidationError) as exc:
         response = JsonResponse({'error': ' '.join(exc.messages) if isinstance(exc, ValidationError) else '종류·금액·직급을 확인해 주세요.'}, status=400)
@@ -75,8 +76,8 @@ def regulations(request, pk=None):
     legacy = Policy.objects.first()
     welfare = WelfarePolicy.objects.first()
     if tab == 'delegation':
-        instance = get_object_or_404(ApprovalRule, pk=pk) if pk else None
-        form = ApprovalRuleForm(data, instance=instance, initial={} if instance else {'reviewer_ranks': RANKS[1:], 'approver_ranks': RANKS[1:]})
+        instance = get_object_or_404(ApprovalRule, pk=pk, deleted_at__isnull=True) if pk else None
+        form = ApprovalRuleForm(data, instance=instance, initial={} if instance else {'kind': 'all', 'reviewer_ranks': RANKS[1:], 'approver_ranks': RANKS[1:]})
     else:
         cls = {'annual': AnnualBandForm, 'benefits': BenefitRuleForm, 'awards': AwardRuleForm}[tab]
         if tab == 'annual':
@@ -113,9 +114,24 @@ def regulations(request, pk=None):
             messages.error(request, ' '.join(exc.messages))
     return page(request, 'regulations', '규정 관리', 'regulations', tab=tab, rule_form=form, rule_formset=formset,
         rule_authors=get_user_model().objects.filter(is_active=True, profile__approved=True, profile__manage_system=False).select_related('profile').order_by('first_name'),
-        rules=ApprovalRule.objects.prefetch_related('authors').all(), selected_year=year, years=years,
+        rules=ApprovalRule.objects.filter(deleted_at__isnull=True).prefetch_related('authors'), selected_year=year, years=years,
         annual=annual, policy_text=request.POST.get('text', '') if data else (annual.text if annual and annual.text else legacy.text if legacy else ''),
-        logs=Audit.objects.filter(event__in=['전결규정 수정', '연차 산정규정 수정', '경조사비 규정 수정', '장기근속 포상규정 수정']).select_related('actor')[:12], ranks=RANKS)
+        logs=Audit.objects.filter(event__in=['전결규정 수정', '전결규정 삭제', '연차 산정규정 수정', '경조사비 규정 수정', '장기근속 포상규정 수정']).select_related('actor')[:12], ranks=RANKS)
+
+
+@login_required
+@require_POST
+def rule_delete(request, pk):
+    if not manager(request.user):
+        raise PermissionDenied
+    get_object_or_404(ApprovalRule, pk=pk, deleted_at__isnull=True)
+    try:
+        rule = delete_rule(request.user, pk)
+    except ApprovalRule.DoesNotExist:
+        from django.http import Http404
+        raise Http404('이미 삭제된 규정입니다.')
+    messages.success(request, f'전결규정 「{rule.name}」을 삭제했습니다. 기존 결재 이력은 보존됩니다.')
+    return redirect('regulations')
 
 
 @login_required

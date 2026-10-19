@@ -30,25 +30,25 @@ def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base')
         'mode': mode, 'available_modes': ['base'], 'self_complete': False,
         'fixed_reviewer_id': None, 'fixed_approver_id': None}
     matches = []
-    if kind != 'stock':
-        for rule in ApprovalRule.objects.filter(kind=kind, enabled=True).prefetch_related('authors'):
-            if rule.author_ranks and owner_rank not in rule.author_ranks:
-                continue
-            author_ids = {user.pk for user in rule.authors.all()}
-            if author_ids and (owner is None or owner.pk not in author_ids):
-                continue
-            if rule.author_departments and (owner is None or owner.profile.department not in rule.author_departments):
-                continue
-            if kind == 'office' and not (total > rule.amount_over and (rule.amount_to is None or total <= rule.amount_to)):
-                continue
-            matches.append(rule)
+    for rule in ApprovalRule.objects.filter(kind__in=[kind, 'all'], enabled=True, deleted_at__isnull=True).prefetch_related('authors'):
+        if rule.author_ranks and owner_rank not in rule.author_ranks:
+            continue
+        author_ids = {user.pk for user in rule.authors.all()}
+        if author_ids and (owner is None or owner.pk not in author_ids):
+            continue
+        if rule.author_departments and (owner is None or owner.profile.department not in rule.author_departments):
+            continue
+        if kind == 'office' and not (total > rule.amount_over and (rule.amount_to is None or total <= rule.amount_to)):
+            continue
+        matches.append(rule)
     if matches:
-        highest = max(rule_priority(rule) for rule in matches)
-        matches = [rule for rule in matches if rule_priority(rule) == highest]
+        highest = max((rule_priority(rule), rule.kind == kind) for rule in matches)
+        matches = [rule for rule in matches if (rule_priority(rule), rule.kind == kind) == highest]
         if len(matches) > 1:
             raise ValidationError('같은 우선순위의 전결규정이 겹칩니다. 규정 관리 담당자에게 확인을 요청해 주세요.')
         rule = matches[0]
-        snapshot.update(name=rule.name, rule_id=rule.pk, version=rule.version,
+        snapshot.update(name=rule.name, rule_id=rule.pk, rule_kind=rule.kind, version=rule.version,
+            stock_final_approval=kind == 'stock',
             skip_review=rule.skip_review, reviewer_ranks=rule.reviewer_ranks,
             approver_ranks=rule.approver_ranks, fixed_reviewer_id=rule.fixed_reviewer_id,
             fixed_approver_id=owner.pk if rule.approver_is_author and owner else rule.fixed_approver_id)
@@ -90,10 +90,11 @@ def validate_route_people(document, route):
         document.reviewer = None
     elif not document.reviewer:
         raise ValidationError('검토자를 선택해 주세요.')
-    if document.kind != 'stock' and not document.approver:
+    final_required = document.kind != 'stock' or route.get('stock_final_approval', False)
+    if final_required and not document.approver:
         raise ValidationError('승인자를 선택해 주세요.')
     for stage in ['reviewer', 'approver']:
-        if (stage == 'reviewer' and route['skip_review']) or (stage == 'approver' and document.kind == 'stock'):
+        if (stage == 'reviewer' and route['skip_review']) or (stage == 'approver' and not final_required):
             continue
         person = getattr(document, stage)
         validate_approval_person(person)
@@ -104,8 +105,13 @@ def validate_route_people(document, route):
 
 def route_preview(kind, owner_rank, total, reviewer_rank=None, owner=None, mode='base'):
     route = resolve_route(kind, owner_rank, total, owner=owner, mode=mode)
-    return {**route, 'reviewers': candidate_ranks(route, 'reviewer'),
-        'approvers': candidate_ranks(route, 'approver', reviewer_rank),
-        'path': '본인 전결 · 제출 즉시 완료' if route['self_complete'] else '기안 → 검토 → 발주 → 입고' if kind == 'stock' else '기안 → 승인' if route['skip_review'] else '기안 → 검토 → 승인',
+    final_required = kind != 'stock' or route.get('stock_final_approval', False)
+    path = '본인 전결 · 제출 즉시 완료' if route['self_complete'] else '기안 → 승인' if route['skip_review'] else '기안 → 검토 → 승인' if final_required else '기안 → 검토'
+    if kind == 'stock':
+        path += ' → 발주 → 입고'
+    return {**route, 'final_approval_required': final_required,
+        'reviewers': candidate_ranks(route, 'reviewer'),
+        'approvers': candidate_ranks(route, 'approver', reviewer_rank) if final_required else [],
+        'path': path,
         'note': '100만원 초과 전결규정은 미확정입니다. 현재는 기존 기본 경로를 표시합니다.'
                 if kind == 'office' and total > 1000000 and not route['rule_id'] else ''}

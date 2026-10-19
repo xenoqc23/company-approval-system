@@ -57,17 +57,19 @@ def save_rule(actor, form):
         raise PermissionDenied
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     rule = form.save(commit=False)
+    if rule.pk and ApprovalRule.objects.filter(pk=rule.pk, deleted_at__isnull=False).exists():
+        raise ValidationError('삭제된 규정은 수정할 수 없습니다. 목록을 새로고침해 주세요.')
     from .delegation import rule_priority
     author_ids = {user.pk for user in form.cleaned_data.get('authors', [])}
     priority = 3 if author_ids else 2 if rule.author_departments else 1 if rule.author_ranks else 0
-    for other in ApprovalRule.objects.filter(kind=rule.kind, enabled=True).exclude(pk=rule.pk).prefetch_related('authors'):
+    for other in ApprovalRule.objects.filter(kind=rule.kind, enabled=True, deleted_at__isnull=True).exclude(pk=rule.pk).prefetch_related('authors'):
         if priority != rule_priority(other):
             continue
         other_ids = {user.pk for user in other.authors.all()}
         people_overlap = not author_ids or not other_ids or bool(author_ids & other_ids)
         dept_overlap = not rule.author_departments or not other.author_departments or bool(set(rule.author_departments) & set(other.author_departments))
         rank_overlap = not rule.author_ranks or not other.author_ranks or bool(set(rule.author_ranks) & set(other.author_ranks))
-        amount_overlap = rule.kind == 'leave' or (max(rule.amount_over, other.amount_over) < min(
+        amount_overlap = rule.kind != 'office' or (max(rule.amount_over, other.amount_over) < min(
             rule.amount_to if rule.amount_to is not None else Decimal('Infinity'),
             other.amount_to if other.amount_to is not None else Decimal('Infinity')))
         if rule.enabled and people_overlap and dept_overlap and rank_overlap and amount_overlap:
@@ -80,6 +82,23 @@ def save_rule(actor, form):
     form.save_m2m()
     from .services import audit
     audit(actor, '전결규정 수정', detail=f'변경 전 {previous} / 변경 후 {form.cleaned_data} / 버전 {rule.version}')
+    return rule
+
+
+@transaction.atomic
+def delete_rule(actor, pk):
+    if not (actor.profile.manage_leave or actor.profile.manage_system):
+        raise PermissionDenied
+    RegulationLock.objects.select_for_update().get_or_create(pk=1)
+    rule = ApprovalRule.objects.select_for_update().get(pk=pk, deleted_at__isnull=True)
+    before = {**ApprovalRule.objects.filter(pk=pk).values().get(),
+              'authors': list(rule.authors.values_list('pk', flat=True))}
+    rule.enabled = False
+    rule.deleted_at, rule.deleted_by = timezone.now(), actor
+    rule.version += 1
+    rule.save(update_fields=['enabled', 'deleted_at', 'deleted_by', 'version', 'updated_at'])
+    from .services import audit
+    audit(actor, '전결규정 삭제', detail=f'규정 {rule.pk} / 삭제 전 {before} / 삭제 버전 {rule.version} / 제출 문서의 기존 경로 유지')
     return rule
 
 

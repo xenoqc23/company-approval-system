@@ -19,7 +19,7 @@ def progress_stages(doc):
               'done': bool(doc.reviewed_at), 'time': doc.reviewed_at}]
     if not doc.review_required:
         steps = steps[:1]
-    if doc.kind != 'stock':
+    if doc.final_approval_required:
         steps.append({'label': '승인', 'person': doc.approver.first_name if doc.approver else '—',
                       'done': bool(doc.approved_at), 'time': doc.approved_at})
     if doc.kind != 'leave':
