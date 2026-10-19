@@ -100,7 +100,9 @@ def test_push(request):
     if PushDelivery.objects.filter(subscription=sub,notice=None,created_at__gt=timezone.now()-timedelta(seconds=30)).exists():
         return JsonResponse({'error':'테스트 알림은 30초 후 다시 요청해 주세요.'},status=429)
     PushDelivery.objects.create(subscription=sub,next_attempt_at=timezone.now()+timedelta(seconds=10))
-    return JsonResponse({'ok':True,'message':'10초 후 발송합니다. 창을 닫고 확인해 보세요. 발송 프로그램이 실행 중이어야 합니다.'})
+    from .push import worker_running
+    text='10초 후 발송합니다. 창을 닫고 확인해 보세요.' if worker_running() else '10초 후 발송을 예약했지만 푸시 발송 프로그램이 응답하지 않습니다. RUN_LOCAL_NOTIFICATIONS 실행 창을 확인해 주세요.'
+    return JsonResponse({'ok':True,'message':text})
 
 
 @never_cache
@@ -110,3 +112,23 @@ def service_worker(request):
     response=HttpResponse(path.read_text(),content_type='application/javascript')
     response['Service-Worker-Allowed']='/'
     return response
+
+
+@login_required
+@never_cache
+@require_GET
+def push_status(request):
+    from .push import worker_running,public_key
+    device=request.get_signed_cookie('xenosys_push_device',default='')
+    sub=PushSubscription.objects.filter(user=request.user,endpoint_hash=device).first()
+    job=PushDelivery.objects.filter(subscription=sub).order_by('-pk').first() if sub else None
+    labels={'sent':'브라우저 푸시 서비스에 전달 완료 (PC 표시 여부는 알림 센터에서 확인)',
+            'failed':'발송 실패. 실행 창의 연결 오류를 확인해 주세요.',
+            'subscription_expired':'구독이 만료되었습니다. 웹 푸시를 다시 켜 주세요.',
+            'expired':'대기 시간이 지나 발송을 종료했습니다.','skipped':'읽음 또는 계정·문서 상태 변경으로 발송하지 않았습니다.'}
+    delivery=None
+    if job:
+        label=labels.get(job.result,'전송 대기' if not job.attempts else f'연결 오류로 재시도 대기 ({job.attempts}회 시도)')
+        delivery={'label':label,'attempts':job.attempts,'finished':job.finished_at is not None}
+    return JsonResponse({'configured':bool(public_key()),'subscribed':bool(sub and sub.enabled),
+                         'worker_running':worker_running(),'last_delivery':delivery})

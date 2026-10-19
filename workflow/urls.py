@@ -4,6 +4,7 @@ from . import views, regulation_views, notification_views
 urlpatterns = [
     path('notifications/status/',notification_views.status,name='notification_status'),
     path('notifications/preferences/',notification_views.preferences,name='notification_preferences'),
+    path('notifications/push/status/',notification_views.push_status,name='push_status'),
     path('notifications/push/config/',notification_views.push_config,name='push_config'),
     path('notifications/push/subscribe/',notification_views.subscribe,name='push_subscribe'),
     path('notifications/push/unsubscribe/',notification_views.unsubscribe,name='push_unsubscribe'),

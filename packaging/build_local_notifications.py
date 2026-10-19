@@ -4,9 +4,10 @@ from pathlib import Path
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 ROOT=Path(__file__).resolve().parents[1]
 NAME='xenosys-local-notifications-20261020'
+ARCHIVE_NAME='xenosys-local-notifications-fix-20261020'
 
 def build(destination=None):
-    out=Path(destination) if destination else ROOT.parent/'artifacts'/f'{NAME}.zip'
+    out=Path(destination) if destination else ROOT.parent/'artifacts'/f'{ARCHIVE_NAME}.zip'
     names=['manage.py','local_notifications.py','requirements-prototype.txt','requirements-webpush.txt',
            'SETUP_LOCAL_NOTIFICATIONS.bat','RUN_LOCAL_NOTIFICATIONS.bat']
     names.extend(str(p.relative_to(ROOT)) for package in ['approval_site','workflow'] for p in (ROOT/package).rglob('*.py')

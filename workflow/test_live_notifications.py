@@ -44,7 +44,7 @@ class LiveNotificationTests(TestCase):
 
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.settings=override_settings(WEBPUSH_PRIVATE_KEY_FILE=str(Path(self.tmp.name)/'key.pem'))
+        self.settings=override_settings(DATA_DIR=Path(self.tmp.name),WEBPUSH_PRIVATE_KEY_FILE=str(Path(self.tmp.name)/'key.pem'))
         self.settings.enable();self.addCleanup(self.settings.disable)
         call_command('init_webpush',stdout=Mock())
 
@@ -142,6 +142,26 @@ class LiveNotificationTests(TestCase):
         sub=PushSubscription.objects.get();job=PushDelivery.objects.create(subscription=sub)
         self.post_json('push_subscribe',data)
         self.assertTrue(PushDelivery.objects.filter(pk=job.pk).exists())
+
+    def test_diagnostics_are_device_scoped_and_show_worker_liveness(self):
+        from .push import worker_heartbeat
+        data=subscription_data();self.as_user(self.reviewer)
+        self.post_json('push_subscribe',data)
+        response=self.client.get(reverse('push_status')).json()
+        self.assertTrue(response['subscribed']);self.assertFalse(response['worker_running'])
+        worker_heartbeat()
+        self.assertTrue(self.client.get(reverse('push_status')).json()['worker_running'])
+        self.assertNotIn('endpoint',json.dumps(response));self.assertNotIn('p256dh',json.dumps(response))
+        sub=PushSubscription.objects.get();PushDelivery.objects.create(subscription=sub,result='failed',finished_at=timezone.now(),attempts=5)
+        self.assertIn('실패',self.client.get(reverse('push_status')).json()['last_delivery']['label'])
+        self.as_user(self.other);response=self.client.get(reverse('push_status')).json()
+        self.assertFalse(response['subscribed']);self.assertIsNone(response['last_delivery'])
+
+    def test_diagnostic_queue_does_not_claim_pc_received_after_provider_acceptance(self):
+        self.as_user(self.reviewer);self.post_json('push_subscribe',subscription_data())
+        PushDelivery.objects.create(subscription=PushSubscription.objects.get(),result='sent',finished_at=timezone.now())
+        label=self.client.get(reverse('push_status')).json()['last_delivery']['label']
+        self.assertIn('푸시 서비스에 전달',label);self.assertNotIn('PC 수신 완료',label)
 
     def test_test_push_is_device_scoped_delayed_and_rate_limited(self):
         sub=self.sub(self.reviewer);self.as_user(self.reviewer)

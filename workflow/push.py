@@ -81,13 +81,36 @@ def send_subscription(subscription,payload):
         ttl=3600,timeout=8,headers={'Urgency':'normal'})
 
 
+def worker_heartbeat():
+    import os
+    import tempfile
+    from datetime import datetime
+    path=Path(settings.DATA_DIR)/'webpush-worker-heartbeat'
+    fd,tmp=tempfile.mkstemp(dir=path.parent,prefix='.push-heartbeat-')
+    try:
+        with os.fdopen(fd,'w') as f:f.write(timezone.now().isoformat())
+        os.replace(tmp,path)
+    finally:
+        if Path(tmp).exists():Path(tmp).unlink()
+
+
+def worker_running():
+    from datetime import datetime
+    try:
+        stamp=datetime.fromisoformat((Path(settings.DATA_DIR)/'webpush-worker-heartbeat').read_text())
+        return timedelta(0)<=timezone.now()-stamp<timedelta(seconds=30)
+    except (OSError,ValueError,TypeError):return False
+
+
 def deliver_pending(limit=50):
     if not public_key():return 0
+    worker_heartbeat()
     now=timezone.now();done=0
     available=PushDelivery.objects.filter(finished_at=None,next_attempt_at__lte=now).filter(
         Q(locked_until=None)|Q(locked_until__lt=now))
     ids=list(available.order_by('pk').values_list('pk',flat=True)[:limit])
     for pk in ids:
+        worker_heartbeat()
         token=str(uuid4())
         claim_now=timezone.now()
         claimable=PushDelivery.objects.filter(pk=pk,finished_at=None,next_attempt_at__lte=claim_now).filter(

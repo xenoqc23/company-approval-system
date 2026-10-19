@@ -4,17 +4,32 @@
   if (!runtime || !seedNode) return;
   const initial = JSON.parse(seedNode.textContent);
   let cursor = initial.latest, checking = false, settings = initial.preferences, registration = null;
+  let failures=0;
   let stopped = false, audio = null;
   const storage = {
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* Private browsing. */ } },
     remove(key) { try { localStorage.removeItem(key); } catch { /* Private browsing. */ } }
   };
+  const cursorKey=`xenosys-notice-cursor-${initial.user}`;
+  const savedCursor=Number(storage.get(cursorKey));
+  if(storage.get(cursorKey)!==null && Number.isSafeInteger(savedCursor) && savedCursor>=0 && savedCursor<=initial.latest)cursor=savedCursor;
+  else storage.set(cursorKey,String(cursor));
+  const reminderKey=`xenosys-work-reminder-${initial.user}`;
   const ownerKey = 'xenosys-push-owner';
+  const bounded = (promise,ms=15000) => {
+    let timer;
+    return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('알림 준비 시간이 초과되었습니다. 브라우저 권한과 실행 창을 확인한 뒤 다시 시도해 주세요.')),ms);})]).finally(()=>clearTimeout(timer));
+  };
+  async function request(url,options={}) {
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
+    try{return await fetch(url,{...options,signal:controller.signal});}catch(error){if(error.name==='AbortError')throw new Error('응답 시간이 초과되었습니다. 실행 창과 연결 상태를 확인한 뒤 다시 시도해 주세요.');throw error;}finally{clearTimeout(timer);}
+  }
   const csrf = () => document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
   const post = async (url, data) => {
-    const response = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify(data),cache:'no-store'});
+    const response = await request(url, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify(data),cache:'no-store'});
     if (response.redirected) throw new Error('로그인 상태를 확인해 주세요.');
+    if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('로그인 상태가 바뀌었거나 요청을 확인하지 못했습니다. 화면을 새로고침한 뒤 다시 시도해 주세요.');
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || '처리하지 못했습니다. 다시 시도해 주세요.');
     return result;
@@ -57,24 +72,45 @@
     });
     const pending=document.querySelector('.pending-approval-summary');if(pending)pending.classList.toggle('has-pending',summary.waiting>0);
   }
+  function connection(text='',url='') {
+    const banner=document.getElementById('notification-connection');
+    if(!banner)return;
+    banner.hidden=!text;
+    banner.querySelector('span').textContent=text;
+    const link=banner.querySelector('a');link.hidden=!url;if(url)link.href=url;
+  }
+  function remindPending() {
+    const counts=`${initial.waiting}:${initial.accounting_unread}`;
+    if(!settings.popup || (!initial.waiting && !initial.accounting_unread))return;
+    let previous=null;try{previous=sessionStorage.getItem(reminderKey);}catch{}
+    if(previous===counts)return;
+    try{sessionStorage.setItem(reminderKey,counts);}catch{}
+    if(initial.waiting)toast(`내가 처리할 미결 문서가 ${initial.waiting}건 있습니다.`, '/documents/?mode=pending');
+    if(initial.accounting_unread)toast(`아직 확인하지 않은 최종 승인 문서가 ${initial.accounting_unread}건 있습니다.`, '/documents/?mode=accounting');
+  }
   async function poll() {
     if(stopped || checking || document.hidden)return;
     checking=true;
     try {
-      const response=await fetch(`${runtime.dataset.status}?after=${cursor}`,{cache:'no-store'});
-      if(response.redirected || response.status===401 || response.status===403){stopped=true;return;}
-      if(!response.ok || !response.headers.get('content-type')?.includes('application/json'))return;
-      const summary=await response.json();if(summary.user!==initial.user){stopped=true;return;}
-      update(summary);cursor=summary.cursor;
+      const response=await request(`${runtime.dataset.status}?after=${cursor}`,{cache:'no-store'});
+      if(response.redirected || response.status===401 || response.status===403){stopped=true;connection('로그인 상태가 바뀌어 알림 갱신이 중지되었습니다.','/login/');return;}
+      if(!response.ok || !response.headers.get('content-type')?.includes('application/json'))throw new Error('status');
+      const summary=await response.json();if(summary.user!==initial.user){stopped=true;connection('다른 계정으로 로그인되어 이 화면의 알림 갱신이 중지되었습니다. 현재 계정으로 새로고침해 주세요.',location.pathname+location.search);return;}
+      failures=0;connection();update(summary);
+      // A visible window on another monitor must not consume the focused window's popup.
+      if(!document.hasFocus())return;
+      cursor=summary.cursor;storage.set(cursorKey,String(cursor));
       for(const event of summary.events){
         const key=`xenosys-event-${initial.user}-${event.id}`;
         const show=()=>{if(storage.get(key))return;storage.set(key,'1');if(settings.popup)toast(event.text,event.url);sound();};
         if(navigator.locks)await navigator.locks.request('xenosys-notice',show);else show();
       }
-    } catch { /* Keep existing badges during temporary network failures. */ }
+    } catch { if(++failures>=2)connection('알림 연결을 다시 시도하고 있습니다. 실행 창과 인터넷 연결을 확인해 주세요.'); }
     finally {checking=false;}
   }
   update(initial);
+  remindPending();
+  poll();
   window.setInterval(poll,15000);
   document.addEventListener('visibilitychange',poll);window.addEventListener('focus',poll);
   // Tests can exercise the same public refresh path without shortening production polling.
@@ -91,19 +127,19 @@
   }
   const state=document.querySelector('[data-push-state]'), enable=document.querySelector('[data-push-enable]'), disable=document.querySelector('[data-push-disable]'), test=document.querySelector('[data-push-test]');
   let configured=false, applicationKey='';
-  function pushState(text,active=false){if(!state)return;state.textContent=text;enable.hidden=active;disable.hidden=!active;test.disabled=!active;}
+  function pushState(text,active=false){if(!state)return;state.textContent=text;enable.hidden=active;disable.hidden=!active;}
   const bytes=value=>Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-value.length%4)%4)),c=>c.charCodeAt(0));
   const ready=(async()=>{
     if(!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)){
       pushState('이 브라우저에서는 웹 푸시를 지원하지 않습니다. HTTPS 또는 이 PC의 localhost에서 Chrome·Edge로 확인해 주세요.');if(enable)enable.disabled=true;return;
     }
     try{
-      const response=await fetch(runtime.dataset.pushConfig,{cache:'no-store'});if(!response.ok || response.redirected)return;
+      const response=await request(runtime.dataset.pushConfig,{cache:'no-store'});if(!response.ok || response.redirected)return;
       const config=await response.json();configured=config.configured;applicationKey=config.public_key;
       if(!configured){pushState('서버의 웹 푸시 초기 설정이 필요합니다. 기존 시스템 알림은 계속 사용할 수 있습니다.');if(enable)enable.disabled=true;return;}
       registration=await navigator.serviceWorker.register(runtime.dataset.worker,{scope:'/',updateViaCache:'none'});
-      await navigator.serviceWorker.ready;
-      let sub=await registration.pushManager.getSubscription();
+      await bounded(navigator.serviceWorker.ready);
+      let sub=await bounded(registration.pushManager.getSubscription());
       if(sub && storage.get(ownerKey)!==String(initial.user)){
         await post(runtime.dataset.unsubscribe,{endpoint:sub.endpoint});await sub.unsubscribe();sub=null;storage.remove(ownerKey);
       }
@@ -114,33 +150,64 @@
   })();
   if(enable)enable.onclick=async()=>{
     // Permission request stays in the user's explicit click, never on page load.
-    if(!configured || !registration)return;
+    if(!configured || !registration){pushState('웹 푸시 준비 상태를 확인하고 있습니다. 잠시 후 다시 눌러 주세요.');return;}
     enable.disabled=true;
     try{
       const permission=await Notification.requestPermission();if(permission!=='granted'){pushState('알림이 허용되지 않았습니다. 사이트 설정에서 알림을 허용해 주세요.');return;}
-      let sub=await registration.pushManager.getSubscription();sub ||= await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes(applicationKey)});
+      let sub=await bounded(registration.pushManager.getSubscription());sub ||= await bounded(registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes(applicationKey)}));
       await post(runtime.dataset.subscribe,sub.toJSON());storage.set(ownerKey,String(initial.user));pushState('이 브라우저의 웹 푸시가 켜져 있습니다.',true);
     }catch{pushState('웹 푸시를 켜지 못했습니다. 브라우저의 알림 권한과 인터넷 연결을 확인해 주세요.');}
     finally{enable.disabled=false;}
   };
   if(disable)disable.onclick=async()=>{
     disable.disabled=true;
-    try{const sub=await registration?.pushManager.getSubscription();if(sub){await post(runtime.dataset.unsubscribe,{endpoint:sub.endpoint});await sub.unsubscribe();}storage.remove(ownerKey);pushState('이 브라우저의 웹 푸시를 껐습니다.');}
+    try{const sub=await bounded(registration?.pushManager.getSubscription());if(sub){await post(runtime.dataset.unsubscribe,{endpoint:sub.endpoint});await sub.unsubscribe();}storage.remove(ownerKey);pushState('이 브라우저의 웹 푸시를 껐습니다.');}
     catch(error){state.textContent=error.message;}finally{disable.disabled=false;}
   };
+  const screenTest=document.querySelector('[data-screen-test]');
+  if(screenTest)screenTest.onclick=()=>{toast('화면 팝업 테스트입니다. 창 크기와 관계없이 표시됩니다.','/notices/');sound();};
+  const osTest=document.querySelector('[data-os-test]');
+  if(osTest)osTest.onclick=async()=>{
+    osTest.disabled=true;
+    try {
+      if(!('Notification' in window))throw new Error('이 브라우저는 Windows 알림을 지원하지 않습니다.');
+      const permission=await Notification.requestPermission();
+      if(permission!=='granted')throw new Error('브라우저에서 알림을 허용해 주세요.');
+      await ready;
+      if(!registration)throw new Error('알림 준비가 끝나지 않았습니다. 잠시 후 다시 눌러 주세요.');
+      await registration.showNotification('사내결재시스템',{body:'이 PC의 알림 표시 테스트입니다.',tag:'xenosys-local-display-test'});
+      state.textContent='Windows에 표시를 요청했습니다. 알림 센터도 확인해 주세요. 표시되지 않으면 Windows 알림·방해 금지 설정을 확인해 주세요.';
+    }catch(error){state.textContent=error.message;}finally{osTest.disabled=false;}
+  };
+  const diagnosticButton=document.querySelector('[data-push-diagnostics]');
+  async function diagnose() {
+    const target=document.querySelector('[data-push-diagnostic-result]');if(!target)return;
+    try {
+      const response=await request(runtime.dataset.pushStatus,{cache:'no-store'});
+      if(!response.ok || response.redirected)throw new Error('로그인 상태와 실행 창을 확인해 주세요.');
+      const result=await response.json();
+      const permission=('Notification' in window)?Notification.permission:'unsupported';
+      const labels={granted:'허용',denied:'차단',default:'아직 허용하지 않음',unsupported:'지원하지 않음'};
+      const lines=[`브라우저 알림: ${labels[permission]}`,`이 계정의 웹 푸시: ${result.subscribed?'켜짐':'꺼짐'}`,`푸시 발송 프로그램: ${result.worker_running?'실행 중':'중지 또는 응답 없음 (RUN 실행 창을 확인하세요)'}`];
+      if(result.last_delivery)lines.push(`최근 발송: ${result.last_delivery.label}`);
+      target.textContent=lines.join(' / ');
+    }catch(error){target.textContent=error.message;}
+  }
+  if(diagnosticButton)diagnosticButton.onclick=diagnose;
   if(test)test.onclick=async()=>{
-    test.disabled=true;
-    try{const sub=await registration?.pushManager.getSubscription();if(!sub)throw new Error('먼저 웹 푸시를 켜 주세요.');const result=await post(runtime.dataset.pushTestUrl,{endpoint:sub.endpoint});state.textContent=result.message;}
-    catch(error){state.textContent=error.message;}finally{setTimeout(()=>{test.disabled=false;},30000);}
+    let queued=false;test.disabled=true;
+    state.textContent='웹 푸시 구독과 발송 상태를 확인하고 있습니다…';
+    try{const sub=await bounded(registration?.pushManager.getSubscription());if(!sub)throw new Error('먼저 웹 푸시를 켜 주세요.');const result=await post(runtime.dataset.pushTestUrl,{endpoint:sub.endpoint});queued=true;state.textContent=result.message;diagnose();setTimeout(diagnose,13000);}
+    catch(error){state.textContent=error.message;}finally{if(queued)setTimeout(()=>{test.disabled=false;},30000);else test.disabled=false;}
   };
   document.querySelectorAll('form[action="/logout/"]').forEach(form=>form.addEventListener('submit',async event=>{
     if(form.dataset.pushCleaned)return;
     event.preventDefault();stopped=true;
     try{
       await Promise.race([ready,new Promise(resolve=>setTimeout(resolve,2000))]);
-      const sub=await registration?.pushManager.getSubscription();
+      const sub=await bounded(registration?.pushManager.getSubscription());
       if(sub){const field=document.createElement('input');field.type='hidden';field.name='push_endpoint';field.value=sub.endpoint;form.append(field);await sub.unsubscribe();}
     }catch{/* The server still revokes the submitted endpoint when available. */}
-    storage.remove(ownerKey);form.dataset.pushCleaned='1';form.submit();
+    storage.remove(ownerKey);try{sessionStorage.removeItem(reminderKey);}catch{}form.dataset.pushCleaned='1';form.submit();
   }));
 })();

@@ -13,12 +13,15 @@ def login(browser,name):
     page.goto(base+'/login/');page.locator('[name=username]').fill(name);page.locator('[name=password]').fill(pw);page.locator('[data-login-form] button[type=submit]').click();page.wait_for_url(base+'/');return context,page
 
 def summary(context):return context.request.get(base+'/notifications/status/').json()
-def refresh(page):page.evaluate("window.dispatchEvent(new Event('xenosys-refresh-notifications'))")
+def refresh(page):page.bring_to_front();page.evaluate("window.dispatchEvent(new Event('xenosys-refresh-notifications'))")
 with sync_playwright() as tool:
     browser=tool.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
     rc,review=login(browser,'reviewer');fc,finance=login(browser,'accounting');oc,owner=login(browser,'employee')
     reviewbase=summary(rc);financebase=summary(fc)
+    review.locator('.notification-toast button').evaluate_all('(nodes)=>nodes.forEach(n=>n.click())')
+    finance.locator('.notification-toast button').evaluate_all('(nodes)=>nodes.forEach(n=>n.click())')
     finance.goto(base+'/documents/?mode=accounting')
+    finance.locator('.notification-toast button').evaluate_all('(nodes)=>nodes.forEach(n=>n.click())')
     owner.goto(base+'/compose/?kind=office');owner.locator('#id_product').fill('로컬 알림 테스트 키보드');owner.locator('#id_quantity').fill('1');owner.locator('#id_unit_price').fill('50000');owner.locator('#id_url').fill('https://example.com/keyboard');owner.locator('#id_reason').fill('가상 직원 알림 동작 확인')
     owner.locator('#id_reviewer_department').select_option(label='개발팀');owner.locator('#id_reviewer').select_option(label='김민준 · 개발팀 팀장')
     owner.get_by_role('button',name='기안 제출',exact=True).click();owner.wait_for_url('**/documents/*/')
