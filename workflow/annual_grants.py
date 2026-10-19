@@ -16,6 +16,18 @@ def completed_years(hire_date, reference):
     return reference.year - hire_date.year - ((reference.month, reference.day) < (hire_date.month, hire_date.day))
 
 
+def grant_tenure(hire_date, year, policy=None):
+    """Tenure for annual grants and their displays, not other service awards."""
+    if not hire_date or hire_date.year > year:
+        return 0
+    if policy is None:
+        from .regulations import annual_policy
+        policy = annual_policy(year)
+    if hire_date.year <= 2016 and (not policy or policy.calendar_tenure_before_2017):
+        return year - hire_date.year
+    return completed_years(hire_date, date(year, 1, 1))
+
+
 def entitlement(hire_date, year):
     if not hire_date or hire_date.year > year:
         return Decimal('0')
@@ -29,7 +41,7 @@ def entitlement(hire_date, year):
         if hire_date.year + 1 == year:
             # The entire year after hire uses the base band, including January 1 hires.
             return Decimal(bands[0][1])
-    years = completed_years(hire_date, date(year, 1, 1))
+    years = grant_tenure(hire_date, year, policy)
     return Decimal(next(days for low, days in reversed(bands) if years >= low))
 
 

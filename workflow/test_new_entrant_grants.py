@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
-from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import connection
@@ -146,14 +145,16 @@ class NewEntrantMigrationTests(TransactionTestCase):
         migration = import_module('workflow.migrations.0011_hire_year_monthly')
         with patch.object(migration.timezone,'localdate',return_value=date(2026,10,16)):
             MigrationExecutor(connection).migrate(after)
-            new_policy = AnnualPolicy.objects.get(effective_year=2026)
+            new_apps = MigrationExecutor(connection).loader.project_state(after).apps
+            PolicyAfter = new_apps.get_model('workflow', 'AnnualPolicy')
+            new_policy = PolicyAfter.objects.get(effective_year=2026)
             self.assertTrue(new_policy.hire_year_monthly)
             self.assertEqual(new_policy.bands[0],[0,12])
             self.assertEqual(new_policy.text,'원래 안내')
-            old = AnnualPolicy.objects.get(effective_year=2000)
+            old = PolicyAfter.objects.get(effective_year=2000)
             self.assertFalse(old.hire_year_monthly)
             self.assertEqual(old.bands,bands)
-            future = AnnualPolicy.objects.get(effective_year=2027)
+            future = PolicyAfter.objects.get(effective_year=2027)
             self.assertEqual((future.bands[0],future.bands[3],future.text),([0,12],[5,18],'미래 안내'))
             expected = {'june':7,'april':9,'next_january':12,'next_december':12,'senior':11,'manual':20}
             for name,total in expected.items():
@@ -164,8 +165,8 @@ class NewEntrantMigrationTests(TransactionTestCase):
             self.assertEqual((old_balance.total,old_balance.used),(8,Decimal('3.25')))
             snapshot = list(AnnualBalance.objects.order_by('pk').values())
             logs = Audit.objects.count()
-            revision = list(AnnualPolicy.objects.order_by('pk').values('pk','version'))
-            migration.apply_new_entrant_policy(apps,SimpleNamespace(connection=connection))
+            revision = list(PolicyAfter.objects.order_by('pk').values('pk','version'))
+            migration.apply_new_entrant_policy(new_apps,SimpleNamespace(connection=connection))
             self.assertEqual(list(AnnualBalance.objects.order_by('pk').values()),snapshot)
             self.assertEqual(Audit.objects.count(),logs)
-            self.assertEqual(list(AnnualPolicy.objects.order_by('pk').values('pk','version')),revision)
+            self.assertEqual(list(PolicyAfter.objects.order_by('pk').values('pk','version')),revision)

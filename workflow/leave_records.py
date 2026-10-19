@@ -2,7 +2,7 @@ from datetime import date, time, timedelta
 from decimal import Decimal
 from django.utils import timezone
 from .models import AnnualBalance, DEPARTMENTS, Document, CompanyLeaveCharge, ManualLeaveUsage
-from .annual_grants import completed_years, entitlement, employees
+from .annual_grants import grant_tenure, entitlement, employees
 from django.db.models import Sum
 from .people import rank_order
 from django.contrib.auth import get_user_model
@@ -29,7 +29,7 @@ def balance_rows(year, department='', user=None):
         employee__in=users, year=year, active=True).values('employee_id').annotate(amount=Sum('amount'))}
     return [{'user': employee, 'total': balances[employee.pk].total if employee.pk in balances else Decimal('0'),
              'used': balances[employee.pk].used if employee.pk in balances else Decimal('0'),
-             'tenure': completed_years(employee.profile.hire_date, date(year, 1, 1)) if employee.profile.hire_date else None,
+             'tenure': grant_tenure(employee.profile.hire_date, year) if employee.profile.hire_date else None,
              'calculated': entitlement(employee.profile.hire_date, year) if employee.profile.hire_date else None,
              'personal_used': (balances[employee.pk].used if employee.pk in balances else Decimal('0')) - common.get(employee.pk, Decimal('0')),
              'common': common.get(employee.pk, Decimal('0')),
