@@ -151,17 +151,34 @@ class BirthdayTests(TestCase):
         self.assertEqual((response.context['birthday_next_year'],response.context['birthday_next_month']),(2027,1))
         self.assertContains(response,'year=2027&month=1')
 
-    def test_home_uses_korean_day_and_includes_all_today_birthdays_only(self):
-        self.client.force_login(self.finance)
-        with patch('django.utils.timezone.now',return_value=datetime(2026,10,18,15,10,tzinfo=dt_timezone.utc)):
-            response=self.client.get(reverse('dashboard'))
-        self.assertContains(response,'생일을 축하합니다!')
-        self.assertContains(response,'생일직원님')
-        self.assertContains(response,'음력직원님')
-        self.assertNotContains(response,'다른직원님')
-        self.assertContains(response,'birthday-cake.svg')
+    def test_home_birthday_greeting_only_visible_to_celebrant_on_korean_day(self):
+        korean_birthday = datetime(2026,10,18,15,10,tzinfo=dt_timezone.utc)
+        for viewer, expected in [(self.employee, '생일직원님'), (self.lunar, '음력직원님'),
+                                 (self.finance, None), (self.other, None)]:
+            with self.subTest(viewer=viewer.username):
+                self.client.force_login(viewer)
+                with patch('django.utils.timezone.now',return_value=korean_birthday):
+                    response=self.client.get(reverse('dashboard'))
+                if expected:
+                    self.assertContains(response,'생일을 축하합니다!')
+                    self.assertContains(response,expected)
+                    self.assertContains(response,'birthday-cake.svg')
+                    self.assertEqual([row['employee'].pk for row in response.context['today_birthdays']],[viewer.pk])
+                    other_name='음력직원님' if viewer.pk==self.employee.pk else '생일직원님'
+                    self.assertNotContains(response,other_name)
+                else:
+                    self.assertNotContains(response,'생일을 축하합니다!')
+                    self.assertNotContains(response,'birthday-cake.svg')
+                    self.assertEqual(response.context['today_birthdays'],[])
+        self.client.force_login(self.employee)
         with patch('django.utils.timezone.localdate',return_value=date(2026,10,20)):
             self.assertNotContains(self.client.get(reverse('dashboard')),'생일을 축하합니다!')
+        # Employee welfare remains a shared monthly birthday list.
+        self.client.force_login(self.finance)
+        with patch('django.utils.timezone.localdate',return_value=date(2026,10,19)):
+            response=self.client.get(reverse('welfare'),{'tab':'birthdays','year':2026,'month':10})
+        self.assertContains(response,'생일직원')
+        self.assertContains(response,'음력직원')
 
     def test_database_constraints_reject_partial_and_impossible_birthdays(self):
         for values in [dict(birthday_month=2,birthday_day=30),dict(birthday_month=None,birthday_day=1),

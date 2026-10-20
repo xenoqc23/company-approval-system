@@ -150,7 +150,8 @@ def dashboard(request):
                 home_kind=home_kind, home_categories=home_categories,
                 progress_doc=progress_doc, progress_steps=steps, progress_count=len(pending_documents),
                 progress_groups=[('진행 중', pending_documents)], notices=visible_notices(request.user)[:3],
-                today_birthdays=[row for row in birthday_rows(today.year, today.month, today) if row['today']])
+                today_birthdays=[row for row in birthday_rows(today.year, today.month, today)
+                                 if row['today'] and row['employee'].pk == request.user.pk])
 
 @login_required
 def documents(request):
