@@ -1,7 +1,9 @@
 from django.urls import path
-from . import views, regulation_views, notification_views
+from . import views, regulation_views, notification_views, purchase_hints
 
 urlpatterns = [
+    path('purchases/similar/', purchase_hints.hints, name='purchase_hints'),
+    path('documents/<int:pk>/correct-leave/', views.correct_leave, name='correct_leave'),
     path('notifications/status/',notification_views.status,name='notification_status'),
     path('notifications/preferences/',notification_views.preferences,name='notification_preferences'),
     path('notifications/push/status/',notification_views.push_status,name='push_status'),

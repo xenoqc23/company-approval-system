@@ -15,11 +15,13 @@ def visible_documents(user):
             return Document.objects.exclude(status__in=['draft','deleted'])
         return Document.objects.filter(Q(owner=user)|Q(reviewer=user)|Q(approver=user)|Q(recipient=user)|Q(representative=user)).exclude(status='deleted')
     if p.manage_system:
-        return Document.objects.all()
+        return Document.objects.exclude(status='deleted')
     related = Q(owner=user) | Q(reviewer=user) | Q(approver=user) | Q(representative=user)
     related |= Q(recipient=user, status='approved', kind__in=['office', 'stock'])
     if p.view_accounting:
-        related |= Q(status='approved')
+        related |= Q(status__in=['approved', 'cancelled'])
+    if p.manage_leave:
+        related |= Q(kind='leave', status__in=['approved', 'cancelled'])
     if p.procure:
         related |= Q(kind='stock', status='approved')
     return Document.objects.filter(related).exclude(status='deleted').exclude(Q(status='draft') & ~Q(owner=user))
@@ -133,6 +135,8 @@ def save_document(document, actor, submit=False):
         validate_approval_person(document.reviewer)
         validate_approval_person(document.approver)
     document.title = make_title(document)
+    from .purchase_hints import normalize_product
+    document.product_search = normalize_product(document.product)
     if submit:
         if document.kind not in dict(Document.KINDS):
             raise ValidationError('문서 종류를 선택해 주세요.')
@@ -264,7 +268,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         audit(actor, '최종 승인 취소', document, f'{reason}\n연차 {document.charged}일 복원' if document.kind == 'leave' else reason)
         notify(document, [document.owner] + accountants(document), f'최종 승인이 취소되었습니다. 사유: {reason[:100]}', '승인취소')
     elif action == 'delete':
-        if document.owner_id != actor.pk or not (document.status in ['draft', 'review', 'rejected'] or (document.status == 'approve' and not document.review_required)):
+        if not may_delete_document(document, actor):
             raise PermissionDenied
         previous_status = document.status
         document.status = 'deleted'
@@ -332,3 +336,14 @@ def edit_balance(actor, user, year, field, value, reason):
     after = f'총 {balance.total} / 사용 {balance.used} / 잔여 {balance.remaining}'
     audit(actor, f'{year}년 연차 수정', detail=f'{before} → {after}\n사유: {reason}', target=user)
     return balance
+
+
+def may_delete_document(document, actor):
+    p = actor.profile
+    if not actor.is_active or not p.approved or p.is_representative:
+        return False
+    if document.status == 'cancelled':
+        return (document.owner_id == actor.pk or p.manage_system or p.view_accounting
+                or (document.kind == 'leave' and p.manage_leave))
+    return document.owner_id == actor.pk and (document.status in ['draft', 'review', 'rejected']
+        or (document.status == 'approve' and not document.review_required))

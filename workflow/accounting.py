@@ -7,7 +7,7 @@ from .models import DocumentReceipt, Document
 def accounting_documents(user):
     from .services import visible_documents
     return visible_documents(user).filter(status='approved').annotate(
-        approval_stamp=Coalesce('approved_at', 'reviewed_at', 'created_at')).annotate(
+        approval_stamp=Coalesce('leave_corrected_at', 'approved_at', 'reviewed_at', 'created_at')).annotate(
         accounting_seen=Exists(DocumentReceipt.objects.filter(
             user=user, document_id=OuterRef('pk'), approval_stamp=OuterRef('approval_stamp'))))
 
@@ -29,5 +29,5 @@ def acknowledge_document(user,document):
     if not user.profile.view_accounting or document.status != 'approved':
         return
     DocumentReceipt.objects.update_or_create(user=user,document=document,defaults={
-        'approval_stamp':document.approved_at or document.reviewed_at or document.created_at,
+        'approval_stamp':document.leave_corrected_at or document.approved_at or document.reviewed_at or document.created_at,
         'viewed_at':timezone.now()})

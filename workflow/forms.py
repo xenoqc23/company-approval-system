@@ -164,7 +164,7 @@ class DocumentForm(forms.ModelForm):
     class Meta:
         model = Document
         fields = ['approval_mode', 'kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason',
-                  'product', 'quantity', 'unit_price', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
+                  'product', 'purchase_private', 'quantity', 'unit_price', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
         widgets = {x: forms.DateInput(attrs={'type': 'date'}) for x in ['start_date', 'end_date', 'needed_date']}
         widgets.update({x: forms.TimeInput(attrs={'type': 'time'}) for x in ['start_time', 'end_time']})
         widgets.update({'reason': forms.Textarea(attrs={'rows': 4, 'placeholder': '신청 내용을 입력해 주세요.'}),
@@ -368,4 +368,24 @@ class ApprovalFlowPolicyForm(forms.ModelForm):
         for field in ['leave_threshold','purchase_threshold']:
             if data.get(field) is not None and data[field] <= 0:
                 self.add_error(field,'0보다 큰 기준을 입력해 주세요.')
+        return data
+
+
+class LeaveCorrectionForm(forms.Form):
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
+    leave_type = forms.ChoiceField(label='실제 사용 휴가', choices=Document.LEAVES)
+    start_date = forms.DateField(label='사용 시작일', widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
+    end_date = forms.DateField(label='사용 종료일', widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
+    start_time = forms.TimeField(label='시작 시간', required=False, widget=forms.TimeInput(attrs={'type':'time'}, format='%H:%M'))
+    end_time = forms.TimeField(label='종료 시간', required=False, widget=forms.TimeInput(attrs={'type':'time'}, format='%H:%M'))
+    correction_reason = forms.CharField(label='정정 사유', max_length=1000, widget=forms.Textarea(attrs={'rows':3}))
+
+    def clean(self):
+        data = super().clean()
+        if not self.errors:
+            from .leave_corrections import validated_fields
+            try:
+                data.update(validated_fields(data))
+            except forms.ValidationError as exc:
+                raise forms.ValidationError(exc.messages)
         return data

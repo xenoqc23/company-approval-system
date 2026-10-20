@@ -1,6 +1,7 @@
 """Real row-lock checks; intentionally skipped by the SQLite PC runner."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from decimal import Decimal
 from threading import Barrier
 from uuid import uuid4
 from django.contrib.auth import get_user_model
@@ -57,6 +58,29 @@ class MariaDBConcurrencyTests(TransactionTestCase):
     def ready(self, day):
         doc = self.leave(day)
         return act_on_document(doc.pk, self.people['reviewer'], 'review')
+
+    def correction_values(self):
+        from datetime import time
+        return dict(leave_type='am',start_date=date(2026,10,19),end_date=date(2026,10,19),
+                    start_time=time(9),end_time=time(13),correction_reason='실제 반차 사용')
+
+    def test_duplicate_correction_charges_difference_once(self):
+        from .leave_corrections import correct_approved_leave
+        from .models import LeaveCorrection
+        doc=act_on_document(self.ready(date(2026,10,19)).pk,self.people['approver'],'approve')
+        operation=lambda:correct_approved_leave(doc.pk,self.people['finance'],self.correction_values(),0)
+        self.assertCountEqual(self.run_parallel(operation,operation),['ok','refused'])
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,Decimal('.5'))
+        self.assertEqual(LeaveCorrection.objects.filter(document=doc).count(),1)
+
+    def test_correction_and_approval_cancel_never_double_restore(self):
+        from .leave_corrections import correct_approved_leave
+        doc=act_on_document(self.ready(date(2026,10,19)).pk,self.people['approver'],'approve')
+        results=self.run_parallel(
+            lambda:correct_approved_leave(doc.pk,self.people['finance'],self.correction_values(),0),
+            lambda:act_on_document(doc.pk,self.people['approver'],'cancel_approval','취소'))
+        self.assertEqual(results[1],'ok');doc.refresh_from_db();self.assertEqual(doc.status,'cancelled')
+        self.assertEqual(AnnualBalance.objects.get(user=self.people['owner'],year=2026).used,0)
 
     def test_duplicate_approval_charges_once(self):
         doc = self.ready(date(2026, 10, 19))

@@ -143,6 +143,8 @@ def dashboard(request):
          'url': reverse('dashboard') + '?home_kind=' + key
                 + (f'&progress_document={progress_doc.pk}' if progress_doc else '') + '#recent-documents'}
         for key, label in [('all', '전체'), ('leave', '휴가원'), ('office', '구매요청서'), ('stock', '생산 재고')]]
+    from .completion import owner_completed
+    mine = mine.annotate(has_owner_unseen=Exists(owner_completed(request.user).filter(pk=OuterRef('pk'),completion_seen=False)))
     recent = mine if home_kind == 'all' else mine.filter(kind=home_kind)
     return page(request, 'dashboard', '홈', documents=recent.select_related('owner')[:4],
                 home_kind=home_kind, home_categories=home_categories,
@@ -156,10 +158,19 @@ def documents(request):
     accounting_categories, selected_kind = [], ''
     qs = visible_documents(request.user).select_related('owner', 'owner__profile', 'reviewer', 'approver')
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
-              'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
+              'completed': '내 기안 결재완료', 'deleted': '삭제 문서 보관함', 'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
               'stock': '생산 재고 요청함', 'all': '전체 문서', 'search': '문서 검색'}
     if mode == 'mine':
         qs = qs.filter(owner=request.user).exclude(status='draft')
+    elif mode == 'completed':
+        from .completion import owner_completed
+        qs = owner_completed(request.user).select_related('owner', 'owner__profile')
+        if request.GET.get('unread') == '1':
+            qs = qs.filter(completion_seen=False)
+    elif mode == 'deleted':
+        if not request.user.profile.manage_system:
+            raise PermissionDenied
+        qs = Document.objects.filter(status='deleted').select_related('owner', 'owner__profile')
     elif mode == 'drafts':
         qs = qs.filter(owner=request.user, status='draft')
     elif mode == 'pending':
@@ -231,6 +242,8 @@ def documents(request):
                 qs = qs.filter(**{lookup: date.fromisoformat(request.GET[key])})
         except ValueError:
             messages.error(request, '검색 날짜 형식을 확인해 주세요.')
+    from .completion import owner_completed
+    qs=qs.annotate(has_owner_unseen=Exists(owner_completed(request.user).filter(pk=OuterRef('pk'),completion_seen=False)))
     qs=qs.annotate(has_new_notice=Exists(visible_notices(request.user).filter(document_id=OuterRef('pk'),read=False)))
     qs = rank_order(qs, 'owner__')
     stock_final_routes = mode == 'stock' and qs.filter(route_snapshot__stock_final_approval=True).exists()
@@ -302,7 +315,10 @@ def compose(request, pk=None):
 
 @login_required
 def detail(request, pk):
-    doc = get_object_or_404(visible_documents(request.user), pk=pk)
+    source = Document.objects.all() if request.user.profile.manage_system else visible_documents(request.user)
+    doc = get_object_or_404(source, pk=pk)
+    from .completion import acknowledge_completion
+    acknowledge_completion(request.user, doc)
     from .accounting import acknowledge_document
     acknowledge_document(request.user,doc)
     visible_notices(request.user).filter(document=doc,read=False).update(read=True)
@@ -318,7 +334,8 @@ def detail(request, pk):
         actions += [('cancel_review', '검토 완료 취소')]
     if doc.final_approval_required and doc.status == 'approved' and doc.approver_id == u.pk:
         actions += [('cancel_approval', '최종 승인 취소')]
-    if (doc.status in ['draft', 'review', 'rejected'] or (doc.status == 'approve' and not doc.review_required)) and doc.owner_id == u.pk:
+    from .services import may_delete_document
+    if may_delete_document(doc, u):
         actions += [('delete', '기안 삭제')]
     if doc.status == 'approved' and doc.kind != 'leave':
         if u.profile.procure and not doc.shipment:
@@ -367,6 +384,7 @@ def detail(request, pk):
                 approval_confirmed=approval_confirmed, approval_cancelled=approval_cancelled,
                 my_review_confirmed=review_confirmed and doc.reviewer_id == u.pk,
                 my_approval_confirmed=approval_confirmed and doc.approver_id == u.pk,
+                can_correct_leave=u.profile.manage_leave and not u.profile.is_representative and doc.kind == 'leave' and doc.status == 'approved',
                 can_reassign=u.profile.manage_system and doc.status in ['review', 'approve'],
                 can_copy=not u.profile.is_representative and u.pk == doc.owner_id and doc.status in ['rejected', 'cancelled'])
 
@@ -394,7 +412,7 @@ def action(request, pk):
 @require_POST
 def copy_document(request, pk):
     old = get_object_or_404(Document, pk=pk, owner=request.user, status__in=['rejected', 'cancelled'])
-    fields = ['kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'quantity', 'unit_price',
+    fields = ['purchase_private', 'kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'quantity', 'unit_price',
               'product', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
     new = Document(owner=request.user, **{field: getattr(old, field) for field in fields})
     for field in ['reviewer', 'approver']:
@@ -815,3 +833,33 @@ def backups(request):
         return redirect('backups')
     return page(request, 'backups', '백업·복구', 'backups', backup_files=list_backups(),
                 offline_restore=connection.vendor != 'sqlite')
+
+
+@login_required
+def correct_leave(request, pk):
+    from .forms import LeaveCorrectionForm
+    from .leave_corrections import require_correction_permission, proposal, balance_preview, correct_approved_leave
+    doc = get_object_or_404(visible_documents(request.user), pk=pk)
+    try:
+        require_correction_permission(request.user, doc)
+    except ValidationError as exc:
+        messages.error(request, ' '.join(exc.messages))
+        return redirect('detail', pk=pk)
+    fields = ['leave_type', 'start_date', 'end_date', 'start_time', 'end_time']
+    form = LeaveCorrectionForm(request.POST if request.method == 'POST' else None,
+        initial={**{key: getattr(doc, key) for key in fields}, 'revision': doc.leave_revision})
+    preview, proposed = [], None
+    if request.method == 'POST' and form.is_valid():
+        try:
+            if form.cleaned_data['revision'] != doc.leave_revision:
+                raise ValidationError('정정 내용이 변경되었습니다. 문서를 다시 열어 주세요.')
+            proposed = proposal(doc, form.cleaned_data)
+            preview = balance_preview(doc, proposed)
+            if request.POST.get('intent') == 'save':
+                correct_approved_leave(doc.pk, request.user, form.cleaned_data, form.cleaned_data['revision'])
+                messages.success(request, '실제 휴가 사용내역과 연차를 정정했습니다. 최초 승인 및 정정 이력은 보존됩니다.')
+                return redirect('detail', pk=pk)
+        except ValidationError as exc:
+            form.add_error(None, exc)
+    return page(request, 'leave_correction', '휴가 사용내역 정정', 'accounting', doc=doc, form=form,
+                preview=preview, proposed=proposed)

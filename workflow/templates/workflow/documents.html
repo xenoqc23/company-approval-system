@@ -1,5 +1,5 @@
 {% extends 'workflow/base.html' %}
-{% block content %}
+{% block content %}{% if profile.manage_system %}<p class="archive-link"><a class="text-link" href="{% url 'documents' %}?mode=deleted">삭제 문서 보관함 →</a></p>{% endif %}{% if mode == 'completed' %}<p class="completion-filters"><a class="btn secondary" href="?mode=completed&amp;unread=1">미확인 완료 문서</a> <a class="btn secondary" href="?mode=completed">완료 문서 전체</a></p>{% endif %}
 <div class="page-heading"><div><div class="eyebrow">DOCUMENTS</div><h1>{{ title }}</h1><p>{% if mode == 'pending' %}나에게 도착한 검토·승인 요청을 확인하세요.{% elif mode == 'stock' %}부족한 생산 재고의 검토·발주·입고 진행상황을 확인하세요.{% elif mode == 'accounting' %}문서 종류별로 확인하고 후속 업무를 진행하세요.{% else %}문서와 진행상황을 조회하세요.{% endif %}</p></div>{% if not profile.is_representative %}<a class="btn" href="{% url 'compose' %}{% if mode == 'stock' %}?kind=stock{% endif %}"><svg><use href="#i-plus"/></svg>{% if mode == 'stock' %}새 재고 요청{% else %}새 기안 작성{% endif %}</a>{% endif %}</div>
 <section class="panel">
 {% if mode == 'accounting' %}

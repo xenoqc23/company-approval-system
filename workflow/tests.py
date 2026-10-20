@@ -291,12 +291,12 @@ class ApprovalTests(TestCase):
         self.assertEqual(set(rows), {annual.pk, half.pk, outing.pk, cancelled.pk, rejected.pk, pending.pk})
         self.assertEqual(response.context['document_charged'], Decimal('3.75'))
         self.assertEqual(rows[cancelled.pk]['charged'], 0)
-        self.assertFalse(rows[cancelled.pk]['accessible'])
+        self.assertTrue(rows[cancelled.pk]['accessible'])
         self.accounting.profile.view_accounting = False
         self.accounting.profile.save()
         response = self.client.get(url, {'year': 2026})
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(any(row['accessible'] for row in response.context['leave_rows']))
+        self.assertTrue(all(row['accessible'] for row in response.context['leave_rows']))  # Leave manager may correct approved leave.
 
     def test_employee_leave_history_year_boundary_uses_original_allocations_and_manual_adjustments(self):
         doc = self.finish(self.leave(start_date=date(2026, 12, 31), end_date=date(2027, 1, 4)))
@@ -476,15 +476,17 @@ class ApprovalTests(TestCase):
             act_on_document(doc.pk, self.approver, 'approve')
         act_on_document(doc.pk, self.stranger, 'approve')
 
-    def test_accounting_visibility_excludes_cancelled_even_via_notice(self):
+    def test_accounting_can_archive_cancelled_but_completion_notice_stays_hidden(self):
         doc = self.leave()
         self.assertFalse(visible_documents(self.accounting).filter(pk=doc.pk).exists())
         self.finish(doc)
         self.assertTrue(visible_documents(self.accounting).filter(pk=doc.pk).exists())
         act_on_document(doc.pk, self.approver, 'cancel_approval', '취소')
-        self.assertFalse(visible_documents(self.accounting).filter(pk=doc.pk).exists())
+        self.assertTrue(visible_documents(self.accounting).filter(pk=doc.pk).exists())
         self.client.force_login(self.accounting)
-        self.assertEqual(self.client.get(reverse('detail', args=[doc.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('detail', args=[doc.pk])).status_code, 200)
+        from .accounting import accounting_documents
+        self.assertFalse(accounting_documents(self.accounting).filter(pk=doc.pk).exists())
         notice = Notice.objects.filter(user=self.accounting, document=doc).first()
         response = self.client.post(reverse('open_notice', args=[notice.pk]))
         self.assertEqual(response.status_code, 404)
@@ -876,7 +878,7 @@ class ApprovalTests(TestCase):
             with self.assertRaises(PermissionDenied):
                 act_on_document(doc.pk, user, 'cancel_review', '취소 사유')
         act_on_document(doc.pk, self.reviewer, 'cancel_review', '생산 계획 변경')
-        self.assertFalse(visible_documents(self.accounting).filter(pk=doc.pk).exists())
+        self.assertTrue(visible_documents(self.accounting).filter(pk=doc.pk).exists())
         with self.assertRaises(PermissionDenied):
             act_on_document(doc.pk, self.recipient, 'receive')
         with self.assertRaises(PermissionDenied):

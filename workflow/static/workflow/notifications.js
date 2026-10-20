@@ -60,9 +60,9 @@
   }
   function update(summary) {
     settings=summary.preferences;
-    ['unread','waiting','accounting_unread'].forEach(key => document.querySelectorAll(`[data-live-count="${key}"]`).forEach(node => {
+    ['unread','waiting','accounting_unread','completed_unread'].forEach(key => document.querySelectorAll(`[data-live-count="${key}"]`).forEach(node => {
       node.textContent=summary[key];node.hidden=!summary[key] && !node.hasAttribute('data-keep-zero');
-      node.setAttribute('aria-label',`${key==='accounting_unread'?'미확인':key==='waiting'?'미결':'안 읽은 알림'} ${summary[key]}건`);
+      node.setAttribute('aria-label',`${['accounting_unread','completed_unread'].includes(key)?'미확인':key==='waiting'?'미결':'안 읽은 알림'} ${summary[key]}건`);
     }));
     document.querySelectorAll('[data-accounting-kind]').forEach(link => {
       const tab=summary.tabs.find(t=>t.key===link.dataset.accountingKind);if(!tab)return;
@@ -70,6 +70,7 @@
       const badge=link.querySelector('[data-tab-unread]');badge.hidden=!tab.unread_count;badge.textContent=`미확인 ${tab.unread_count}건`;
       link.setAttribute('aria-label',`${tab.label} ${tab.count}건, 미확인 ${tab.unread_count}건`);
     });
+    const completed=document.querySelector('.completion-summary');if(completed)completed.classList.toggle('has-pending',summary.completed_unread>0);
     const pending=document.querySelector('.pending-approval-summary');if(pending)pending.classList.toggle('has-pending',summary.waiting>0);
   }
   function connection(text='',url='') {
@@ -80,11 +81,12 @@
     const link=banner.querySelector('a');link.hidden=!url;if(url)link.href=url;
   }
   function remindPending() {
-    const counts=`${initial.waiting}:${initial.accounting_unread}`;
-    if(!settings.popup || (!initial.waiting && !initial.accounting_unread))return;
+    const counts=`${initial.waiting}:${initial.accounting_unread}:${initial.completed_unread}`;
+    if(!settings.popup || (!initial.waiting && !initial.accounting_unread && !initial.completed_unread))return;
     let previous=null;try{previous=sessionStorage.getItem(reminderKey);}catch{}
     if(previous===counts)return;
     try{sessionStorage.setItem(reminderKey,counts);}catch{}
+    if(initial.completed_unread)toast(`내 기안 중 결재완료 미확인 문서가 ${initial.completed_unread}건 있습니다.`, '/documents/?mode=completed&unread=1');
     if(initial.waiting)toast(`내가 처리할 미결 문서가 ${initial.waiting}건 있습니다.`, '/documents/?mode=pending');
     if(initial.accounting_unread)toast(`아직 확인하지 않은 최종 승인 문서가 ${initial.accounting_unread}건 있습니다.`, '/documents/?mode=accounting');
   }

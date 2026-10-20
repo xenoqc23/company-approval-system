@@ -99,6 +99,10 @@ class Document(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     product = models.CharField(max_length=180, blank=True)
+    product_search = models.CharField(max_length=180, blank=True, db_index=True, editable=False)
+    purchase_private = models.BooleanField(default=False)
+    leave_revision = models.PositiveIntegerField(default=0, editable=False)
+    leave_corrected_at = models.DateTimeField(null=True, blank=True, editable=False)
     url = models.URLField(max_length=1000, blank=True)
     urgency = models.CharField(max_length=10, choices=[('normal', '일반'), ('urgent', '긴급')], default='normal')
     needed_date = models.DateField(null=True, blank=True)
@@ -359,3 +363,27 @@ class PushDelivery(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['notice', 'subscription'], name='unique_notice_push_device')]
+
+
+class OwnerCompletionReceipt(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    document = models.ForeignKey(Document, on_delete=models.CASCADE)
+    completion_stamp = models.DateTimeField()
+    viewed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['user', 'document'], name='unique_owner_completion_receipt')]
+
+
+class LeaveCorrection(models.Model):
+    document = models.ForeignKey(Document, on_delete=models.PROTECT, related_name='leave_corrections')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField()
+    before = models.JSONField()
+    after = models.JSONField()
+    reason = models.CharField(max_length=1000)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-revision']
+        constraints = [models.UniqueConstraint(fields=['document', 'revision'], name='unique_leave_correction_revision')]

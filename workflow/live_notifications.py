@@ -11,6 +11,7 @@ def waiting_documents(user):
 
 def live_summary(user,after=None):
     from .accounting import accounting_tabs
+    from .completion import owner_completed
     from .services import visible_documents
     notices=visible_notices(user)
     latest=notices.order_by('-pk').values_list('pk',flat=True).first() or 0
@@ -23,6 +24,7 @@ def live_summary(user,after=None):
     tabs=accounting_tabs(user) if user.profile.view_accounting else []
     pref=NotificationPreference.objects.filter(user=user).first()
     return dict(user=user.pk,unread=notices.filter(read=False).count(),waiting=waiting_documents(user).count(),
+                completed_unread=owner_completed(user).filter(completion_seen=False).count(),
                 accounting_unread=tabs[0]['unread_count'] if tabs else 0,tabs=tabs,latest=latest,
                 cursor=incoming[-1]['id'] if incoming else latest,events=incoming,
                 preferences=dict(popup=pref.popup if pref else True,sound=pref.sound if pref else False))
