@@ -1,0 +1,251 @@
+import unittest
+from django.conf import settings
+if not settings.PURCHASE_LAB_ENABLED:
+    raise unittest.SkipTest('Purchase-only laboratory is disabled outside its isolated local test.')
+from datetime import timedelta
+from decimal import Decimal
+from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from uuid import uuid4
+from unittest.mock import patch
+from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied,ValidationError
+from django.core.management import call_command
+from django.db import transaction
+from django.test import TestCase,Client,override_settings
+from django.urls import reverse
+from workflow.models import Profile,Document,AnnualBalance
+from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchasePolicy,PurchaseEvent,DemoAccount
+from .services import save_request,request_action,submit_report,decide_report
+from .access import requests_for,reports_for,notices_for
+from .forms import PolicyForm
+
+
+class PurchaseFlowTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.temp=TemporaryDirectory();cls.addClassCleanup(cls.temp.cleanup)
+        cls.password=Path(cls.temp.name)/'password';cls.password.write_text('fictional-purchase-test-only')
+        call_command('seed_purchase_demo',password_file=cls.password,stdout=StringIO())
+        cls.users={u.username:u for u in get_user_model().objects.select_related('profile')}
+
+    def user(self,name):return self.users['p_'+name]
+    def as_user(self,name):self.client.force_login(self.user(name));return self.client
+    def values(self,**extra):
+        return dict(product='시험용 모니터 MX-27',vendor='가상구매처',quantity=2,unit_price=Decimal('12345.67'),url='https://example.com/product',reason='노후 장비 교체가 필요합니다.',private=False,**extra)
+    def create(self,who='dev',**extra):
+        values=self.values();values.update(extra)
+        if who=='quality':values.update(reviewer=self.user('quality_manager'),approver=self.user('quality_lead'))
+        return save_request(self.user(who),values,submit=True,key=uuid4())
+    def ready(self,who='dev'):
+        d=self.create(who)
+        if d.status=='review':request_action(d.pk,d.reviewer,'approve');d.refresh_from_db()
+        if d.status=='approval':request_action(d.pk,d.approver,'approve');d.refresh_from_db()
+        return request_action(d.pk,d.director,'approve')
+    def report(self,docs=None):return submit_report(self.user('finance'),[d.pk for d in docs or [self.ready()]],'구매 취합 보고','사유·금액 확인 후 보고합니다.',uuid4())
+    def decisions(self,report,choices):
+        return {str(i.pk):dict(decision=choice,reason='불허 또는 보류 사유' if choice in ['deny','hold'] else '') for i,choice in zip(report.items.all(),choices)}
+
+    def test_development_always_requires_development_director_before_finance(self):
+        d=self.create();self.assertEqual(d.status,'director');self.assertEqual(d.director,self.user('dev_director'))
+        self.assertFalse(requests_for(self.user('finance')).filter(pk=d.pk).exists())
+        self.assertFalse(requests_for(self.user('prod_director')).filter(pk=d.pk).exists())
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('prod_director'),'approve')
+        d=request_action(d.pk,self.user('dev_director'),'approve')
+        self.assertEqual(d.status,'ready');self.assertTrue(requests_for(self.user('finance')).filter(pk=d.pk).exists())
+
+    def test_other_employee_review_approval_production_director_then_finance(self):
+        d=self.create('quality');self.assertEqual(d.status,'review')
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('prod_director'),'approve')
+        d=request_action(d.pk,self.user('quality_manager'),'approve');self.assertEqual(d.status,'approval')
+        d=request_action(d.pk,self.user('quality_lead'),'approve');self.assertEqual(d.status,'director')
+        self.assertFalse(requests_for(self.user('finance')).filter(pk=d.pk).exists())
+        d=request_action(d.pk,self.user('prod_director'),'approve');self.assertEqual(d.status,'ready')
+
+    def test_other_manager_lead_head_direct_route_cannot_fake_self_final(self):
+        for who in ['quality_manager','quality_lead','sales_manager']:
+            d=self.create(who,reviewer=self.user('dev_director'),approver=self.user('dev_director'))
+            self.assertEqual((d.status,d.reviewer_id,d.approver_id,d.director_id),('director',None,None,self.user('prod_director').pk))
+            with self.assertRaises(PermissionDenied):request_action(d.pk,d.owner,'approve')
+
+    def test_cross_department_self_or_director_intermediate_selection_refused(self):
+        p=PurchasePolicy.objects.get(pk=1);p.development_modes['대리']='review_approval';p.save()
+        for review,approve in [(self.user('dev'),self.user('dev_lead')),(self.user('quality_manager'),self.user('dev_lead')),
+                               (self.user('dev_director'),self.user('dev_lead'))]:
+            with self.assertRaises(ValidationError):self.create(reviewer=review,approver=approve)
+        self.assertFalse(PurchaseRequest.objects.exists())
+
+    def test_policy_approval_only_and_request_uses_new_route_but_old_snapshot_stays(self):
+        old=self.create('quality_manager')
+        p=PurchasePolicy.objects.get(pk=1);p.other_modes['과장']='approval';p.version+=1;p.save()
+        new=self.create('quality_manager',approver=self.user('quality_lead'))
+        self.assertEqual(new.status,'approval');self.assertIsNone(new.reviewer)
+        old.refresh_from_db();self.assertEqual((old.status,old.route['mode']),('director','direct'))
+        request_action(old.pk,self.user('prod_director'),'approve')
+
+    def test_requester_cannot_forge_own_department_by_service_values(self):
+        v=self.values();v.update(department='개발팀',rank='부장')
+        d=save_request(self.user('sales_manager'),v,submit=True,key=uuid4())
+        self.assertEqual((d.department,d.rank,d.director_id),('영업팀','부장',self.user('prod_director').pk))
+
+    def test_finance_preview_includes_purchase_reason_vendor_and_source_without_mutation(self):
+        d=self.ready();self.as_user('finance')
+        response=self.client.post(reverse('purchasing:report_new'),{'requests':[d.pk],'intent':'preview'})
+        self.assertContains(response,'노후 장비 교체가 필요합니다.');self.assertContains(response,'가상구매처');self.assertContains(response,reverse('purchasing:detail',args=[d.pk]))
+        self.assertFalse(PurchaseReport.objects.exists());d.refresh_from_db();self.assertEqual(d.status,'ready')
+
+    def test_report_deduplicates_and_refuses_nonapproved_or_already_submitted_items(self):
+        waiting=self.create();ready=self.ready()
+        with self.assertRaises(ValidationError):self.report([waiting])
+        with self.assertRaises(ValidationError):submit_report(self.user('finance'),[ready.pk,ready.pk],'a','b',uuid4())
+        report=self.report([ready]);ready.refresh_from_db();self.assertEqual(ready.status,'ceo')
+        with self.assertRaises(ValidationError):self.report([ready])
+        self.assertEqual(PurchaseReport.objects.count(),1)
+
+    def test_interim_decisions_do_not_grant_purchase_or_allow_payment(self):
+        d=self.ready();r=self.report([d]);decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=False)
+        d.refresh_from_db();r.refresh_from_db();self.assertEqual((d.status,r.status),('ceo','pending'))
+        with self.assertRaises(ValidationError):request_action(d.pk,self.user('finance'),'paid','결제 확인')
+
+    def test_partial_allow_deny_hold_propagates_independently_with_reasons_and_exact_amounts(self):
+        docs=[self.ready(who) for who in ['dev','quality_manager','sales_manager']];r=self.report(docs)
+        decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow','deny','hold']),0,final=True)
+        for d in docs:d.refresh_from_db()
+        self.assertEqual([d.status for d in docs],['allowed','denied','hold'])
+        self.assertEqual(docs[0].total,Decimal('24691.34'))
+        self.assertTrue(docs[1].decision_reason);self.assertTrue(docs[2].decision_reason)
+        from .progress import progress
+        self.assertTrue(progress(docs[1])['stages'][4]['blocked'])
+        self.assertFalse(progress(docs[1])['stages'][4]['current'])
+        self.assertTrue(progress(docs[2])['stages'][4]['paused'])
+        r.refresh_from_db();self.assertEqual(r.status,'decided');self.assertEqual(r.result_label,'품목별 부분 결정')
+        for d in docs:self.assertTrue(notices_for(d.owner).filter(request=d,read=False).exists())
+
+    def test_all_decisions_required_and_no_partial_commit_on_invalid_reason(self):
+        docs=[self.ready(),self.ready('quality_manager')];r=self.report(docs)
+        for choices in [['allow','pending'],['allow','deny']]:
+            decisions=self.decisions(r,choices)
+            if choices[1]=='deny':decisions[str(r.items.all()[1].pk)]['reason']=''
+            with self.assertRaises(ValidationError):decide_report(r.pk,self.user('ceo'),decisions,0,final=True)
+        self.assertEqual(list(r.items.values_list('decision',flat=True)),['pending','pending'])
+        self.assertTrue(all(d.status=='ceo' for d in PurchaseRequest.objects.filter(pk__in=[d.pk for d in docs])))
+
+    def test_finance_or_director_cannot_make_representative_decisions(self):
+        r=self.report()
+        for who in ['finance','dev_director','prod_director','admin','dev']:
+            with self.assertRaises(PermissionDenied):decide_report(r.pk,self.user(who),self.decisions(r,['allow']),0,final=True)
+
+    def test_revision_and_duplicate_final_confirmation_rejected(self):
+        r=self.report();decisions=self.decisions(r,['allow'])
+        decide_report(r.pk,self.user('ceo'),decisions,0,final=False)
+        with self.assertRaises(ValidationError):decide_report(r.pk,self.user('ceo'),decisions,0,final=True)
+        decide_report(r.pk,self.user('ceo'),decisions,1,final=True)
+        with self.assertRaises(ValidationError):decide_report(r.pk,self.user('ceo'),decisions,2,final=True)
+
+    def test_allowed_only_payment_then_requester_receives_and_history_kept(self):
+        docs=[self.ready(),self.ready('quality_manager')];r=self.report(docs)
+        decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow','deny']),0,final=True)
+        with self.assertRaises(ValidationError):request_action(docs[1].pk,self.user('finance'),'paid','직접 결제')
+        with self.assertRaises(PermissionDenied):request_action(docs[0].pk,self.user('dev'),'paid','직접 결제')
+        d=request_action(docs[0].pk,self.user('finance'),'paid','대표님 결제 확인')
+        self.assertEqual(d.status,'paid')
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('finance'),'receive')
+        d=request_action(d.pk,self.user('dev'),'receive');self.assertEqual(d.status,'received')
+        with self.assertRaises(ValidationError):request_action(d.pk,self.user('dev'),'receive')
+        self.assertTrue(d.events.filter(event='대표 구매허가').exists())
+
+    def test_hold_can_be_reported_again_without_overwriting_original_batch(self):
+        d=self.ready();r=self.report([d]);decide_report(r.pk,self.user('ceo'),self.decisions(r,['hold']),0,final=True)
+        d.refresh_from_db();second=self.report([d]);d.refresh_from_db()
+        self.assertEqual((d.status,d.current_report_id),('ceo',second.pk))
+        self.assertEqual(r.items.get().decision,'hold');self.assertEqual(d.report_items.count(),2)
+
+    def test_original_snapshots_immutable_and_include_reason_vendor_and_price(self):
+        d=self.ready();r=self.report([d]);original=r.items.get().snapshot
+        self.assertEqual(original['reason'],d.reason);self.assertEqual(original['vendor'],d.vendor)
+        with self.assertRaises(PermissionDenied):save_request(self.user('dev'),self.values(),pk=d.pk)
+        self.assertEqual(r.items.get().snapshot,original)
+
+    def test_requester_sees_only_own_document_and_not_other_items_in_batch(self):
+        a=self.ready();b=self.ready('quality_manager');r=self.report([a,b]);self.as_user('dev')
+        self.assertEqual(self.client.get(reverse('purchasing:detail',args=[a.pk])).status_code,200)
+        self.assertEqual(self.client.get(reverse('purchasing:detail',args=[b.pk])).status_code,404)
+        self.assertEqual(self.client.get(reverse('purchasing:report_detail',args=[r.pk])).status_code,404)
+        self.as_user('dev_director');self.assertEqual(self.client.get(reverse('purchasing:report_detail',args=[r.pk])).status_code,404)
+        self.as_user('ceo');self.assertContains(self.client.get(reverse('purchasing:report_detail',args=[r.pk])),b.reason)
+
+    def test_revoked_finance_access_hides_documents_reports_and_notices(self):
+        d=self.ready();r=self.report([d]);PurchasePolicy.objects.get(pk=1).finance.clear()
+        self.assertFalse(requests_for(self.user('finance')).exists());self.assertFalse(reports_for(self.user('finance')).exists())
+        self.assertFalse(notices_for(self.user('finance')).exists())
+        with self.assertRaises(PermissionDenied):self.report([d])
+
+    def test_cancellation_before_batch_only_and_zero_purchase_balance_mutations(self):
+        d=self.ready();d=request_action(d.pk,self.user('dev'),'cancel','필요 없어짐');self.assertEqual(d.status,'cancelled')
+        d=self.ready();r=self.report([d])
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('dev'),'cancel','취소 시도')
+        self.assertFalse(Document.objects.exists());self.assertFalse(AnnualBalance.objects.exists())
+
+    def test_policy_form_easy_rank_routes_and_only_admin_can_save(self):
+        p=PurchasePolicy.objects.get(pk=1);form=PolicyForm(instance=p)
+        data={name:form.initial.get(name,field.initial) for name,field in form.fields.items()}
+        data.update(reason='검토 단계 조정',other_3='approval')
+        bound=PolicyForm(data,instance=p);self.assertTrue(bound.is_valid(),bound.errors)
+        with self.assertRaises(ValidationError):bound.save(self.user('finance'))
+        bound.save(self.user('admin'));p.refresh_from_db();self.assertEqual(p.other_modes['과장'],'approval')
+        self.as_user('admin');self.assertContains(self.client.get(reverse('purchasing:regulations')),'구매 규정 설정')
+        self.as_user('dev');self.assertEqual(self.client.get(reverse('purchasing:regulations')).status_code,403)
+
+    def test_money_invalid_quantity_vendor_and_reason_validation(self):
+        for name,value in [('quantity',0),('quantity',1000000),('unit_price',Decimal('-1')),('vendor',''),('reason','')]:
+            values=self.values();values[name]=value
+            with self.assertRaises(ValidationError):save_request(self.user('dev'),values,submit=True,key=uuid4())
+        self.assertFalse(PurchaseRequest.objects.exists())
+
+    def test_csrf_required_for_submit_switch_batch_and_decisions(self):
+        client=Client(enforce_csrf_checks=True);client.force_login(self.user('dev'))
+        self.assertEqual(client.post(reverse('purchasing:new'),{}).status_code,403)
+        self.assertEqual(client.post(reverse('purchasing:switch'),{'user':self.user('ceo').pk}).status_code,403)
+        client.force_login(self.user('finance'));self.assertEqual(client.post(reverse('purchasing:report_new'),{}).status_code,403)
+
+    def test_seeding_again_keeps_passwords_requests_and_rules(self):
+        d=self.create();p=PurchasePolicy.objects.get(pk=1);p.other_modes['부장']='approval';p.save()
+        before={u.pk:u.password for u in get_user_model().objects.all()}
+        call_command('seed_purchase_demo',password_file=self.password,stdout=StringIO())
+        self.assertEqual(before,{u.pk:u.password for u in get_user_model().objects.all()})
+        self.assertTrue(PurchaseRequest.objects.filter(pk=d.pk).exists());self.assertEqual(PurchasePolicy.objects.get(pk=1).other_modes['부장'],'approval')
+
+    def test_ui_focus_cookie_isolation_and_foreign_features_hidden(self):
+        self.as_user('dev');response=self.client.get(reverse('purchasing:home'))
+        self.assertContains(response,'구매요청 로컬 테스트');self.assertNotContains(response,'휴가 신청');self.assertNotContains(response,'연차 관리')
+        self.assertEqual(settings.SESSION_COOKIE_NAME,'xenosys_purchase_lab_sessionid')
+        self.assertEqual(self.client.post('/balances/',{}).status_code,302)
+        self.assertEqual(self.client.get('/compose/').status_code,302)
+
+    def test_login_switch_changes_identity_not_stale_permissions(self):
+        self.as_user('dev');response=self.client.post(reverse('purchasing:switch'),{'user':self.user('ceo').pk})
+        self.assertEqual(response.status_code,302);self.assertEqual(int(self.client.session['_auth_user_id']),self.user('ceo').pk)
+        self.assertEqual(self.client.get(reverse('purchasing:new')).status_code,403)
+
+    def test_request_and_report_pages_have_stage_explanations(self):
+        d=self.ready();self.as_user('dev');response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
+        self.assertContains(response,'아직 구매허가 전입니다.');self.assertContains(response,'경리 취합')
+        r=self.report([d]);response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertContains(response,'개별 심사 중')
+        decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=True)
+        response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertContains(response,'실제 결제 완료와는 별도')
+
+    def test_duplicate_submit_key_and_payment_does_not_duplicate_events(self):
+        key=uuid4();d=save_request(self.user('dev'),self.values(),submit=True,key=key)
+        with self.assertRaises(ValidationError):save_request(self.user('dev'),self.values(),submit=True,key=key)
+        request_action(d.pk,self.user('dev_director'),'approve')
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('dev_director'),'approve')
+        self.assertEqual(PurchaseRequest.objects.count(),1)
+
+    def test_removed_representative_cannot_read_batch_or_confirm_payment(self):
+        d=self.ready();r=self.report([d]);decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=True)
+        Profile.objects.filter(user=self.user('ceo')).update(representative_slot=None)
+        self.as_user('ceo')
+        self.assertEqual(self.client.get(reverse('purchasing:report_detail',args=[r.pk])).status_code,404)
+        self.assertEqual(self.client.get(reverse('purchasing:detail',args=[d.pk])).status_code,404)
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('ceo'),'paid','결제 확인')

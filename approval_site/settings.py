@@ -92,3 +92,18 @@ WEBPUSH_CONTACT = os.environ.get('WEBPUSH_CONTACT', 'https://localhost')
 
 # Closed-browser push is deferred on NAS; only explicitly enabled local tests use it.
 WEBPUSH_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_WEBPUSH_ENABLED', '0') == '1'
+
+# Purchase-only PC laboratory. Never activates on NAS and never opens the normal data folder.
+PURCHASE_LAB_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_PURCHASE_LAB', '0') == '1'
+if PURCHASE_LAB_ENABLED:
+    if DATA_DIR.name != 'purchase-test':
+        raise ImproperlyConfigured('구매 테스트는 별도 purchase-test 데이터 폴더에서만 실행할 수 있습니다.')
+    if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+        DATABASES['default']['OPTIONS']['transaction_mode'] = 'IMMEDIATE'
+    INSTALLED_APPS.append('purchasing')
+    MIDDLEWARE[-1] = 'purchasing.middleware.PurchaseLabGateMiddleware'
+    TEMPLATES[0]['OPTIONS']['context_processors'][-1] = 'purchasing.context.shell'
+    SESSION_COOKIE_NAME = 'xenosys_purchase_lab_sessionid'
+    CSRF_COOKIE_NAME = 'xenosys_purchase_lab_csrftoken'
+    LOGIN_URL = '/purchase-lab/login/'
+    WEBPUSH_ENABLED = False
