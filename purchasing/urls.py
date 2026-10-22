@@ -8,4 +8,4 @@ urlpatterns=[
  path('requests/<int:pk>/',views.detail,name='detail'),path('requests/<int:pk>/action/',views.act,name='action'),
  path('reports/new/',views.report_new,name='report_new'),path('reports/',views.report_list,name='reports'),
  path('reports/<int:pk>/',views.report_detail,name='report_detail'),path('rules/',views.regulations,name='regulations'),
- path('status/',views.status,name='status'),path('similar/',views.hints,name='hints')]
+ path('staff/',views.staff_permissions,name='staff'),path('status/',views.status,name='status'),path('similar/',views.hints,name='hints')]

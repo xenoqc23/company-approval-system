@@ -5,7 +5,10 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-MODES = [('direct','이사님에게 바로 요청'),('approval','승인 → 이사님'),('review_approval','검토 → 승인 → 이사님')]
+MODES = [('direct','본인 전결'),('approval','기안 → 승인'),('review_approval','기안 → 검토 → 승인')]
+
+def approval_modes():
+    return other_modes()
 
 
 def dev_modes():
@@ -26,13 +29,14 @@ class PurchasePolicy(models.Model):
     finance = models.ManyToManyField(settings.AUTH_USER_MODEL,related_name='+')
     development_modes = models.JSONField(default=dev_modes)
     other_modes = models.JSONField(default=other_modes)
+    approval_modes = models.JSONField(default=approval_modes)
     version = models.PositiveIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
 
 
 class PurchaseRequest(models.Model):
-    STATES = [('draft','임시저장'),('review','검토 대기'),('approval','중간 승인 대기'),('director','담당 이사 최종승인 대기'),
-              ('ready','부서 승인 완료 · 경리 취합 대기'),('ceo','대표 구매허가 심사 중'),('allowed','구매허가 완료 · 결제 대기'),
+    STATES = [('draft','임시저장'),('review','검토 대기'),('approval','승인 대기'),('director','담당 이사 최종승인 대기'),
+              ('ready','결재 완료 · 구매 품목 확인 대기'),('ceo','대표 구매허가 심사 중'),('allowed','구매허가 완료 · 결제 대기'),
               ('denied','구매불허'),('hold','구매보류'),('paid','결제 완료 · 수령 대기'),('received','수령 완료'),
               ('rejected','내부 결재 반려'),('cancelled','요청 취소')]
     owner = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='purchase_requests')
@@ -51,6 +55,9 @@ class PurchaseRequest(models.Model):
     approver = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     director = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     route = models.JSONField(default=dict,blank=True)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    confirmed_at = models.DateTimeField(null=True,blank=True)
+    purchase_route = models.JSONField(default=dict,blank=True)
     current_report = models.ForeignKey('PurchaseReport',on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     decision_reason = models.CharField(max_length=1000,blank=True)
     submitted_at = models.DateTimeField(null=True,blank=True)
@@ -139,3 +146,8 @@ class DemoAccount(models.Model):
     position = models.PositiveIntegerField(default=0)
 
     class Meta:ordering=['position','pk']
+
+
+class PurchasePermission(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='purchase_permission')
+    view_completed = models.BooleanField(default=False,verbose_name='구매요청승인완료함')

@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand,CommandError
 from django.db import transaction
 from workflow.models import Profile
-from purchasing.models import DemoAccount,PurchasePolicy
+from purchasing.models import DemoAccount,PurchasePolicy,PurchasePermission
 
 ACCOUNTS=[
  ('p_admin','가상관리자','인사팀','이사','관리자 · 구매 규정 설정'),
@@ -45,6 +45,7 @@ class Command(BaseCommand):
         p,_=PurchasePolicy.objects.get_or_create(pk=1)
         p.enabled=True;p.dev_director=people['p_dev_director'];p.production_director=people['p_prod_director'];p.representative=people['p_ceo'];p.save()
         p.finance.set([people['p_finance']])
+        PurchasePermission.objects.get_or_create(user=people['p_prod_director'],defaults={'view_completed':True})
         (settings.DATA_DIR/'.purchase-lab').write_text('purchase-lab-v1')
         self.stdout.write('구매 전용 가상 계정을 만들었습니다. 실제 직원·문서·연차는 사용하지 않습니다.')
         for username,_,_,_,label in ACCOUNTS:self.stdout.write(f'{username}: {label}')

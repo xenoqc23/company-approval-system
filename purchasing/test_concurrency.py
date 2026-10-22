@@ -24,9 +24,11 @@ class PurchaseConcurrencyTests(TransactionTestCase):
             path=Path(temp)/'password';path.write_text('fake-purchase-concurrency')
             call_command('seed_purchase_demo',password_file=path,stdout=StringIO())
         self.users={u.username:u for u in get_user_model().objects.select_related('profile')}
-        v=dict(product='동시 처리 시험품',vendor='가상구매처',quantity=1,unit_price=Decimal('123.45'),url='',reason='동시 처리 검증',private=False)
+        v=dict(product='동시 처리 시험품',vendor='가상구매처',quantity=1,unit_price=Decimal('123.45'),url='',reason='동시 처리 검증',private=False,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director'])
         self.doc=save_request(self.users['p_dev'],v,submit=True,key=uuid4())
+        self.doc=request_action(self.doc.pk,self.users['p_dev_lead'],'approve')
         self.doc=request_action(self.doc.pk,self.users['p_dev_director'],'approve')
+        self.doc=request_action(self.doc.pk,self.users['p_prod_director'],'confirm_items')
     def parallel(self,*operations):
         barrier=Barrier(len(operations))
         def work(operation):
@@ -55,7 +57,16 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         op=lambda:request_action(self.doc.pk,self.users['p_finance'],'paid','결제 확인')
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event='결제 완료 확인').count(),1)
-    def test_cancellation_and_collection_cannot_both_commit(self):
-        self.assertCountEqual(self.parallel(self.report,lambda:request_action(self.doc.pk,self.users['p_dev'],'cancel','불필요')),['ok','refused'])
-        self.doc.refresh_from_db();self.assertIn(self.doc.status,['ceo','cancelled'])
-        self.assertEqual(PurchaseReport.objects.count(),1 if self.doc.status=='ceo' else 0)
+    def test_cancellation_and_confirmation_cannot_both_commit(self):
+        self.doc.confirmed_at=None;self.doc.confirmed_by=None;self.doc.purchase_route={};self.doc.save()
+        self.assertCountEqual(self.parallel(lambda:request_action(self.doc.pk,self.users['p_prod_director'],'confirm_items'),lambda:request_action(self.doc.pk,self.users['p_dev'],'cancel','불필요')),['ok','refused'])
+        self.doc.refresh_from_db();self.assertIn(self.doc.status,['ready','cancelled'])
+        self.assertEqual(PurchaseReport.objects.count(),0)
+        self.assertEqual(bool(self.doc.confirmed_at),self.doc.status=='ready')
+
+    def test_double_item_confirmation_records_once(self):
+        self.doc.confirmed_at=None;self.doc.confirmed_by=None;self.doc.purchase_route={};self.doc.save()
+        before=PurchaseEvent.objects.filter(request=self.doc,event='구매 품목 확인').count()
+        op=lambda:request_action(self.doc.pk,self.users['p_prod_director'],'confirm_items')
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event='구매 품목 확인').count(),before+1)

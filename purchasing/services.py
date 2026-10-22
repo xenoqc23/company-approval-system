@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from workflow.models import RANKS
 from .models import PurchasePolicy,PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseEvent,PurchaseNotice
-from .access import active,is_admin,is_finance,require_finance
+from .access import active,is_admin,is_finance,require_finance,is_confirmer,confirmers,finance_assigned
 
 REQUEST_FIELDS=('product','vendor','quantity','unit_price','url','reason','private')
 
@@ -36,7 +36,7 @@ def finance_users(p):
 
 
 def mode_for(p,user):
-    modes=p.development_modes if user.profile.department=='개발팀' else p.other_modes
+    modes=p.approval_modes
     return modes.get(user.profile.rank,'review_approval')
 
 
@@ -47,9 +47,9 @@ def eligible_people(user):
 
 
 def validate_intermediate(user,person,director,minimum):
-    if (not person or not eligible_people(user).filter(pk=person.pk).exists() or person.pk==director.pk
+    if (not person or not eligible_people(user).filter(pk=person.pk).exists()
             or person.profile.rank not in RANKS or RANKS.index(person.profile.rank)<minimum):
-        raise ValidationError('같은 부서의 적합한 상위 검토·승인 담당자를 선택해 주세요. 담당 이사님은 최종 단계에서 처리합니다.')
+        raise ValidationError('같은 부서의 적합한 상위 검토·승인 담당자를 선택해 주세요.')
 
 
 def valid_director(user,department):
@@ -59,11 +59,10 @@ def valid_director(user,department):
 
 def validate_policy_people(p):
     if not p.enabled:raise ValidationError('구매 규정이 사용 중이 아닙니다.')
-    if not valid_director(p.dev_director,'개발팀') or not valid_director(p.production_director,'생산팀'):
-        raise ValidationError('활성화된 개발팀·생산팀 이사님을 규정에서 지정해 주세요.')
+    if not confirmers().exists():raise ValidationError('직원 권한관리에서 구매요청승인완료함 담당자를 지정해 주세요.')
     if not p.representative or not active(p.representative) or not p.representative.profile.is_representative:
         raise ValidationError('대표 계정을 규정에서 지정해 주세요.')
-    if not finance_users(p):raise ValidationError('경리 취합 담당자를 지정해 주세요.')
+    if not finance_users(p):raise ValidationError('취합·보고 담당자를 지정해 주세요.')
 
 
 def serialize_request(d):
@@ -92,26 +91,26 @@ def save_request(actor,values,submit=False,pk=None,key=None):
     if d.total>Decimal('999999999999.99'):raise ValidationError('요청 총액이 입력 가능한 범위를 초과합니다.')
     if submit:
         validate_policy_people(p)
-        mode=mode_for(p,actor);director=p.dev_director if d.department=='개발팀' else p.production_director
+        mode=mode_for(p,actor);director=None
         if mode not in ['direct','approval','review_approval']:raise ValidationError('직급별 경로를 규정에서 확인해 주세요.')
         reviewer,approver=values.get('reviewer'),values.get('approver')
         minimum=RANKS.index(d.rank) if d.rank in RANKS else len(RANKS)
+        if mode=='direct' and (d.rank not in RANKS or minimum<RANKS.index('과장')):raise ValidationError('본인 전결은 과장급 이상에게만 허용됩니다.')
         if mode=='review_approval':
             validate_intermediate(actor,reviewer,director,minimum)
             minimum=max(minimum,RANKS.index(reviewer.profile.rank))
         if mode in ['approval','review_approval']:validate_intermediate(actor,approver,director,minimum)
         d.reviewer=reviewer if mode=='review_approval' else None
         d.approver=approver if mode in ['approval','review_approval'] else None
-        d.director=director
-        d.route=dict(version=p.version,mode=mode,department=d.department,rank=d.rank,
-                     director_id=director.pk,director_name=director.first_name,reviewer_id=d.reviewer_id,approver_id=d.approver_id)
-        d.status='review' if d.reviewer_id else 'approval' if d.approver_id else 'director'
+        d.director=None
+        d.route=dict(workflow='separated-v2',version=p.version,mode=mode,department=d.department,rank=d.rank,reviewer_id=d.reviewer_id,approver_id=d.approver_id)
+        d.status='review' if d.reviewer_id else 'approval' if d.approver_id else 'ready'
         d.submitted_at=timezone.now()
     d.full_clean();d.save()
     event(actor,'구매요청 제출' if submit else '구매요청 임시저장',request=d,detail=f'구매처 {d.vendor} / 총액 {d.total}원')
     if submit:
         person=d.reviewer if d.status=='review' else d.approver if d.status=='approval' else d.director
-        notify([person],f'{d.owner.first_name}님의 {d.product} · {d.get_status_display()}',request=d)
+        notify(list(confirmers().exclude(pk=d.owner_id)) if d.status=='ready' else [person],f'{d.owner.first_name}님의 {d.product} · '+('구매요청 결재 완료' if d.status=='ready' else d.get_status_display()),request=d)
     return d
 
 
@@ -130,23 +129,32 @@ def request_action(pk,actor,action,reason=''):
         elif d.status=='review':
             d.reviewed_at=now;d.status='approval';label='검토 완료'
         elif d.status=='approval':
-            d.intermediate_at=now;d.status='director';label='중간 승인 완료'
+            d.intermediate_at=now;d.status='ready' if d.route.get('workflow')=='separated-v2' else 'director';label='최종 승인 완료' if d.status=='ready' else '중간 승인 완료'
         else:
             d.director_at=now;d.status='ready';label='부서 최종승인 완료'
         event(actor,label,request=d,detail=reason)
         users=[d.owner]
         if d.status=='approval':users.append(d.approver)
         elif d.status=='director':users.append(d.director)
-        elif d.status=='ready':users+=finance_users(p)
+        elif d.status=='ready':users+=list(confirmers().exclude(pk=d.owner_id))
         notify(users,f'{d.product} · {label}'+(f' · {reason}' if reason else ''),request=d)
+    elif action=='confirm_items':
+        if not is_confirmer(actor) or d.owner_id==actor.pk:raise PermissionDenied('구매요청승인완료함 권한이 있는 담당자만 구매 품목을 확인할 수 있습니다.')
+        if d.status not in ['ready','hold'] or d.confirmed_at or (d.current_report_id and d.current_report.status!='decided'):raise ValidationError('결재 완료 후 아직 확인하지 않은 문서만 처리할 수 있습니다.')
+        people=finance_users(p)
+        if not people:raise ValidationError('취합·보고 담당자를 지정해 주세요.')
+        d.confirmed_by=actor;d.confirmed_at=now
+        d.purchase_route=dict(confirmer_id=actor.pk,confirmer_name=actor.first_name,collector_ids=[u.pk for u in people],collector_names=[u.first_name for u in people],representative_id=p.representative_id)
+        event(actor,'구매 품목 확인',request=d,detail=reason)
+        notify(people,f'{d.product} · 구매 품목 확인 완료, 취합·보고 대기',request=d)
     elif action=='cancel':
-        if actor.pk!=d.owner_id or d.status not in ['draft','review','approval','director','ready'] or d.current_report_id:
-            raise PermissionDenied('대표 구매허가 요청에 포함되기 전의 본인 요청만 취소할 수 있습니다.')
+        if actor.pk!=d.owner_id or d.status not in ['draft','review','approval','director','ready'] or d.current_report_id or d.confirmed_at:
+            raise PermissionDenied('구매 품목 확인 전의 본인 요청만 취소할 수 있습니다.')
         if not reason:raise ValidationError('취소 사유를 입력해 주세요.')
         d.status,d.decision_reason='cancelled',reason;event(actor,'구매요청 취소',request=d,detail=reason)
         notify([d.reviewer,d.approver,d.director],f'{d.product} · 요청 취소',request=d)
     elif action=='paid':
-        if not (is_finance(actor) or actor.profile.is_representative and d.current_report_id and d.current_report.representative_id==actor.pk):raise PermissionDenied
+        if not (finance_assigned(actor,d) or actor.profile.is_representative and d.current_report_id and d.current_report.representative_id==actor.pk):raise PermissionDenied
         if d.status!='allowed':raise ValidationError('대표님이 구매허가를 확정한 품목만 결제 완료로 기록할 수 있습니다.')
         if not reason:raise ValidationError('결제 확인 내용을 입력해 주세요.')
         d.status,d.paid_at='paid',now;event(actor,'결제 완료 확인',request=d,detail=reason)
@@ -169,14 +177,14 @@ def submit_report(actor,ids,title,note,key):
     if not ids or len(ids)>100 or len(set(ids))!=len(ids) or any(x<1 or x>9223372036854775807 for x in ids):raise ValidationError('중복 없이 1~100개 품목을 선택해 주세요.')
     if PurchaseReport.objects.filter(request_key=key).exists():raise ValidationError('이미 제출한 구매허가 요청입니다.')
     docs=list(PurchaseRequest.objects.select_for_update().filter(pk__in=ids).order_by('pk').select_related('owner'))
-    if len(docs)!=len(ids) or any(d.status not in ['ready','hold'] for d in docs):
-        raise ValidationError('이미 취합되었거나 부서 승인이 끝나지 않은 품목이 있습니다. 목록을 새로고침해 주세요.')
+    if len(docs)!=len(ids) or any(d.status not in ['ready','hold'] or not d.confirmed_at or not finance_assigned(actor,d) for d in docs):
+        raise ValidationError('이미 취합되었거나 구매 품목 확인이 끝나지 않은 품목이 있습니다. 목록을 새로고침해 주세요.')
     report=PurchaseReport.objects.create(created_by=actor,representative=p.representative,title=title.strip(),note=note.strip(),request_key=key)
     for d in docs:
         PurchaseReportItem.objects.create(report=report,request=d,snapshot=serialize_request(d))
         d.status,d.current_report,d.decision_reason='ceo',report,'';d.revision+=1;d.save()
         event(actor,'대표 구매허가 요청',request=d,report=report,detail=report.number)
-        notify([d.owner],f'{d.product} · 경리 취합 완료, 대표님 구매허가 심사 중',request=d)
+        notify([d.owner],f'{d.product} · 취합·보고 완료, 대표님 구매허가 심사 중',request=d)
     event(actor,'취합 구매허가 요청 제출',report=report,detail=note)
     notify([report.representative],f'{report.number} · {len(docs)}개 품목 구매허가 요청',report=report)
     return report
