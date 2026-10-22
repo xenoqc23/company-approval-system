@@ -4,11 +4,6 @@
  // Compute cents as integers, without floating point money arithmetic.
  const formatCents=cents=>{const whole=cents/100n,frac=String(cents%100n).padStart(2,'0').replace(/0+$/,'');return whole.toLocaleString('ko-KR')+(frac?'.'+frac:'')+'원';};
  document.querySelectorAll('[data-confirm]').forEach(button=>button.addEventListener('click',event=>{if(!confirm(button.dataset.confirm))event.preventDefault();}));
- document.querySelectorAll('form').forEach(form=>form.addEventListener('submit',event=>{
-   if(event.defaultPrevented)return;
-   if(form.dataset.sending){event.preventDefault();return;}
-   form.dataset.sending='1';
- }));
  const select=document.querySelector('[data-batch-select]');
  if(select){const boxes=[...select.querySelectorAll('[data-select-item]')],all=select.querySelector('[data-select-all]');
   const update=()=>{const n=boxes.filter(b=>b.checked).length;select.querySelector('[data-selected-count]').textContent=`${n}건 선택`;select.querySelector('[data-batch-button]').disabled=n===0;all.checked=boxes.length>0 && n===boxes.length;all.indeterminate=n>0 && n<boxes.length;};
@@ -41,6 +36,17 @@
    }catch{if(cursor===version){box.hidden=false;box.textContent='유사 구매내역을 확인하지 못했습니다. 요청은 계속 작성할 수 있습니다.';}}finally{clearTimeout(timeout);}},400);
   });
  }
+ document.querySelectorAll('[data-receipt-form]').forEach(form=>form.addEventListener('submit',event=>{
+  const quantity=Number(form.querySelector('[name=quantity]').value),remaining=Number(form.dataset.remaining);
+  if(!Number.isSafeInteger(quantity)||quantity<1||quantity>remaining){event.preventDefault();return;}
+  const after=remaining-quantity;
+  if(!confirm(`이번에 받은 수량 ${quantity}개를 등록할까요?\n${after===0?'모든 수량을 받아 수령 완료로 표시됩니다.':`등록 후 남은 수량은 ${after}개입니다.`}`))event.preventDefault();
+ }));
+ document.querySelectorAll('form').forEach(form=>form.addEventListener('submit',event=>{
+   if(event.defaultPrevented)return;
+   if(form.dataset.sending){event.preventDefault();return;}
+   form.dataset.sending='1';
+ }));
  const runtime=document.querySelector('[data-purchase-status]');
  if(runtime){let busy=false,stopped=false;const poll=async()=>{if(busy||stopped||document.hidden)return;busy=true;try{const r=await fetch(runtime.dataset.purchaseStatus,{cache:'no-store'});if(r.redirected||!r.ok)return;const data=await r.json();if(String(data.user)!==runtime.dataset.currentUser){stopped=true;return;}document.querySelectorAll('[data-live]').forEach(node=>node.textContent=data.counts[node.dataset.live]||0);}catch{}finally{busy=false;}};setInterval(poll,15000);window.addEventListener('focus',poll);}
 })();

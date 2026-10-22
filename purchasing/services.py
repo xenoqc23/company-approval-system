@@ -179,7 +179,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         notify([d.owner],f'{d.product} · 결제 완료, 물품 수령을 확인해 주세요.',request=d)
     elif action=='receive':
         if d.owner_id!=actor.pk:raise PermissionDenied
-        if d.status not in ['allowed','paid']:raise ValidationError('구매승인이 확정된 품목만 수령 확인할 수 있습니다.')
+        if d.status not in ['allowed','paid']:raise ValidationError('구매승인이 완료된 뒤 받은 수량을 등록할 수 있습니다.')
         remaining=d.remaining_quantity
         try:count=remaining if quantity is None else int(quantity)
         except (ValueError,TypeError):raise ValidationError('이번에 수령한 수량을 입력해 주세요.')
@@ -249,7 +249,7 @@ def decide_report(pk,actor,decisions,revision,final=False):
             d.status={'allow':'allowed','deny':'denied','hold':'hold'}[item.decision]
             d.decision_reason=item.reason;d.permitted_at=now;d.completion_unread=item.decision=='allow';d.hold_ready=False;d.hold_note='';d.revision+=1;d.save()
             event(actor,'대표 '+item.get_decision_display(),request=d,report=report,detail=item.reason)
-            notify([d.owner],f'{d.product} · '+('구매 승인완료 · 물품을 받으면 수령 확인해 주세요.' if item.decision=='allow' else item.get_decision_display()+' · '+item.reason),request=d)
+            notify([d.owner],f'{d.product} · '+('구매 승인완료 · 물품을 받으면 받은 수량을 등록해 주세요.' if item.decision=='allow' else item.get_decision_display()+' · '+item.reason),request=d)
             notify(finance_users(p),f'{d.product} · 대표 {item.get_decision_display()}'+(f' · {item.reason}' if item.reason else ''),request=d)
         report.status,report.decided_at='decided',now
         event(actor,'구매 검토 결과 확정',report=report)

@@ -19,7 +19,7 @@ from .access import active,is_admin,is_finance,requests_for,reports_for,require_
 from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount
 from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
-from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns
+from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns, DISPLAY_LABELS, task_for
 
 
 def page(request,template,title,**context):
@@ -62,7 +62,7 @@ def home(request):
     for d in recent:d.progress_info=progress(d, simplified=True)
     stats=dict(internal=qs.filter(status__in=['review','approval','director']).count(),purchasing=qs.filter(status__in=PURCHASING_STATES).count(),active=qs.filter(status__in=['review','approval','director',*PURCHASING_STATES]).count(),
                allowed=qs.filter(status__in=['allowed','paid']).count(),denied=qs.filter(status__in=['denied','hold','rejected']).count(),
-               received=qs.filter(status='received').count())
+               own_count=qs.count(),received=qs.filter(status='received').count())
     notices=list(notices_for(request.user).select_related('request','report')[:6])
     for n in notices:n.display_text=visible_notice(n,request.user)
     return page(request,'home','내 업무',recent=recent,stats=stats,notices=notices)
@@ -72,7 +72,7 @@ def home(request):
 def request_list(request):
     mode=request.GET.get('mode','mine');u=request.user
     qs=requests_for(u).select_related('owner','reviewer','approver','director')
-    titles=dict(mine='내 구매요청',inbox='내가 처리할 구매요청',director='이사 최종승인 목록',completed='구매요청승인완료함',finance='취합·보고 · 구매 진행',hold='구매보류함',all='구매요청 전체')
+    titles=dict(mine='내 구매요청',inbox='내가 처리할 구매요청',director='이사 최종승인 목록',completed='구매 확인함',finance='구매 모아보기',hold='구매보류함',all='구매요청 전체')
     if mode=='mine':qs=qs.filter(owner=u)
     elif mode=='inbox':qs=qs.filter(Q(status='review',reviewer=u)|Q(status='approval',approver=u)|Q(status='director',director=u))
     elif mode=='director':qs=qs.filter(director=u).exclude(status='draft')
@@ -91,9 +91,10 @@ def request_list(request):
     if stage=='confirm':qs=qs.filter(status='ready',confirmed_at=None)
     elif stage=='collect':qs=qs.filter(status__in=['ready','reapproval'],confirmed_at__isnull=False)
     selected=request.GET.get('state','')
-    states=REQUESTER_STATES if mode=='mine' else PurchaseRequest.STATES
+    states=REQUESTER_STATES if mode=='mine' else list(DISPLAY_LABELS.items())
     if mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
-    elif selected in dict(states):qs=qs.filter(status=selected)
+    elif mode=='mine' and selected=='purchase_approved':qs=qs.filter(status__in=['allowed','paid','received'])
+    elif selected in dict(PurchaseRequest.STATES):qs=qs.filter(status=selected)
     if mode=='mine' and request.GET.get('unread')=='1':qs=qs.filter(completion_unread=True)
     q=request.GET.get('q','').strip()[:120]
     if q:qs=qs.filter(Q(product__icontains=q)|Q(vendor__icontains=q)|Q(owner__first_name__icontains=q))
@@ -132,15 +133,25 @@ def detail(request,pk):
         PurchaseRequest.objects.filter(pk=d.pk,revision=d.revision).update(completion_unread=False)
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
     simplified=not can_view_purchase(request.user,d)
-    return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,visible_events=events_for(d,simplified),approval_cards=approval_track(d),purchase_steps=purchase_progress(d) if not simplified and (d.confirmed_at or d.current_report_id) else [],can_confirm=is_confirmer(request.user) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,can_approve=assigned==request.user.pk,
+    permissions=dict(
+        can_confirm=is_confirmer(request.user) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,
+        can_approve=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id and not d.confirmed_at,
         can_receive=d.owner_id==request.user.pk and d.status in ['allowed','paid'],
         can_supplement=d.status=='supplement' and d.owner_id==request.user.pk,
         can_request_supplement=is_confirmer(request.user) and d.owner_id!=request.user.pk and d.status=='ready' and not d.confirmed_at and not d.current_report_id,
         can_prepare_hold=finance_assigned(request.user,d) and d.status=='hold',
         can_amend=finance_assigned(request.user,d) and d.status=='allowed' and not d.received_quantity and not d.paid_at,
-        supplements=d.supplements.all(),amendments=d.amendments.all(),
-        receipt_key=uuid4(),attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
+        can_collect=finance_assigned(request.user,d) and d.status in ['ready','reapproval'] and bool(d.confirmed_at),
+        can_decide_purchase=d.status=='ceo' and request.user.profile.is_representative and d.current_report_id and d.current_report.representative_id==request.user.pk)
+    has_secondary=any(permissions[key] for key in ['can_cancel','can_approve','can_request_supplement','can_amend']) or d.owner_id==request.user.pk and bool(d.received_quantity)
+    return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,
+        visible_events=events_for(d,simplified),approval_cards=approval_track(d),
+        purchase_steps=purchase_progress(d) if not simplified and (d.confirmed_at or d.current_report_id) else [],
+        task=task_for(d,request.user,permissions),has_secondary=has_secondary,**permissions,
+        supplements=d.supplements.all(),amendments=d.amendments.all(),receipt_key=uuid4(),
+        attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),
+        can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
 
 
 @login_required
@@ -173,7 +184,7 @@ def report_new(request):
             return redirect('purchasing:report_detail',pk=report.pk)
     except ValidationError as exc:
         messages.error(request,' '.join(exc.messages));return redirect('/purchase-lab/requests/?mode=finance')
-    return page(request,'report_new','선택 품목 취합 · 구매요청',documents=docs,total=sum((d.total for d in docs),Decimal('0')),
+    return page(request,'report_new','대표님께 구매요청',documents=docs,total=sum((d.total for d in docs),Decimal('0')),
                 key=uuid4(),report_title=f'{timezone.localdate():%Y.%m.%d} 구매요청')
 
 

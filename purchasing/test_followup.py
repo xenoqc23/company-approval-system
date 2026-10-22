@@ -37,7 +37,7 @@ class PurchaseFollowupTests(TestCase):
         self.as_user('quality');response=self.client.get(reverse('purchasing:home'))
         self.assertEqual(response.context['counts']['own_completed'],1)
         self.assertEqual(self.client.get(reverse('purchasing:requests')+'?mode=mine&unread=1').context['total'],1)
-        response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertContains(response,'수령 확인')
+        response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertContains(response,'받은 수량 등록')
         d.refresh_from_db();self.assertFalse(d.completion_unread)
         self.assertEqual(self.client.get(reverse('purchasing:home')).context['counts']['own_completed'],0)
         d=request_action(d.pk,d.owner,'receive',quantity=1,receipt_key=uuid4())
@@ -116,6 +116,24 @@ class PurchaseFollowupTests(TestCase):
     def test_confirmation_badges_and_receipt_column_are_visible(self):
         d=self.ready('quality');self.as_user('prod_director')
         response=self.client.get(reverse('purchasing:requests')+'?mode=completed')
-        self.assertContains(response,'<span class="badge allowed">확인완료</span>',html=True)
+        self.assertContains(response,'<span class="badge tone-positive">확인완료</span>',html=True)
         self.as_user('quality');response=self.client.get(reverse('purchasing:requests')+'?mode=mine')
         content=response.content.decode();self.assertLess(content.index('<th>진행상황</th>'),content.index('<th>수령 현황</th>'));self.assertLess(content.index('<th>수령 현황</th>'),content.index('<th>현재 담당</th>'))
+
+    def test_purchase_approval_filter_groups_old_payment_and_received_states(self):
+        d,r=self.allowed();other,_=self.allowed();request_action(other.pk,other.owner,'receive',quantity=other.quantity)
+        self.as_user('quality');response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=purchase_approved')
+        self.assertEqual(response.context['total'],2)
+        choices=response.context['states'];self.assertEqual(sum(label=='구매 승인완료' for key,label in choices),1)
+        self.assertContains(response,'tone-positive')
+
+    def test_next_action_is_role_specific_and_supplement_does_not_add_finance_access(self):
+        from .access import requests_for
+        d=self.approved('quality');self.as_user('prod_director')
+        response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
+        self.assertEqual(response.context['task']['kind'],'confirm')
+        self.assertContains(response,'data-secondary-actions')
+        d=request_action(d.pk,self.user('prod_director'),'request_supplement','자료 보완')
+        self.assertFalse(requests_for(self.user('finance')).filter(pk=d.pk).exists())
+        self.as_user('quality');response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertEqual(response.context['task']['kind'],'supplement')
+        self.assertNotContains(response,'data-purchase-progress')

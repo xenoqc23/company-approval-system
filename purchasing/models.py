@@ -108,9 +108,17 @@ class PurchaseReport(models.Model):
     def number(self):return f'BATCH-{timezone.localtime(self.created_at):%Y%m%d}-{self.pk:04d}'
     @property
     def result_label(self):
-        if self.status!='decided':return '구매요청'
+        if self.status!='decided':return '구매 승인 대기'
         states=set(self.items.values_list('decision',flat=True))
-        return '구매승인' if states=={'allow'} else '구매반려' if states=={'deny'} else '구매보류' if states=={'hold'} else '일부 승인 · 일부 반려/보류'
+        labels={'allow':'구매 승인완료','deny':'구매반려','hold':'구매보류'}
+        if len(states)==1:return labels.get(next(iter(states)),'결정 완료')
+        return ' · '.join(label for key,label in [('allow','일부 승인'),('deny','반려'),('hold','보류')] if key in states)
+
+    @property
+    def result_tone(self):
+        if self.status!='decided':return 'waiting'
+        states=set(self.items.values_list('decision',flat=True))
+        return 'positive' if states=={'allow'} else 'negative' if states=={'deny'} else 'waiting'
 
 
 class PurchaseReportItem(models.Model):

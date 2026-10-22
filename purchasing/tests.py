@@ -66,7 +66,7 @@ class PurchaseFlowTests(TestCase):
     def test_all_departments_use_the_same_permission_based_completed_box(self):
         docs=[self.approved('dev'),self.approved('quality'),self.approved('sales_manager')]
         self.as_user('prod_director');response=self.client.get(reverse('purchasing:requests')+'?mode=completed')
-        self.assertContains(response,'구매요청승인완료함')
+        self.assertContains(response,'구매 확인함')
         self.assertEqual(len(response.context['documents']),3)
         for d in docs:self.assertIsNone(d.confirmed_at)
 
@@ -127,7 +127,7 @@ class PurchaseFlowTests(TestCase):
         self.assertTrue(purchase_progress(docs[1])[2]['blocked'])
         self.assertFalse(purchase_progress(docs[1])[2]['current'])
         self.assertTrue(purchase_progress(docs[2])[2]['paused'])
-        r.refresh_from_db();self.assertEqual(r.status,'decided');self.assertEqual(r.result_label,'일부 승인 · 일부 반려/보류')
+        r.refresh_from_db();self.assertEqual(r.status,'decided');self.assertEqual(r.result_label,'일부 승인 · 반려 · 보류')
         for d in docs:self.assertTrue(notices_for(d.owner).filter(request=d,read=False).exists())
 
     def test_all_decisions_required_and_no_partial_commit_on_invalid_reason(self):
@@ -250,9 +250,9 @@ class PurchaseFlowTests(TestCase):
         assert_simple('승인완료')
         self.as_user('finance')
         response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
-        self.assertContains(response,'구매 진행 현황');self.assertContains(response,'취합·보고');self.assertContains(response,'대표 구매승인')
+        self.assertContains(response,'구매 진행 현황');self.assertContains(response,'구매 모아보기');self.assertContains(response,'대표 구매승인')
         request_action(d.pk,self.user('finance'),'paid','대표 카드 결제 확인')
-        self.as_user('dev');response=assert_simple('승인완료');self.assertContains(response,'수령 확인')
+        self.as_user('dev');response=assert_simple('승인완료');self.assertContains(response,'받은 수량 등록')
         self.assertContains(self.client.get(reverse('purchasing:home')),'구매 진행상황이 변경되었습니다.')
         response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=paid')
         self.assertContains(response,d.product);self.assertNotContains(response,'대표 구매승인')
@@ -312,7 +312,7 @@ class PurchaseFlowTests(TestCase):
 
     def test_staff_permission_ui_admin_only_and_role_switch_has_seven_choices(self):
         self.as_user('admin');response=self.client.get(reverse('purchasing:staff'))
-        self.assertContains(response,'구매요청승인완료함')
+        self.assertContains(response,'구매 확인 담당')
         p=PurchasePolicy.objects.get(pk=1)
         response=self.client.post(reverse('purchasing:staff'),dict(user=self.user('quality_lead').pk,revision=p.version,view_completed='on'))
         self.assertEqual(response.status_code,302);self.assertTrue(PurchasePermission.objects.get(user=self.user('quality_lead')).view_completed)
@@ -366,7 +366,7 @@ class PurchaseFlowTests(TestCase):
     def test_approved_and_pending_confirmation_collection_are_separate_columns(self):
         first=self.approved('quality');second=self.ready('quality')
         self.as_user('prod_director');response=self.client.get(reverse('purchasing:requests')+'?mode=completed')
-        self.assertContains(response,'승인 상태');self.assertContains(response,'구매 품목 확인');self.assertContains(response,'취합·보고')
+        self.assertContains(response,'내부 결재');self.assertContains(response,'구매 내용 확인');self.assertContains(response,'구매요청')
         self.assertEqual(response.context['queue_counts'],dict(approved=2,confirm=1,collect=1))
         response=self.client.get(reverse('purchasing:requests')+'?mode=completed&stage=confirm')
         self.assertEqual([d.pk for d in response.context['documents']],[first.pk])

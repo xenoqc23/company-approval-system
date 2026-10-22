@@ -86,7 +86,7 @@ class RequestForm(forms.ModelForm):
 class PolicyForm(forms.Form):
     enabled=forms.BooleanField(label='이 구매 규정 사용',required=False)
     representative=PersonChoice(label='품목별 구매승인 대표',queryset=get_user_model().objects.none())
-    finance=PersonMultiple(label='취합·보고 담당자',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
+    finance=PersonMultiple(label='구매 담당자',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
     revision=forms.IntegerField(widget=forms.HiddenInput)
     reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':2}))
     def __init__(self,*args,instance,**kwargs):
