@@ -127,7 +127,7 @@ class PurchaseFlowTests(TestCase):
         self.assertTrue(purchase_progress(docs[1])[2]['blocked'])
         self.assertFalse(purchase_progress(docs[1])[2]['current'])
         self.assertTrue(purchase_progress(docs[2])[2]['paused'])
-        r.refresh_from_db();self.assertEqual(r.status,'decided');self.assertEqual(r.result_label,'품목별 부분 결정')
+        r.refresh_from_db();self.assertEqual(r.status,'decided');self.assertEqual(r.result_label,'일부 승인 · 일부 반려/보류')
         for d in docs:self.assertTrue(notices_for(d.owner).filter(request=d,read=False).exists())
 
     def test_all_decisions_required_and_no_partial_commit_on_invalid_reason(self):
@@ -161,7 +161,7 @@ class PurchaseFlowTests(TestCase):
         with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('finance'),'receive')
         d=request_action(d.pk,self.user('dev'),'receive');self.assertEqual(d.status,'received')
         with self.assertRaises(ValidationError):request_action(d.pk,self.user('dev'),'receive')
-        self.assertTrue(d.events.filter(event='대표 구매허가').exists())
+        self.assertTrue(d.events.filter(event='대표 구매승인').exists())
 
     def test_hold_can_be_reported_again_without_overwriting_original_batch(self):
         d=self.ready();r=self.report([d]);decide_report(r.pk,self.user('ceo'),self.decisions(r,['hold']),0,final=True)
@@ -241,7 +241,7 @@ class PurchaseFlowTests(TestCase):
         def assert_simple():
             response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
             self.assertContains(response,'구매 진행 중')
-            for text in ['경리 취합','대표 구매허가','결제 완료 확인','취합 문서:']:
+            for text in ['경리 취합','대표 구매승인','결제 완료 확인','취합 문서:']:
                 self.assertNotContains(response,text)
             return response
         assert_simple()
@@ -250,12 +250,12 @@ class PurchaseFlowTests(TestCase):
         assert_simple()
         self.as_user('finance')
         response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
-        self.assertContains(response,'구매 진행 현황');self.assertContains(response,'취합·보고');self.assertContains(response,'대표 구매허가')
+        self.assertContains(response,'구매 진행 현황');self.assertContains(response,'취합·보고');self.assertContains(response,'대표 구매승인')
         request_action(d.pk,self.user('finance'),'paid','대표 카드 결제 확인')
         self.as_user('dev');response=assert_simple();self.assertContains(response,'물품 수령 완료')
         self.assertContains(self.client.get(reverse('purchasing:home')),'구매 진행상황이 변경되었습니다.')
         response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=purchasing')
-        self.assertContains(response,d.product);self.assertNotContains(response,'대표 구매허가')
+        self.assertContains(response,d.product);self.assertNotContains(response,'대표 구매승인')
 
     def test_won_entry_round_trip_and_grouping_do_not_change_amount(self):
         from .forms import RequestForm
@@ -352,3 +352,30 @@ class PurchaseFlowTests(TestCase):
         with self.assertRaises(ValidationError):self.create()
         form=PolicyForm(instance=p)
         self.assertNotIn('direct',dict(form.fields['rank_2'].choices))
+
+    def test_test_requester_always_requires_separate_reviewer_and_approver(self):
+        p=PurchasePolicy.objects.get(pk=1);p.approval_modes['사원']='approval';p.save()
+        d=self.create('quality');self.assertEqual(d.status,'review');self.assertIsNotNone(d.approver)
+        values=self.values();values.update(reviewer=self.user('quality_manager'),approver=self.user('quality_manager'))
+        with self.assertRaises(ValidationError):save_request(self.user('quality'),values,submit=True,key=uuid4())
+        from .forms import RequestForm
+        form=RequestForm(user=self.user('quality'),policy=p)
+        self.assertTrue(form.fields['reviewer'].required);self.assertTrue(form.fields['approver'].required)
+        self.assertEqual(form.initial['reviewer'],self.user('quality_manager').pk);self.assertEqual(form.initial['approver'],self.user('quality_lead').pk)
+
+    def test_approved_and_pending_confirmation_collection_are_separate_columns(self):
+        first=self.approved('quality');second=self.ready('quality')
+        self.as_user('prod_director');response=self.client.get(reverse('purchasing:requests')+'?mode=completed')
+        self.assertContains(response,'승인 상태');self.assertContains(response,'구매 품목 확인');self.assertContains(response,'취합·보고')
+        self.assertEqual(response.context['queue_counts'],dict(approved=2,confirm=1,collect=1))
+        response=self.client.get(reverse('purchasing:requests')+'?mode=completed&stage=confirm')
+        self.assertEqual([d.pk for d in response.context['documents']],[first.pk])
+        response=self.client.get(reverse('purchasing:requests')+'?mode=completed&stage=collect')
+        self.assertEqual([d.pk for d in response.context['documents']],[second.pk])
+
+    def test_representative_uses_purchase_request_approval_return_hold_vocabulary(self):
+        d=self.ready();r=self.report([d]);self.as_user('ceo')
+        response=self.client.get(reverse('purchasing:report_detail',args=[r.pk]))
+        for text in ['구매요청','승인 예정 금액','구매반려 금액','구매보류 금액','구매승인','구매반려','구매보류']:self.assertContains(response,text)
+        for text in ['불허','허가','심사 중']:self.assertNotContains(response,text)
+        response=self.client.get(reverse('purchasing:home'));self.assertContains(response,'구매요청함');self.assertNotContains(response,'취합 구매')

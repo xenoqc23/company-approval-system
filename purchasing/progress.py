@@ -18,9 +18,9 @@ def approval_track(d):
 
 def progress(d,simplified=False):
     label=d.get_status_display()
-    if d.status in PURCHASING_STATES:label='구매 진행 중' if simplified else '취합·보고 대기' if d.status=='ready' and d.confirmed_at else label
+    if d.status in PURCHASING_STATES:label='구매 진행 중' if simplified else '승인완료' if d.status=='ready' else label
     who={'draft':'기안자','review':d.reviewer.first_name if d.reviewer else '검토자','approval':d.approver.first_name if d.approver else '승인자','director':d.director.first_name if d.director else '기존 최종승인자'}.get(d.status,'구매 담당자')
-    note={'draft':'작성 중인 구매요청입니다.','review':'검토자의 확인을 기다리고 있습니다.','approval':'승인자의 확인을 기다리고 있습니다.','director':'기존 문서의 최종승인을 기다리고 있습니다.','ready':'내부 결재가 완료되어 구매를 진행하고 있습니다.','ceo':'구매를 진행하고 있습니다.','allowed':'구매를 진행하고 있습니다.','paid':'물품을 받으셨다면 수령 완료를 눌러 주세요.','received':'물품 수령까지 완료했습니다.','denied':'구매요청이 불허되었습니다. 아래 사유를 확인해 주세요.','hold':'구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.','rejected':'내부 결재에서 반려되었습니다. 아래 사유를 확인해 주세요.','cancelled':'구매요청을 취소했습니다.'}[d.status]
+    note={'draft':'작성 중인 구매요청입니다.','review':'검토자의 확인을 기다리고 있습니다.','approval':'승인자의 확인을 기다리고 있습니다.','director':'기존 문서의 최종승인을 기다리고 있습니다.','ready':'내부 승인이 완료되어 구매를 진행하고 있습니다.','ceo':'구매를 진행하고 있습니다.','allowed':'구매를 진행하고 있습니다.','paid':'물품을 받으셨다면 수령 완료를 눌러 주세요.','received':'물품 수령까지 완료했습니다.','denied':'구매요청이 반려되었습니다. 아래 사유를 확인해 주세요.','hold':'구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.','rejected':'내부 결재에서 반려되었습니다. 아래 사유를 확인해 주세요.','cancelled':'구매요청을 취소했습니다.'}[d.status]
     return dict(label=label,who=who,note=note)
 
 
@@ -28,7 +28,7 @@ def purchase_progress(d):
     index=0 if not d.confirmed_at and not d.current_report_id else 1 if d.status=='ready' else 2 if d.status in ['ceo','denied','hold'] else 3
     stages=[]
     names=[d.confirmed_by.first_name if d.confirmed_by_id else '구매 품목확인자',' · '.join(d.purchase_route.get('collector_names',[])) or '취합·보고 담당자',d.current_report.representative.first_name if d.current_report_id else '대표','구매 담당자']
-    for i,label in enumerate(['구매 품목 확인','취합·보고','대표 구매허가','결제·수령']):
+    for i,label in enumerate(['구매 품목 확인','취합·보고','대표 구매승인','결제·수령']):
         done=i<index or i==3 and d.status=='received'
         blocked=i==index and d.status in ['denied','cancelled'];paused=i==index and d.status=='hold'
         legacy=i==0 and not d.confirmed_at and bool(d.current_report_id)
@@ -46,3 +46,10 @@ def visible_notice(n,user):
 def events_for(d,simplified):
     if not simplified:return d.events.all()
     return d.events.exclude(event__startswith='대표').exclude(event__in=['결제 완료 확인','구매 품목 확인'])
+
+
+def pending_columns(d):
+    approved=d.status in ['ready','ceo','allowed','denied','hold','paid','received']
+    confirm='구매 품목 확인 대기' if approved and not d.confirmed_at and not d.current_report_id else '확인완료' if d.confirmed_at else '이전 진행 문서' if d.current_report_id else '—'
+    collect='취합·보고 대기' if d.status=='ready' and d.confirmed_at else '재보고 대기' if d.status=='hold' and d.confirmed_at else '보고완료' if d.current_report_id else '—'
+    return dict(approval='승인완료' if approved else d.get_status_display(),confirm=confirm,collect=collect)

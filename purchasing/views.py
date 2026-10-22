@@ -18,7 +18,7 @@ from .forms import RequestForm,PolicyForm
 from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests
 from .services import save_request,request_action,submit_report,decide_report,event
 from .context import demo_choices
-from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress
+from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns
 
 
 def page(request,template,title,**context):
@@ -77,12 +77,16 @@ def request_list(request):
     elif mode=='director':qs=qs.filter(director=u).exclude(status='draft')
     elif mode=='completed':
         if not is_confirmer(u):raise PermissionDenied
-        qs=qs.filter(status__in=['ready','ceo','allowed','denied','hold','paid','received'])
+        qs=qs.filter(status__in=['ready','ceo','allowed','denied','hold','paid','received']).exclude(owner=u)
     elif mode=='finance':
         require_finance(u);qs=qs.filter(pk__in=finance_requests(u).values('pk'))
     elif mode=='all':
         if not is_admin(u):raise PermissionDenied
     else:raise PermissionDenied
+    queue_counts=dict(approved=qs.count(),confirm=qs.filter(status='ready',confirmed_at=None).count(),collect=qs.filter(status='ready',confirmed_at__isnull=False).count()) if mode in ['completed','finance'] else {}
+    stage=request.GET.get('stage','') if mode in ['completed','finance'] else ''
+    if stage=='confirm':qs=qs.filter(status='ready',confirmed_at=None)
+    elif stage=='collect':qs=qs.filter(status='ready',confirmed_at__isnull=False)
     selected=request.GET.get('state','')
     states=REQUESTER_STATES if mode=='mine' else PurchaseRequest.STATES
     if mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
@@ -90,9 +94,10 @@ def request_list(request):
     q=request.GET.get('q','').strip()[:120]
     if q:qs=qs.filter(Q(product__icontains=q)|Q(vendor__icontains=q)|Q(owner__first_name__icontains=q))
     docs=list(qs[:100])
-    for d in docs:d.progress_info=progress(d, simplified=not can_view_purchase(u,d))
+    for d in docs:
+        d.progress_info=progress(d,simplified=not can_view_purchase(u,d));d.queue_info=pending_columns(d)
     return page(request,'requests',titles[mode],documents=docs,mode=mode,states=states,
-                selected=selected,total=qs.count(),q=q)
+                selected=selected,total=qs.count(),q=q,queue_counts=queue_counts,stage=stage)
 
 
 @login_required
@@ -148,18 +153,18 @@ def report_new(request):
         if len(docs)!=len(ids) or any(not finance_assigned(request.user,d) for d in docs):raise ValidationError('이미 취합되었거나 취합할 수 없는 품목이 있습니다.')
         if request.POST.get('intent')=='submit':
             report=submit_report(request.user,ids,request.POST.get('title',''),request.POST.get('note',''),request.POST.get('key'))
-            messages.success(request,'대표님에게 품목별 구매허가를 요청했습니다.')
+            messages.success(request,'대표님에게 품목별 구매승인를 요청했습니다.')
             return redirect('purchasing:report_detail',pk=report.pk)
     except ValidationError as exc:
         messages.error(request,' '.join(exc.messages));return redirect('/purchase-lab/requests/?mode=finance')
-    return page(request,'report_new','선택 품목 취합 · 구매허가 요청',documents=docs,total=sum((d.total for d in docs),Decimal('0')),
-                key=uuid4(),report_title=f'{timezone.localdate():%Y.%m.%d} 구매허가 요청')
+    return page(request,'report_new','선택 품목 취합 · 구매요청',documents=docs,total=sum((d.total for d in docs),Decimal('0')),
+                key=uuid4(),report_title=f'{timezone.localdate():%Y.%m.%d} 구매요청')
 
 
 @login_required
 def report_list(request):
     qs=reports_for(request.user).prefetch_related('items')
-    return page(request,'reports','취합 구매허가 요청서',reports=qs[:100])
+    return page(request,'reports','구매요청함',reports=qs[:100])
 
 
 @login_required
@@ -174,7 +179,7 @@ def report_detail(request,pk):
             revision=int(request.POST.get('revision','-1'))
             decisions={str(i.pk):dict(decision=request.POST.get(f'decision_{i.pk}',''),reason=request.POST.get(f'reason_{i.pk}','')) for i in items}
             decide_report(pk,request.user,decisions,revision,final=request.POST.get('intent')=='final')
-            messages.success(request,'품목별 결정을 확정했습니다.' if request.POST.get('intent')=='final' else '심사 내용을 임시저장했습니다.')
+            messages.success(request,'품목별 결정을 확정했습니다.' if request.POST.get('intent')=='final' else '검토 내용을 임시저장했습니다.')
             return redirect('purchasing:report_detail',pk=pk)
         except (ValueError,ValidationError) as exc:
             messages.error(request,' '.join(exc.messages) if isinstance(exc,ValidationError) else '화면을 다시 열어 주세요.')

@@ -36,8 +36,8 @@ class PurchasePolicy(models.Model):
 
 class PurchaseRequest(models.Model):
     STATES = [('draft','임시저장'),('review','검토 대기'),('approval','승인 대기'),('director','담당 이사 최종승인 대기'),
-              ('ready','결재 완료 · 구매 품목 확인 대기'),('ceo','대표 구매허가 심사 중'),('allowed','구매허가 완료 · 결제 대기'),
-              ('denied','구매불허'),('hold','구매보류'),('paid','결제 완료 · 수령 대기'),('received','수령 완료'),
+              ('ready','승인완료'),('ceo','구매요청'),('allowed','구매승인'),
+              ('denied','구매반려'),('hold','구매보류'),('paid','결제 완료 · 수령 대기'),('received','수령 완료'),
               ('rejected','내부 결재 반려'),('cancelled','요청 취소')]
     owner = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='purchase_requests')
     department = models.CharField(max_length=30)
@@ -84,7 +84,7 @@ class PurchaseReport(models.Model):
     representative = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
     title = models.CharField(max_length=180)
     note = models.CharField(max_length=1000)
-    status = models.CharField(max_length=12,choices=[('pending','대표 심사 중'),('decided','품목별 결정 완료')],default='pending')
+    status = models.CharField(max_length=12,choices=[('pending','구매요청'),('decided','검토 완료')],default='pending')
     request_key = models.UUIDField(default=uuid4,unique=True)
     created_at = models.DateTimeField(default=timezone.now)
     decided_at = models.DateTimeField(null=True,blank=True)
@@ -97,13 +97,13 @@ class PurchaseReport(models.Model):
     def number(self):return f'BATCH-{timezone.localtime(self.created_at):%Y%m%d}-{self.pk:04d}'
     @property
     def result_label(self):
-        if self.status!='decided':return '대표 심사 중'
+        if self.status!='decided':return '구매요청'
         states=set(self.items.values_list('decision',flat=True))
-        return '구매허가' if states=={'allow'} else '구매불허' if states=={'deny'} else '구매보류' if states=={'hold'} else '품목별 부분 결정'
+        return '구매승인' if states=={'allow'} else '구매반려' if states=={'deny'} else '구매보류' if states=={'hold'} else '일부 승인 · 일부 반려/보류'
 
 
 class PurchaseReportItem(models.Model):
-    DECISIONS=[('pending','미정'),('allow','구매허가'),('deny','구매불허'),('hold','보류')]
+    DECISIONS=[('pending','검토 전'),('allow','구매승인'),('deny','구매반려'),('hold','구매보류')]
     report = models.ForeignKey(PurchaseReport,on_delete=models.PROTECT,related_name='items')
     request = models.ForeignKey(PurchaseRequest,on_delete=models.PROTECT,related_name='report_items')
     snapshot = models.JSONField()

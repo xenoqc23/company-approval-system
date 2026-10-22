@@ -2,7 +2,7 @@ from django.db.models import Q
 from .models import DemoAccount,PurchaseRequest,PurchaseReport
 from .access import active,is_admin,is_finance,is_confirmer,requests_for,policy,notices_for,finance_requests
 
-DEMO_ROLES=[('p_quality','기안자'),('p_quality_manager','검토자'),('p_quality_lead','승인자'),('p_prod_director','구매 품목확인자 · 생산팀 이사'),('p_finance','취합·보고 담당자'),('p_ceo','대표 · 구매허가'),('p_admin','관리자 · 규정·직원 권한')]
+DEMO_ROLES=[('p_quality','기안자'),('p_quality_manager','검토자'),('p_quality_lead','승인자'),('p_prod_director','구매 품목확인자 · 생산팀 이사'),('p_finance','취합·보고 담당자'),('p_ceo','대표 · 구매승인'),('p_admin','관리자 · 규정·직원 권한')]
 
 
 def demo_choices():

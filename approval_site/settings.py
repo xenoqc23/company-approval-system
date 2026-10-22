@@ -103,7 +103,8 @@ if PURCHASE_LAB_ENABLED:
     INSTALLED_APPS.append('purchasing')
     MIDDLEWARE[-1] = 'purchasing.middleware.PurchaseLabGateMiddleware'
     TEMPLATES[0]['OPTIONS']['context_processors'][-1] = 'purchasing.context.shell'
-    SESSION_COOKIE_NAME = 'xenosys_purchase_lab_sessionid'
-    CSRF_COOKIE_NAME = 'xenosys_purchase_lab_csrftoken'
+    _purchase_cookie_prefix = 'xenosys_purchase_terms' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE') == 'terms-v1' else 'xenosys_purchase_lab'
+    SESSION_COOKIE_NAME = _purchase_cookie_prefix + '_sessionid'
+    CSRF_COOKIE_NAME = _purchase_cookie_prefix + '_csrftoken'
     LOGIN_URL = '/purchase-lab/login/'
     WEBPUSH_ENABLED = False

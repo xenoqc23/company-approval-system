@@ -3,25 +3,25 @@ from pathlib import Path
 from hashlib import sha256
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 ROOT=Path(__file__).resolve().parents[1]
-NAME='xenosys-local-purchases-20261022'
-ARCHIVE='xenosys-local-purchases-20261022-separated-flow'
+NAME='xenosys-local-purchase-clean-20261022'
+ARCHIVE=NAME
 
 
 def build(destination=None):
     out=Path(destination) if destination else ROOT/'releases'/f'{ARCHIVE}.zip'
-    names=['manage.py','local_purchases.py','requirements-prototype.txt','SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat']
+    names=['manage.py','local_purchases.py','requirements-prototype.txt','SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat','RESET_LOCAL_PURCHASES.bat']
     names.extend(str(p.relative_to(ROOT)) for package in ['approval_site','workflow','purchasing'] for p in (ROOT/package).rglob('*.py')
                  if '__pycache__' not in p.parts and not p.name.startswith('test'))
     names.extend(str(p.relative_to(ROOT)) for directory in ['purchasing/templates','purchasing/static'] for p in (ROOT/directory).rglob('*') if p.is_file())
     names.extend(['workflow/static/workflow/'+n for n in ['style.css','xenosys.css','workspace.css','fonts/PretendardVariable.woff2','fonts/OFL.txt','images/xenosys-logo-refined.png']])
     payload={name:(ROOT/name).read_bytes() for name in sorted(set(names))}
     payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_PURCHASES_20261022.md').read_bytes()
-    examples=ROOT/'docs/purchase-split-examples'
+    examples=ROOT/'docs/purchase-clean-examples'
     if examples.is_dir():
         payload.update({f'examples/{p.name}':p.read_bytes() for p in sorted(examples.glob('*.png'))})
     assert not any(any(part in {'var','data','.env','.git','.venv','releases','deploy','__pycache__'} for part in Path(n).parts) for n in payload)
     assert not any(n.endswith(('.sqlite3','.db','.pem','.key','.csv')) for n in payload)
-    assert not any('seed_demo' in payload[n].decode(errors='ignore') for n in ['local_purchases.py','SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat'])
+    assert not any('seed_demo' in payload[n].decode(errors='ignore') for n in ['local_purchases.py','SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat','RESET_LOCAL_PURCHASES.bat'])
     payload['SHA256SUMS']=''.join(f'{sha256(v).hexdigest()}  {n}\n' for n,v in payload.items()).encode()
     out.parent.mkdir(parents=True,exist_ok=True)
     with ZipFile(out,'w') as z:

@@ -51,7 +51,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
     def test_final_decision_commits_once(self):
         r,values=self.allowed_report();op=lambda:decide_report(r.pk,self.users['p_ceo'],values,0,final=True)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
-        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event='대표 구매허가').count(),1)
+        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event='대표 구매승인').count(),1)
     def test_paid_confirmation_commits_once(self):
         r,values=self.allowed_report();decide_report(r.pk,self.users['p_ceo'],values,0,final=True)
         op=lambda:request_action(self.doc.pk,self.users['p_finance'],'paid','결제 확인')

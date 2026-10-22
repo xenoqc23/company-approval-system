@@ -34,7 +34,7 @@ class RequestForm(forms.ModelForm):
     unit_price=WonField(label='개당 금액 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'),widget=forms.TextInput(attrs={'inputmode':'decimal','placeholder':'예: 50,000','autocomplete':'off'}))
     key=forms.UUIDField(widget=forms.HiddenInput,initial=uuid4)
     reviewer=PersonChoice(label='검토자',queryset=get_user_model().objects.none(),required=False)
-    approver=PersonChoice(label='중간 승인자',queryset=get_user_model().objects.none(),required=False)
+    approver=PersonChoice(label='승인자',queryset=get_user_model().objects.none(),required=False)
     class Meta:
         model=PurchaseRequest
         fields=['product','vendor','quantity','unit_price','url','reason','private']
@@ -54,11 +54,14 @@ class RequestForm(forms.ModelForm):
         self.fields['reviewer'].required=self.mode=='review_approval'
         self.fields['approver'].required=self.mode in ['approval','review_approval']
         if self.instance.pk:self.initial['key']=self.instance.request_key
+        elif user.username=='p_quality':
+            self.initial['reviewer']=qs.filter(username='p_quality_manager').values_list('pk',flat=True).first()
+            self.initial['approver']=qs.filter(username='p_quality_lead').values_list('pk',flat=True).first()
 
 
 class PolicyForm(forms.Form):
     enabled=forms.BooleanField(label='이 구매 규정 사용',required=False)
-    representative=PersonChoice(label='품목별 구매허가 대표',queryset=get_user_model().objects.none())
+    representative=PersonChoice(label='품목별 구매승인 대표',queryset=get_user_model().objects.none())
     finance=PersonMultiple(label='취합·보고 담당자',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
     revision=forms.IntegerField(widget=forms.HiddenInput)
     reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':2}))

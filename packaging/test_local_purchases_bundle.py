@@ -1,4 +1,4 @@
-import os,runpy,subprocess,sys,tempfile,unittest
+import os,runpy,subprocess,sys,tempfile,unittest,sqlite3
 from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -26,7 +26,7 @@ class PurchaseBundleTests(unittest.TestCase):
                 if source.is_file():self.assertEqual(z.read(package.NAME+'/'+name),source.read_bytes(),name)
             for row in z.read(package.NAME+'/SHA256SUMS').decode().splitlines():
                 digest,name=row.split('  ',1);self.assertEqual(sha256(z.read(package.NAME+'/'+name)).hexdigest(),digest)
-            for name in ['SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat']:
+            for name in ['SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat','RESET_LOCAL_PURCHASES.bat']:
                 content=z.read(package.NAME+'/'+name);self.assertIn(b'\r\n',content);self.assertIn(b'local_purchases.py',content)
             script=z.read(package.NAME+'/local_purchases.py').decode()
             self.assertIn('seed_purchase_demo',script);self.assertNotIn("'seed_demo'",script)
@@ -59,6 +59,43 @@ class PurchaseBundleTests(unittest.TestCase):
             env={**os.environ,'APPROVAL_PURCHASE_LAB':'1','APPROVAL_PRODUCTION':'0','DB_ENGINE':'sqlite','APPROVAL_DATA_DIR':folder}
             result=subprocess.run([sys.executable,'-c','import approval_site.settings'],cwd=package.ROOT,env=env,capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0);self.assertIn('purchase-test',result.stderr)
+
+    def test_reset_only_removes_this_bundles_verified_fake_data(self):
+        module=runpy.run_path(str(package.ROOT/'local_purchases.py'));reset=module['reset'];scope=reset.__globals__
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);data=root/'var/purchase-test';data.mkdir(parents=True);(data/'.purchase-lab').write_text('purchase-lab-v1')
+            unrelated=root/'untouched';unrelated.write_text('keep')
+            with sqlite3.connect(data/'prototype.sqlite3') as c:
+                c.executescript('CREATE TABLE auth_user(id integer);INSERT INTO auth_user VALUES(1);CREATE TABLE purchasing_demoaccount(user_id integer);INSERT INTO purchasing_demoaccount VALUES(1);CREATE TABLE workflow_document(id integer);CREATE TABLE workflow_annualbalance(id integer);')
+            scope.update(ROOT=root,DATA=data)
+            with patch.dict(scope,{'setup':lambda:None}):reset()
+            self.assertFalse(data.exists());self.assertEqual(unrelated.read_text(),'keep')
+
+    def test_reset_refuses_unmarked_real_or_running_data(self):
+        for scenario in ['unmarked','foreign_user','real_document','running']:
+            module=runpy.run_path(str(package.ROOT/'local_purchases.py'));reset=module['reset'];scope=reset.__globals__
+            with tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);data=root/'var/purchase-test';data.mkdir(parents=True)
+                with sqlite3.connect(data/'prototype.sqlite3') as c:
+                    c.executescript('CREATE TABLE auth_user(id integer);INSERT INTO auth_user VALUES(1);CREATE TABLE purchasing_demoaccount(user_id integer);CREATE TABLE workflow_document(id integer);CREATE TABLE workflow_annualbalance(id integer);')
+                    if scenario!='foreign_user':c.execute('INSERT INTO purchasing_demoaccount VALUES(1)')
+                    if scenario=='real_document':c.execute('INSERT INTO workflow_document VALUES(1)')
+                if scenario!='unmarked':(data/'.purchase-lab').write_text('purchase-lab-v1')
+                if scenario=='running':(data/'running.json').write_text('{"port":18107}')
+                scope.update(ROOT=root,DATA=data)
+                with patch.dict(scope,{'setup':lambda:None}),patch.object(scope['socket'],'create_connection'):
+                    with self.assertRaises(RuntimeError):reset()
+                self.assertTrue((data/'prototype.sqlite3').exists())
+
+    def test_clean_bundle_has_new_folder_port_and_cookie_identity(self):
+        self.assertEqual(package.NAME,'xenosys-local-purchase-clean-20261022')
+        module=runpy.run_path(str(package.ROOT/'local_purchases.py'));self.assertEqual(module['DEFAULT_PORT'],18107)
+        with tempfile.TemporaryDirectory() as folder:
+            fn=module['environment'];fn.__globals__['DATA']=Path(folder)/'purchase-test';env=fn()
+            self.assertEqual(env['APPROVAL_PURCHASE_LAB_INSTANCE'],'terms-v1')
+            code="import approval_site.settings as s; assert s.SESSION_COOKIE_NAME=='xenosys_purchase_terms_sessionid'; assert s.CSRF_COOKIE_NAME=='xenosys_purchase_terms_csrftoken'; print('New local cookie identity verified.')"
+            result=subprocess.run([sys.executable,'-c',code],cwd=package.ROOT,env=env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
 
 
 if __name__=='__main__':unittest.main()
