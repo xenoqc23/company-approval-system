@@ -17,11 +17,11 @@ from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseNo
 from .forms import RequestForm,PolicyForm
 from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for
 from .services import save_request,request_action,submit_report,decide_report,event
-from .progress import progress
+from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for
 
 
 def page(request,template,title,**context):
-    response=render(request,f'purchasing/{template}.html',dict(title=title,**context))
+    response=render(request,f'purchasing/{template}.html',dict(title=title,page_name=template,**context))
     add_never_cache_headers(response);return response
 
 
@@ -56,11 +56,13 @@ def switch(request):
 def home(request):
     qs=PurchaseRequest.objects.filter(owner=request.user)
     recent=list(qs.select_related('reviewer','approver','director')[:8])
-    for d in recent:d.progress_info=progress(d)
-    stats=dict(active=qs.filter(status__in=['review','approval','director','ready','ceo']).count(),
+    for d in recent:d.progress_info=progress(d, simplified=True)
+    stats=dict(internal=qs.filter(status__in=['review','approval','director']).count(),purchasing=qs.filter(status__in=PURCHASING_STATES).count(),active=qs.filter(status__in=['review','approval','director',*PURCHASING_STATES]).count(),
                allowed=qs.filter(status='allowed').count(),denied=qs.filter(status__in=['denied','hold','rejected']).count(),
                received=qs.filter(status='received').count())
-    return page(request,'home','구매 업무',recent=recent,stats=stats,notices=notices_for(request.user).select_related('request','report')[:6])
+    notices=list(notices_for(request.user).select_related('request','report')[:6])
+    for n in notices:n.display_text=visible_notice(n,request.user)
+    return page(request,'home','내 업무',recent=recent,stats=stats,notices=notices)
 
 
 @login_required
@@ -77,12 +79,14 @@ def request_list(request):
         if not is_admin(u):raise PermissionDenied
     else:raise PermissionDenied
     selected=request.GET.get('state','')
-    if selected in dict(PurchaseRequest.STATES):qs=qs.filter(status=selected)
+    states=REQUESTER_STATES if mode=='mine' else PurchaseRequest.STATES
+    if mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
+    elif selected in dict(states):qs=qs.filter(status=selected)
     q=request.GET.get('q','').strip()[:120]
     if q:qs=qs.filter(Q(product__icontains=q)|Q(vendor__icontains=q)|Q(owner__first_name__icontains=q))
     docs=list(qs[:100])
-    for d in docs:d.progress_info=progress(d)
-    return page(request,'requests',titles[mode],documents=docs,mode=mode,states=PurchaseRequest.STATES,
+    for d in docs:d.progress_info=progress(d, simplified=d.owner_id==u.pk and mode!='finance' and mode!='all')
+    return page(request,'requests',titles[mode],documents=docs,mode=mode,states=states,
                 selected=selected,total=qs.count(),q=q)
 
 
@@ -107,7 +111,8 @@ def detail(request,pk):
     notices_for(request.user).filter(request=d,read=False).update(read=True)
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
     can_pay=d.status=='allowed' and (is_finance(request.user) or request.user.profile.is_representative and d.current_report_id and d.current_report.representative_id==request.user.pk)
-    return page(request,'detail',d.number,doc=d,track=progress(d),can_approve=assigned==request.user.pk,
+    simplified=d.owner_id==request.user.pk
+    return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,visible_events=events_for(d,simplified),can_approve=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id,
         can_pay=can_pay,can_receive=d.owner_id==request.user.pk and d.status=='paid',
         can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
@@ -206,5 +211,5 @@ def hints(request):
         rows=PurchaseRequest.objects.exclude(status__in=['draft','rejected','cancelled','denied']).filter(private=False).annotate(
             normalized=Lower(Replace(Replace('product',Value(' '),Value('')),Value('-'),Value('')))).filter(normalized__contains=q).order_by('-created_at')
     response=JsonResponse(dict(count=rows.count(),results=[dict(product=d.product,department=d.department,quantity=d.quantity,
-        requested=d.created_at.date().isoformat(),status=d.get_status_display()) for d in rows[:8]]))
+        requested=d.created_at.date().isoformat(),status=progress(d,simplified=True)['label']) for d in rows[:8]]))
     add_never_cache_headers(response);return response

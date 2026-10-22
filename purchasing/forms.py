@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import uuid4
 from django import forms
 from django.contrib.auth import get_user_model
@@ -17,7 +18,20 @@ class PersonMultiple(forms.ModelMultipleChoiceField):
     def label_from_instance(self,obj):return f'{obj.first_name} · {obj.profile.department} {obj.profile.rank}'
 
 
+class WonField(forms.DecimalField):
+    def to_python(self, value):
+        if isinstance(value, str):
+            import re
+            value=value.strip()
+            if ',' in value:
+                if not re.fullmatch(r'\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?',value):
+                    raise ValidationError('금액을 50,000 또는 50000처럼 입력해 주세요.')
+                value=value.replace(',','')
+        return super().to_python(value)
+
+
 class RequestForm(forms.ModelForm):
+    unit_price=WonField(label='개당 금액 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'),widget=forms.TextInput(attrs={'inputmode':'decimal','placeholder':'예: 50,000','autocomplete':'off'}))
     key=forms.UUIDField(widget=forms.HiddenInput,initial=uuid4)
     reviewer=PersonChoice(label='검토자',queryset=get_user_model().objects.none(),required=False)
     approver=PersonChoice(label='중간 승인자',queryset=get_user_model().objects.none(),required=False)

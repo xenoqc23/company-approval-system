@@ -1,7 +1,9 @@
 from .models import PurchaseRequest
 
 
-def progress(d):
+def progress(d, simplified=False):
+    if simplified:
+        return requester_progress(d)
     mode=d.route.get('mode')
     if not mode:
         from .access import policy
@@ -35,3 +37,41 @@ def progress(d):
         'received':'물품 수령까지 완료했습니다.', 'rejected':'내부 결재에서 반려되었습니다. 사유를 확인하고 새 구매요청을 작성해 주세요.',
         'cancelled':'기안자가 요청을 취소했습니다.', 'draft':'작성 중인 구매요청입니다. 제출 후 결재가 시작됩니다.'}
     return dict(stages=stages,who=who,note=notes[d.status],label=d.get_status_display())
+
+
+PURCHASING_STATES = ('ready', 'ceo', 'allowed', 'paid')
+REQUESTER_STATES = tuple((key,label) for key,label in PurchaseRequest.STATES if key not in PURCHASING_STATES) + (('purchasing','구매 진행 중'),)
+
+
+def requester_progress(d):
+    detailed=progress(d)
+    labels=['요청 작성',detailed['stages'][1]['label'],'담당 이사 최종승인','구매 진행 중','수령 완료']
+    index={'draft':0,'review':1,'approval':1,'director':2,'ready':3,'ceo':3,
+           'allowed':3,'paid':3,'denied':3,'hold':3,'received':4,'rejected':1,'cancelled':0}[d.status]
+    stages=[]
+    for i,label in enumerate(labels):
+        done=i<index or (i==0 and d.submitted_at is not None) or (i==4 and d.status=='received')
+        blocked=i==index and d.status in ['denied','rejected','cancelled']
+        paused=i==index and d.status=='hold'
+        stages.append(dict(label=label,done=done,current=i==index and not done and not blocked,blocked=blocked,paused=paused))
+    label=d.get_status_display();who=detailed['who'];note=detailed['note']
+    if d.status in PURCHASING_STATES:
+        label='구매 진행 중';who='구매 담당자';note='부서 승인이 완료되어 구매를 진행하고 있습니다.'
+        if d.status=='paid':note+=' 물품을 받으셨다면 수령 완료를 눌러 주세요.'
+    elif d.status=='denied':who='구매불허로 종료';note='구매요청이 불허되었습니다. 아래 사유를 확인해 주세요.'
+    elif d.status=='hold':who='구매 담당자';note='구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.'
+    elif d.status=='director':note='담당 이사님의 최종승인을 기다리고 있습니다.'
+    return dict(stages=stages,who=who,note=note,label=label)
+
+
+def visible_notice(n, user):
+    if n.request_id and n.request.owner_id==user.pk:
+        if any(word in n.text for word in ['대표','취합','결제']):
+            return f'{n.request.product} · 구매 진행상황이 변경되었습니다. 문서에서 확인해 주세요.'
+    return n.text
+
+
+def events_for(d, simplified):
+    if not simplified:return d.events.all()
+    # Keep the original internal audit trail, but show owners only their own request/approval/receipt history.
+    return d.events.exclude(event__startswith='대표').exclude(event='결제 완료 확인')

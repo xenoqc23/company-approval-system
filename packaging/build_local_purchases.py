@@ -4,14 +4,16 @@ from hashlib import sha256
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 ROOT=Path(__file__).resolve().parents[1]
 NAME='xenosys-local-purchases-20261022'
+ARCHIVE='xenosys-local-purchases-20261022-ui-fix'
 
 
 def build(destination=None):
-    out=Path(destination) if destination else ROOT/'releases'/f'{NAME}.zip'
+    out=Path(destination) if destination else ROOT/'releases'/f'{ARCHIVE}.zip'
     names=['manage.py','local_purchases.py','requirements-prototype.txt','SETUP_LOCAL_PURCHASES.bat','RUN_LOCAL_PURCHASES.bat']
     names.extend(str(p.relative_to(ROOT)) for package in ['approval_site','workflow','purchasing'] for p in (ROOT/package).rglob('*.py')
                  if '__pycache__' not in p.parts and not p.name.startswith('test'))
     names.extend(str(p.relative_to(ROOT)) for directory in ['purchasing/templates','purchasing/static'] for p in (ROOT/directory).rglob('*') if p.is_file())
+    names.extend(['workflow/static/workflow/'+n for n in ['style.css','xenosys.css','workspace.css','fonts/PretendardVariable.woff2','fonts/OFL.txt','images/xenosys-logo-refined.png']])
     payload={name:(ROOT/name).read_bytes() for name in sorted(set(names))}
     payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_PURCHASES_20261022.md').read_bytes()
     examples=ROOT/'docs/purchase-test-examples'

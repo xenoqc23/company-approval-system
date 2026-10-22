@@ -17,6 +17,8 @@ class PurchaseBundleTests(unittest.TestCase):
             self.assertIn('purchasing/migrations/0001_initial_purchase_lab.py',names)
             self.assertIn('purchasing/templates/purchasing/regulations.html',names)
             self.assertIn('local_purchases.py',names)
+            for asset in ['workflow/static/workflow/style.css','workflow/static/workflow/workspace.css','workflow/static/workflow/fonts/PretendardVariable.woff2','workflow/static/workflow/fonts/OFL.txt','workflow/static/workflow/images/xenosys-logo-refined.png','purchasing/static/purchasing/workspace.css']:
+                self.assertIn(asset,names)
             for name in names:
                 self.assertFalse(any(x in Path(name).parts for x in ['var','data','.env','.venv','.git','releases','deploy','__pycache__']),name)
                 self.assertFalse(name.endswith(('.sqlite3','.db','.key','.pem')),name)

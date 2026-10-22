@@ -228,12 +228,42 @@ class PurchaseFlowTests(TestCase):
         self.assertEqual(response.status_code,302);self.assertEqual(int(self.client.session['_auth_user_id']),self.user('ceo').pk)
         self.assertEqual(self.client.get(reverse('purchasing:new')).status_code,403)
 
-    def test_request_and_report_pages_have_stage_explanations(self):
-        d=self.ready();self.as_user('dev');response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
-        self.assertContains(response,'아직 구매허가 전입니다.');self.assertContains(response,'경리 취합')
-        r=self.report([d]);response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertContains(response,'개별 심사 중')
+    def test_owner_sees_simple_progress_but_finance_retains_internal_stages(self):
+        d=self.ready();self.as_user('dev')
+        def assert_simple():
+            response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
+            self.assertContains(response,'구매 진행 중')
+            for text in ['경리 취합','대표 구매허가','결제 완료 확인','취합 문서:']:
+                self.assertNotContains(response,text)
+            return response
+        assert_simple()
+        r=self.report([d]);assert_simple()
         decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=True)
-        response=self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertContains(response,'실제 결제 완료와는 별도')
+        assert_simple()
+        self.as_user('finance')
+        response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
+        self.assertContains(response,'경리 취합');self.assertContains(response,'대표 구매허가')
+        request_action(d.pk,self.user('finance'),'paid','대표 카드 결제 확인')
+        self.as_user('dev');response=assert_simple();self.assertContains(response,'물품 수령 완료')
+        self.assertContains(self.client.get(reverse('purchasing:home')),'구매 진행상황이 변경되었습니다.')
+        response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=purchasing')
+        self.assertContains(response,d.product);self.assertNotContains(response,'대표 구매허가')
+
+    def test_won_entry_round_trip_and_grouping_do_not_change_amount(self):
+        from .forms import RequestForm
+        for amount in ['50000','50,000','50000.00','49,999.99','50000.01','12345.67']:
+            data=self.values();data['unit_price']=amount;data['quantity']=1;data['key']=uuid4()
+            form=RequestForm(data,user=self.user('dev'),policy=PurchasePolicy.objects.get(pk=1))
+            self.assertTrue(form.is_valid(),form.errors)
+            d=save_request(self.user('dev'),form.cleaned_data,submit=True,key=form.cleaned_data['key'])
+            d.refresh_from_db();self.assertEqual(d.unit_price,Decimal(amount.replace(',','')))
+            self.assertEqual(d.total,Decimal(amount.replace(',','')))
+            self.as_user('dev');response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
+            if amount in ['50000','50,000','50000.00']:
+                self.assertContains(response,'50,000원',count=2);self.assertNotContains(response,'49,999.99원')
+        data=self.values();data.update(unit_price='5,00,00',key=uuid4())
+        self.assertFalse(RequestForm(data,user=self.user('dev'),policy=PurchasePolicy.objects.get(pk=1)).is_valid())
+
 
     def test_duplicate_submit_key_and_payment_does_not_duplicate_events(self):
         key=uuid4();d=save_request(self.user('dev'),self.values(),submit=True,key=key)
