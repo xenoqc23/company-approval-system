@@ -42,7 +42,7 @@ with sync_playwright() as tool:
  open_doc(page,docs[0]);expect(page.locator('[data-purchase-progress]')).to_have_count(1)
  switch(page,'quality');open_doc(page,docs[1]);expect(page.locator('.heading .badge')).to_contain_text('구매반려');expect(page.locator('.decision-reason')).to_contain_text('재고');expect(page.locator('[data-purchase-progress]')).to_have_count(0)
  switch(page,'finance');open_doc(page,docs[0]);form=page.locator('form:has(input[value=paid])');form.locator('[name=reason]').fill('실제 결제 내역 확인');form.get_by_role('button',name='결제 완료 확인',exact=True).click();page.wait_for_load_state('networkidle')
- switch(page,'quality');open_doc(page,docs[0]);expect(page.locator('[data-purchase-progress]')).to_have_count(0);page.get_by_role('button',name='물품 수령 완료',exact=True).click();page.wait_for_load_state('networkidle');expect(page.locator('.heading .badge')).to_contain_text('수령 완료')
+ switch(page,'quality');open_doc(page,docs[0]);expect(page.locator('[data-purchase-progress]')).to_have_count(0);page.get_by_role('button',name='수령 확인',exact=True).click();page.wait_for_load_state('networkidle');expect(page.locator('.heading .badge')).to_contain_text('수령 완료')
  # Only the actual confirmer gets this line; ordinary approval participants keep the original cards.
  switch(page,'prod_director');open_doc(page,docs[0]);page.screenshot(path=str(out/'09-final-purchase-line.png'),full_page=True)
  switch(page,'quality');open_doc(page,docs[2]);page.screenshot(path=str(out/'10-requester-hold-private.png'),full_page=True)

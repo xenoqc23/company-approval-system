@@ -15,6 +15,7 @@
   boxes.forEach(b=>b.addEventListener('change',update));all.addEventListener('change',()=>{boxes.forEach(b=>b.checked=all.checked);update();});update();
  }
  document.querySelectorAll('[data-report-item]').forEach(item=>{const decision=item.querySelector('[data-item-decision]'),reason=item.querySelector('[data-item-reason]');if(!decision)return;const sync=()=>reason.required=['deny','hold'].includes(decision.value);decision.addEventListener('change',sync);sync();});
+ const urgent=document.querySelector('[name=urgent]'),urgentReason=document.querySelector('[name=urgent_reason]');if(urgent&&urgentReason){const sync=()=>urgentReason.required=urgent.checked;urgent.addEventListener('change',sync);sync();}
  const form=document.querySelector('[data-request-form]');
  if(form){const qty=form.querySelector('[name=quantity]'),price=form.querySelector('[name=unit_price]');const sum=()=>{let amount=price.value.trim();const valid=/^\d+(?:\.\d{0,2})?$/.test(amount)||/^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(amount);const parts=amount.replaceAll(',','').split('.');const cents=valid?(BigInt(parts[0])*100n+BigInt((parts[1]||'').padEnd(2,'0'))):0n;const count=/^\d{1,6}$/.test(qty.value)?BigInt(qty.value):0n;form.querySelector('[data-price]').textContent=formatCents(cents*count);};qty.addEventListener('input',sum);price.addEventListener('input',sum);sum();
   const field=form.querySelector('[name=product]'),box=form.querySelector('[data-hints-results]');let timer,controller,cursor=0;
@@ -24,7 +25,7 @@
     const response=await fetch(form.dataset.hints+'?q='+encodeURIComponent(field.value),{signal:controller.signal,cache:'no-store'});
     if(!response.ok||response.redirected)throw Error();const data=await response.json();if(cursor!==version)return;box.replaceChildren();box.hidden=false;
     const title=document.createElement('strong');title.textContent=`유사 구매요청 ${data.count}건`;box.append(title);
-    data.results.forEach(r=>{const p=document.createElement('p');p.textContent=`${r.product} · ${r.department} · ${r.quantity}개 · ${r.status}`;box.append(p);});
+    data.results.forEach(r=>{const p=document.createElement('p');p.textContent=`${r.product} · ${r.department} · ${r.quantity}개 · ${r.status}${r.received?' · 수령 '+r.received+'개':''}${r.usage_department?' · 사용 '+r.usage_department:''}${r.location?' · 보관 '+r.location:''}`;box.append(p);});
     const note=document.createElement('small');note.textContent='과거 수령 내역도 포함합니다. 현재 재고를 뜻하지 않으며 추가 구매를 계속 요청할 수 있습니다.';box.append(note);
    }catch{if(cursor===version){box.hidden=false;box.textContent='유사 구매내역을 확인하지 못했습니다. 요청은 계속 작성할 수 있습니다.';}}finally{clearTimeout(timeout);}},400);
   });

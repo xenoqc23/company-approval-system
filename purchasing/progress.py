@@ -20,7 +20,7 @@ def progress(d,simplified=False):
     label=d.get_status_display()
     if d.status in PURCHASING_STATES:label='구매 진행 중' if simplified else '승인완료' if d.status=='ready' else label
     who={'draft':'기안자','review':d.reviewer.first_name if d.reviewer else '검토자','approval':d.approver.first_name if d.approver else '승인자','director':d.director.first_name if d.director else '기존 최종승인자'}.get(d.status,'구매 담당자')
-    note={'draft':'작성 중인 구매요청입니다.','review':'검토자의 확인을 기다리고 있습니다.','approval':'승인자의 확인을 기다리고 있습니다.','director':'기존 문서의 최종승인을 기다리고 있습니다.','ready':'내부 승인이 완료되어 구매를 진행하고 있습니다.','ceo':'구매를 진행하고 있습니다.','allowed':'구매를 진행하고 있습니다.','paid':'물품을 받으셨다면 수령 완료를 눌러 주세요.','received':'물품 수령까지 완료했습니다.','denied':'구매요청이 반려되었습니다. 아래 사유를 확인해 주세요.','hold':'구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.','rejected':'내부 결재에서 반려되었습니다. 아래 사유를 확인해 주세요.','cancelled':'구매요청을 취소했습니다.'}[d.status]
+    note={'draft':'작성 중인 구매요청입니다.','review':'검토자의 확인을 기다리고 있습니다.','approval':'승인자의 확인을 기다리고 있습니다.','director':'기존 문서의 최종승인을 기다리고 있습니다.','ready':'내부 승인이 완료되어 구매를 진행하고 있습니다.','ceo':'구매를 진행하고 있습니다.','allowed':'구매를 진행하고 있습니다.','paid':'물품을 받으셨다면 받은 수량을 입력해 수령 확인을 눌러 주세요.','received':'물품 수령까지 완료했습니다.','denied':'구매요청이 반려되었습니다. 아래 사유를 확인해 주세요.','hold':'구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.','rejected':'내부 결재에서 반려되었습니다. 아래 사유를 확인해 주세요.','cancelled':'구매요청을 취소했습니다.'}[d.status]
     return dict(label=label,who=who,note=note)
 
 
@@ -45,7 +45,7 @@ def visible_notice(n,user):
 
 def events_for(d,simplified):
     if not simplified:return d.events.all()
-    return d.events.exclude(event__startswith='대표').exclude(event__in=['결제 완료 확인','구매 품목 확인'])
+    return d.events.exclude(event__startswith='대표').exclude(event__in=['결제 완료 확인','구매 품목 확인','구매 증빙 첨부'])
 
 
 def pending_columns(d):

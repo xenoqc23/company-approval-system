@@ -1,14 +1,14 @@
 from decimal import Decimal, InvalidOperation
-from uuid import UUID
+from uuid import UUID,uuid4
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
 from django.utils import timezone
 from workflow.models import RANKS
-from .models import PurchasePolicy,PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseEvent,PurchaseNotice,DemoAccount
+from .models import PurchasePolicy,PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseEvent,PurchaseNotice,DemoAccount,PurchaseReceipt
 from .access import active,is_admin,is_finance,require_finance,is_confirmer,confirmers,finance_assigned
 
-REQUEST_FIELDS=('product','vendor','quantity','unit_price','url','reason','private')
+REQUEST_FIELDS=('product','vendor','quantity','unit_price','url','reason','private','needed_by','urgent','urgent_reason','usage_department','storage_location')
 
 
 def actor_now(actor):
@@ -68,7 +68,7 @@ def validate_policy_people(p):
 
 def serialize_request(d):
     return dict(number=d.number,department=d.department,owner=d.owner.first_name,product=d.product,vendor=d.vendor,
-                quantity=d.quantity,unit_price=str(d.unit_price),total=str(d.total),reason=d.reason,url=d.url)
+                quantity=d.quantity,unit_price=str(d.unit_price),total=str(d.total),reason=d.reason,url=d.url,needed_by=d.needed_by.isoformat() if d.needed_by else '',urgent=d.urgent,urgent_reason=d.urgent_reason,usage_department=d.usage_department)
 
 
 @transaction.atomic
@@ -83,8 +83,9 @@ def save_request(actor,values,submit=False,pk=None,key=None):
         except (ValueError,TypeError,AttributeError):raise ValidationError('작성 화면을 다시 열어 주세요.')
         if PurchaseRequest.objects.filter(request_key=key).exists():raise ValidationError('이미 저장한 요청입니다. 내 구매요청에서 확인해 주세요.')
         d=PurchaseRequest(owner=actor,request_key=key)
-    for field in REQUEST_FIELDS:setattr(d,field,values.get(field,False if field=='private' else ''))
+    for field in REQUEST_FIELDS:setattr(d,field,values.get(field,False if field in ['private','urgent'] else None if field=='needed_by' else actor.profile.department if field=='usage_department' else ''))
     d.department,d.rank=actor.profile.department,actor.profile.rank
+    if d.urgent and not d.urgent_reason.strip():raise ValidationError('긴급 요청 사유를 입력해 주세요.')
     if not d.reason.strip():raise ValidationError('구매 사유를 입력해 주세요.')
     if not d.vendor.strip():raise ValidationError('구매처를 입력해 주세요.')
     if not 1<=d.quantity<=999999 or not Decimal('0')<d.unit_price<=Decimal('999999999.99'):
@@ -117,7 +118,7 @@ def save_request(actor,values,submit=False,pk=None,key=None):
 
 
 @transaction.atomic
-def request_action(pk,actor,action,reason=''):
+def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,storage_location=None):
     p=lock_policy();actor=actor_now(actor);d=PurchaseRequest.objects.select_for_update().select_related('owner','reviewer','approver','director').get(pk=pk)
     now=timezone.now();reason=(reason or '').strip()
     if len(reason)>1000:raise ValidationError('사유는 1000자 이내로 입력해 주세요.')
@@ -164,8 +165,21 @@ def request_action(pk,actor,action,reason=''):
     elif action=='receive':
         if d.owner_id!=actor.pk:raise PermissionDenied
         if d.status!='paid':raise ValidationError('결제 완료로 확인된 품목만 수령 확인할 수 있습니다.')
-        d.status,d.received_at='received',now;event(actor,'물품 수령 완료',request=d)
-        notify(finance_users(p),f'{d.product} · 수령 완료',request=d)
+        remaining=d.remaining_quantity
+        try:count=remaining if quantity is None else int(quantity)
+        except (ValueError,TypeError):raise ValidationError('이번에 수령한 수량을 입력해 주세요.')
+        if quantity is not None and (isinstance(quantity,bool) or str(quantity).strip()!=str(count)):raise ValidationError('수령 수량은 정수로 입력해 주세요.')
+        if not 1<=count<=remaining:raise ValidationError('수령 수량은 1개 이상, 미수령 수량 이내로 입력해 주세요.')
+        try:key=UUID(str(receipt_key)) if receipt_key else uuid4()
+        except (ValueError,TypeError,AttributeError):raise ValidationError('수령 화면을 다시 열어 주세요.')
+        if PurchaseReceipt.objects.filter(key=key).exists():raise ValidationError('이미 처리한 수령 확인입니다.')
+        location=d.storage_location if storage_location is None else str(storage_location).strip()
+        if len(location)>150:raise ValidationError('보관 위치는 150자 이내로 입력해 주세요.')
+        PurchaseReceipt.objects.create(request=d,received_by=actor,quantity=count,location=location,note=reason,key=key)
+        d.received_quantity+=count;d.storage_location=location
+        if d.remaining_quantity==0:d.status,d.received_at='received',now
+        event(actor,'물품 수령 완료' if d.status=='received' else '물품 부분 수령',request=d,detail=f'이번 수령 {count}개 / 누적 {d.received_quantity}개 / 미수령 {d.remaining_quantity}개'+(f' / 보관 위치 {location}' if location else ''))
+        notify(finance_users(p),f'{d.product} · 수령 {d.received_quantity}/{d.quantity}개',request=d)
     else:raise ValidationError('지원하지 않는 처리입니다.')
     d.revision+=1;d.save();return d
 

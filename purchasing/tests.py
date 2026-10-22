@@ -252,7 +252,7 @@ class PurchaseFlowTests(TestCase):
         response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
         self.assertContains(response,'구매 진행 현황');self.assertContains(response,'취합·보고');self.assertContains(response,'대표 구매승인')
         request_action(d.pk,self.user('finance'),'paid','대표 카드 결제 확인')
-        self.as_user('dev');response=assert_simple();self.assertContains(response,'물품 수령 완료')
+        self.as_user('dev');response=assert_simple();self.assertContains(response,'수령 확인')
         self.assertContains(self.client.get(reverse('purchasing:home')),'구매 진행상황이 변경되었습니다.')
         response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=purchasing')
         self.assertContains(response,d.product);self.assertNotContains(response,'대표 구매승인')
@@ -379,3 +379,108 @@ class PurchaseFlowTests(TestCase):
         for text in ['구매요청','승인 예정 금액','구매반려 금액','구매보류 금액','구매승인','구매반려','구매보류']:self.assertContains(response,text)
         for text in ['불허','허가','심사 중']:self.assertNotContains(response,text)
         response=self.client.get(reverse('purchasing:home'));self.assertContains(response,'구매요청함');self.assertNotContains(response,'취합 구매')
+
+
+class PurchasePracticalTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):PurchaseFlowTests.setUpTestData.__func__(cls)
+    user=PurchaseFlowTests.user
+    as_user=PurchaseFlowTests.as_user
+    values=PurchaseFlowTests.values
+    create=PurchaseFlowTests.create
+    approved=PurchaseFlowTests.approved
+    ready=PurchaseFlowTests.ready
+    report=PurchaseFlowTests.report
+    decisions=PurchaseFlowTests.decisions
+
+    def setUp(self):
+        from django.core.files.storage import FileSystemStorage
+        from .models import PurchaseAttachment
+        self.storage_dir=TemporaryDirectory();self.addCleanup(self.storage_dir.cleanup)
+        patched=patch.object(PurchaseAttachment._meta.get_field('file'),'storage',FileSystemStorage(location=self.storage_dir.name));patched.start();self.addCleanup(patched.stop)
+
+    def pdf(self,name='견적서.pdf',content=b'%PDF-1.4\nfictional quote'):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(name,content,content_type='application/pdf')
+
+    def paid(self,quantity=10):
+        d=self.create('quality',quantity=quantity)
+        d=request_action(d.pk,d.reviewer,'approve');d=request_action(d.pk,d.approver,'approve');d=request_action(d.pk,self.user('prod_director'),'confirm_items')
+        r=self.report([d]);decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=True)
+        return request_action(d.pk,self.user('finance'),'paid','실제 결제 확인')
+
+    def test_compose_attachments_saved_with_document_and_authorized_download_only(self):
+        from .models import PurchaseAttachment
+        self.as_user('quality');data=self.values();data.update(reviewer=self.user('quality_manager').pk,approver=self.user('quality_lead').pk,quantity=10,key=uuid4(),intent='submit',files=[self.pdf()])
+        response=self.client.post(reverse('purchasing:new'),data)
+        self.assertEqual(response.status_code,302);d=PurchaseRequest.objects.get();a=PurchaseAttachment.objects.get();self.assertEqual(a.kind,'request');self.assertEqual(a.request,d)
+        self.as_user('quality_manager');response=self.client.get(reverse('purchasing:attachment_download',args=[a.pk]));self.assertEqual(response.status_code,200);self.assertIn('attachment;',response['Content-Disposition']);self.assertEqual(b''.join(response.streaming_content),b'%PDF-1.4\nfictional quote')
+        self.assertEqual(response['X-Content-Type-Options'],'nosniff');self.assertIn('no-store',response['Cache-Control'])
+        self.as_user('sales_manager');self.assertEqual(self.client.get(reverse('purchasing:attachment_download',args=[a.pk])).status_code,404)
+
+    def test_unsupported_empty_oversized_and_excess_files_rejected_before_save(self):
+        from .attachments import validated_files
+        from .models import PurchaseAttachment
+        for files in [[self.pdf('evil.html')],[self.pdf(content=b'')],[self.pdf(content=b'x'*(10*1024*1024+1))],[self.pdf() for _ in range(11)]]:
+            with self.assertRaises(ValidationError):validated_files(files)
+        self.assertFalse(PurchaseAttachment.objects.exists())
+
+    def test_purchase_receipt_files_hidden_from_owner_and_general_approvers(self):
+        from .models import PurchaseAttachment
+        d=self.ready('quality');self.as_user('finance')
+        self.assertEqual(self.client.post(reverse('purchasing:attachments',args=[d.pk]),dict(files=[self.pdf('영수증.pdf')])).status_code,302)
+        a=PurchaseAttachment.objects.get();self.assertEqual(a.kind,'purchase')
+        for role in ['quality','quality_manager','quality_lead','admin']:
+            self.as_user(role);self.assertEqual(self.client.get(reverse('purchasing:attachment_download',args=[a.pk])).status_code,404)
+            self.assertNotContains(self.client.get(reverse('purchasing:detail',args=[d.pk])),'영수증.pdf')
+        self.as_user('prod_director');self.assertEqual(self.client.get(reverse('purchasing:attachment_download',args=[a.pk])).status_code,200)
+        PurchasePolicy.objects.get(pk=1).finance.clear();self.as_user('finance');self.assertEqual(self.client.get(reverse('purchasing:attachment_download',args=[a.pk])).status_code,404)
+
+    def test_submission_failure_rolls_back_document_events_and_files(self):
+        from .models import PurchaseAttachment
+        self.as_user('quality');data=self.values();data.update(reviewer=self.user('quality_manager').pk,approver=self.user('quality_lead').pk,key=uuid4(),intent='submit',files=[self.pdf('first.pdf'),self.pdf('second.pdf')])
+        original_save=PurchaseAttachment.save
+        def fail_second(instance,*args,**kwargs):
+            if instance.original_name=='second.pdf':raise ValidationError('파일 저장 실패')
+            return original_save(instance,*args,**kwargs)
+        with patch.object(PurchaseAttachment,'save',new=fail_second):
+            response=self.client.post(reverse('purchasing:new'),data)
+        self.assertEqual(response.status_code,200);self.assertFalse(PurchaseRequest.objects.exists());self.assertFalse(PurchaseAttachment.objects.exists());self.assertFalse(PurchaseEvent.objects.exists());self.assertEqual(list(Path(self.storage_dir.name).rglob('*.pdf')),[])
+
+    def test_file_limit_checked_on_existing_document_and_upload_csrf(self):
+        from .attachments import StoredFiles
+        d=save_request(self.user('quality'),self.values(),submit=False,key=uuid4())
+        with StoredFiles() as files:files.add(d,self.user('quality'),[self.pdf(f'{i}.pdf') for i in range(10)],'request')
+        self.as_user('quality');self.client.post(reverse('purchasing:attachments',args=[d.pk]),dict(files=[self.pdf()]))
+        self.assertEqual(d.attachments.count(),10)
+        client=Client(enforce_csrf_checks=True);client.force_login(self.user('quality'));self.assertEqual(client.post(reverse('purchasing:attachments',args=[d.pk]),dict(files=[self.pdf()])).status_code,403)
+
+    def test_partial_receipt_counts_remainder_and_is_idempotent(self):
+        d=self.paid();key=uuid4();d=request_action(d.pk,self.user('quality'),'receive','6개 먼저 도착',quantity=6,receipt_key=key,storage_location='품질팀 창고 A-2')
+        self.assertEqual((d.status,d.received_quantity,d.remaining_quantity),('paid',6,4));self.assertIsNone(d.received_at)
+        with self.assertRaises(ValidationError):request_action(d.pk,self.user('quality'),'receive',quantity=2,receipt_key=key)
+        with self.assertRaises(ValidationError):request_action(d.pk,self.user('quality'),'receive',quantity=5,receipt_key=uuid4())
+        d=request_action(d.pk,self.user('quality'),'receive',quantity=4,receipt_key=uuid4())
+        self.assertEqual((d.status,d.received_quantity,d.remaining_quantity),('received',10,0));self.assertEqual(d.receipts.count(),2);self.assertEqual(d.storage_location,'품질팀 창고 A-2')
+
+    def test_invalid_or_unauthorized_receipt_cannot_change_counts(self):
+        d=self.paid()
+        for value in [0,-1,11,'1.5',True]:
+            with self.assertRaises(ValidationError):request_action(d.pk,self.user('quality'),'receive',quantity=value)
+        with self.assertRaises(PermissionDenied):request_action(d.pk,self.user('finance'),'receive',quantity=1)
+        d.refresh_from_db();self.assertEqual(d.received_quantity,0);self.assertEqual(d.receipts.count(),0)
+
+    def test_owner_can_update_location_and_hints_show_received_location_not_stock(self):
+        d=self.paid();d=request_action(d.pk,self.user('quality'),'receive',quantity=6,receipt_key=uuid4(),storage_location='창고 A')
+        self.as_user('quality');self.client.post(reverse('purchasing:location',args=[d.pk]),dict(storage_location='창고 B'));d.refresh_from_db();self.assertEqual(d.storage_location,'창고 B')
+        self.as_user('sales_manager');response=self.client.get(reverse('purchasing:hints')+'?q=시험용');self.assertEqual(response.json()['results'][0]['location'],'창고 B');self.assertEqual(response.json()['results'][0]['received'],6)
+        self.assertEqual(self.client.post(reverse('purchasing:location',args=[d.pk]),dict(storage_location='외부')).status_code,404)
+        d.private=True;d.save();self.assertEqual(self.client.get(reverse('purchasing:hints')+'?q=시험용').json()['count'],0)
+
+    def test_urgent_requires_reason_and_orders_inbox_first(self):
+        from datetime import date
+        values=self.values();values.update(urgent=True,urgent_reason='',needed_by=date(2026,11,1))
+        with self.assertRaises(ValidationError):save_request(self.user('dev'),values,submit=True,key=uuid4())
+        ordinary=self.create('quality');urgent=self.create('quality',urgent=True,urgent_reason='고장으로 업무 중단',needed_by=date(2026,11,1),usage_department='품질팀')
+        self.as_user('quality_manager');response=self.client.get(reverse('purchasing:requests')+'?mode=inbox')
+        self.assertEqual(response.context['documents'][0].pk,urgent.pk);self.assertContains(response,'긴급');self.assertEqual(ordinary.urgent,False)

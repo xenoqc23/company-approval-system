@@ -48,6 +48,12 @@ class PurchaseRequest(models.Model):
     unit_price = models.DecimalField(max_digits=14,decimal_places=2)
     url = models.URLField(max_length=1000,blank=True)
     reason = models.TextField()
+    needed_by = models.DateField(null=True,blank=True)
+    urgent = models.BooleanField(default=False)
+    urgent_reason = models.CharField(max_length=500,blank=True)
+    usage_department = models.CharField(max_length=30,blank=True)
+    storage_location = models.CharField(max_length=150,blank=True)
+    received_quantity = models.PositiveIntegerField(default=0)
     private = models.BooleanField(default=False)
     status = models.CharField(max_length=12,choices=STATES,default='draft',db_index=True)
     request_key = models.UUIDField(default=uuid4,unique=True,editable=False)
@@ -77,6 +83,8 @@ class PurchaseRequest(models.Model):
     def number(self):return f'PUR-{timezone.localtime(self.created_at):%Y%m%d}-{self.pk:04d}' if self.pk else '임시저장'
     @property
     def total(self):return self.quantity*self.unit_price
+    @property
+    def remaining_quantity(self):return max(0,self.quantity-self.received_quantity)
 
 
 class PurchaseReport(models.Model):
@@ -151,3 +159,29 @@ class DemoAccount(models.Model):
 class PurchasePermission(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='purchase_permission')
     view_completed = models.BooleanField(default=False,verbose_name='구매요청승인완료함')
+
+
+from .attachments import private_storage,attachment_path
+
+class PurchaseAttachment(models.Model):
+    request = models.ForeignKey(PurchaseRequest,on_delete=models.PROTECT,related_name='attachments')
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    kind = models.CharField(max_length=10,choices=[('request','기안 첨부'),('purchase','구매 증빙')])
+    original_name = models.CharField(max_length=200)
+    file = models.FileField(storage=private_storage,upload_to=attachment_path,max_length=300)
+    size = models.PositiveIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:ordering=['created_at','pk']
+
+
+class PurchaseReceipt(models.Model):
+    request = models.ForeignKey(PurchaseRequest,on_delete=models.PROTECT,related_name='receipts')
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    quantity = models.PositiveIntegerField()
+    location = models.CharField(max_length=150,blank=True)
+    note = models.CharField(max_length=1000,blank=True)
+    key = models.UUIDField(default=uuid4,unique=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:ordering=['created_at','pk']

@@ -70,3 +70,11 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         op=lambda:request_action(self.doc.pk,self.users['p_prod_director'],'confirm_items')
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event='구매 품목 확인').count(),before+1)
+
+    def test_duplicate_partial_receipt_never_counts_twice(self):
+        self.doc.quantity=10;self.doc.save(update_fields=['quantity'])
+        r,values=self.allowed_report();decide_report(r.pk,self.users['p_ceo'],values,0,final=True)
+        request_action(self.doc.pk,self.users['p_finance'],'paid','실제 결제 확인')
+        key=uuid4();op=lambda:request_action(self.doc.pk,self.users['p_dev'],'receive',quantity=6,receipt_key=key)
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        self.doc.refresh_from_db();self.assertEqual((self.doc.status,self.doc.received_quantity,self.doc.remaining_quantity),('paid',6,4));self.assertEqual(self.doc.receipts.count(),1)

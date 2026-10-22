@@ -3,7 +3,7 @@ from pathlib import Path
 from hashlib import sha256
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 ROOT=Path(__file__).resolve().parents[1]
-NAME='xenosys-local-purchase-clean-20261022'
+NAME='xenosys-local-purchase-features-20261022'
 ARCHIVE=NAME
 
 
@@ -16,7 +16,7 @@ def build(destination=None):
     names.extend(['workflow/static/workflow/'+n for n in ['style.css','xenosys.css','workspace.css','fonts/PretendardVariable.woff2','fonts/OFL.txt','images/xenosys-logo-refined.png']])
     payload={name:(ROOT/name).read_bytes() for name in sorted(set(names))}
     payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_PURCHASES_20261022.md').read_bytes()
-    examples=ROOT/'docs/purchase-clean-examples'
+    examples=ROOT/'docs/purchase-feature-examples'
     if examples.is_dir():
         payload.update({f'examples/{p.name}':p.read_bytes() for p in sorted(examples.glob('*.png'))})
     assert not any(any(part in {'var','data','.env','.git','.venv','releases','deploy','__pycache__'} for part in Path(n).parts) for n in payload)

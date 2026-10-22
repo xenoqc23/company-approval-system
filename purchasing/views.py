@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction,IntegrityError
 from django.db.models import Q,Sum,F,DecimalField,ExpressionWrapper
-from django.http import JsonResponse,HttpResponse
+from django.http import JsonResponse,HttpResponse,FileResponse,Http404
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from django.utils.cache import add_never_cache_headers
@@ -14,9 +14,10 @@ from django.views.decorators.http import require_POST,require_GET
 from django.views.decorators.debug import sensitive_post_parameters
 from workflow.models import RANKS
 from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseNotice,PurchasePolicy,DemoAccount,PurchasePermission
-from .forms import RequestForm,PolicyForm
+from .forms import RequestForm,PolicyForm,AttachmentForm
 from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests
 from .services import save_request,request_action,submit_report,decide_report,event
+from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
 from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns
 
@@ -93,6 +94,7 @@ def request_list(request):
     elif selected in dict(states):qs=qs.filter(status=selected)
     q=request.GET.get('q','').strip()[:120]
     if q:qs=qs.filter(Q(product__icontains=q)|Q(vendor__icontains=q)|Q(owner__first_name__icontains=q))
+    if mode=='inbox':qs=qs.order_by('-urgent',F('needed_by').asc(nulls_last=True),'-created_at','-pk')
     docs=list(qs[:100])
     for d in docs:
         d.progress_info=progress(d,simplified=not can_view_purchase(u,d));d.queue_info=pending_columns(d)
@@ -104,15 +106,18 @@ def request_list(request):
 def compose(request,pk=None):
     if request.user.profile.is_representative:raise PermissionDenied
     instance=get_object_or_404(PurchaseRequest,pk=pk,owner=request.user,status='draft') if pk else None
-    p=policy();form=RequestForm(request.POST if request.method=='POST' else None,instance=instance,user=request.user,policy=p)
+    p=policy();form=RequestForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,instance=instance,user=request.user,policy=p)
     if request.method=='POST' and form.is_valid():
         try:
-            d=save_request(request.user,form.cleaned_data,submit=request.POST.get('intent')=='submit',pk=pk,key=form.cleaned_data['key'])
+            # Files and metadata form one request: failed uploads must not leave a submitted document.
+            with StoredFiles() as stored,transaction.atomic():
+                d=save_request(request.user,form.cleaned_data,submit=request.POST.get('intent')=='submit',pk=pk,key=form.cleaned_data['key'])
+                stored.add(d,request.user,form.cleaned_data['files'],'request')
             messages.success(request,'구매요청을 제출했습니다.' if d.status!='draft' else '임시저장했습니다.')
             return redirect('purchasing:detail',pk=d.pk)
         except ValidationError as exc:form.add_error(None,exc)
     director=None
-    return page(request,'compose','구매요청 작성',form=form,director=director)
+    return page(request,'compose','구매요청 작성',form=form,director=director,existing_files=visible_attachments(request.user,instance) if instance else [])
 
 
 @login_required
@@ -125,14 +130,15 @@ def detail(request,pk):
     return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,visible_events=events_for(d,simplified),approval_cards=approval_track(d),purchase_steps=purchase_progress(d) if not simplified and (d.confirmed_at or d.current_report_id) else [],can_confirm=is_confirmer(request.user) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,can_approve=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id and not d.confirmed_at,
         can_pay=can_pay,can_receive=d.owner_id==request.user.pk and d.status=='paid',
-        can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
+        receipt_key=uuid4(),attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
 
 
 @login_required
 @require_POST
 def act(request,pk):
     get_object_or_404(requests_for(request.user),pk=pk)
-    try:request_action(pk,request.user,request.POST.get('action',''),request.POST.get('reason',''));messages.success(request,'처리했습니다.')
+    try:
+        request_action(pk,request.user,request.POST.get('action',''),request.POST.get('reason',''),quantity=request.POST.get('quantity'),receipt_key=request.POST.get('receipt_key'),storage_location=request.POST.get('storage_location'));messages.success(request,'처리했습니다.')
     except ValidationError as exc:messages.error(request,' '.join(exc.messages))
     return redirect('purchasing:detail',pk=pk)
 
@@ -172,6 +178,7 @@ def report_detail(request,pk):
     report=get_object_or_404(reports_for(request.user).select_related('created_by','representative'),pk=pk)
     notices_for(request.user).filter(report=report,read=False).update(read=True)
     items=list(report.items.select_related('request'))
+    for item in items:item.visible_files=visible_attachments(request.user,item.request)
     can_decide=report.status=='pending' and report.representative_id==request.user.pk and request.user.profile.is_representative
     if request.method=='POST':
         if not can_decide:raise PermissionDenied
@@ -221,7 +228,7 @@ def hints(request):
         rows=PurchaseRequest.objects.exclude(status__in=['draft','rejected','cancelled','denied']).filter(private=False).annotate(
             normalized=Lower(Replace(Replace('product',Value(' '),Value('')),Value('-'),Value('')))).filter(normalized__contains=q).order_by('-created_at')
     response=JsonResponse(dict(count=rows.count(),results=[dict(product=d.product,department=d.department,quantity=d.quantity,
-        requested=d.created_at.date().isoformat(),status=progress(d,simplified=True)['label']) for d in rows[:8]]))
+        received=d.received_quantity,usage_department=d.usage_department,location=d.storage_location if d.received_quantity else '',requested=d.created_at.date().isoformat(),status=progress(d,simplified=True)['label']) for d in rows[:8]]))
     add_never_cache_headers(response);return response
 
 
@@ -249,3 +256,54 @@ def staff_permissions(request):
     permissions=set(PurchasePermission.objects.filter(view_completed=True).values_list('user_id',flat=True))
     rows=[dict(user=u,view_completed=u.pk in permissions) for u in users]
     return page(request,'staff','직원 권한관리',staff_rows=rows,revision=policy().version)
+
+
+@login_required
+@require_POST
+def upload_attachments(request,pk):
+    from .services import lock_policy,actor_now
+    form=AttachmentForm(request.POST,request.FILES)
+    d=get_object_or_404(requests_for(request.user),pk=pk)
+    if not can_upload(request.user,d):raise PermissionDenied
+    if form.is_valid():
+        try:
+            with StoredFiles() as stored,transaction.atomic():
+                lock_policy();user=actor_now(request.user)
+                d=PurchaseRequest.objects.select_for_update().get(pk=pk)
+                if not requests_for(user).filter(pk=pk).exists() or not can_upload(user,d):raise PermissionDenied
+                stored.add(d,user,form.cleaned_data['files'],'request' if d.owner_id==user.pk else 'purchase')
+            messages.success(request,'첨부파일을 등록했습니다.')
+        except ValidationError as exc:messages.error(request,' '.join(exc.messages))
+    else:messages.error(request,' '.join(str(e) for errors in form.errors.values() for e in errors))
+    return redirect('purchasing:detail',pk=pk)
+
+
+@login_required
+@require_GET
+def download_attachment(request,pk):
+    from .models import PurchaseAttachment
+    a=get_object_or_404(PurchaseAttachment.objects.select_related('request__current_report'),pk=pk)
+    if not requests_for(request.user).filter(pk=a.request_id).exists():raise Http404
+    if a.kind=='purchase' and not can_view_purchase(request.user,a.request):raise Http404
+    try:handle=a.file.open('rb')
+    except FileNotFoundError:raise Http404('첨부파일을 찾을 수 없습니다.')
+    response=FileResponse(handle,as_attachment=True,filename=a.original_name,content_type='application/octet-stream')
+    response['X-Content-Type-Options']='nosniff';response['Content-Security-Policy']="default-src 'none'";add_never_cache_headers(response)
+    return response
+
+
+@login_required
+@require_POST
+def update_location(request,pk):
+    from .services import lock_policy,actor_now
+    with transaction.atomic():
+        lock_policy();user=actor_now(request.user)
+        d=get_object_or_404(PurchaseRequest.objects.select_for_update(),pk=pk,owner=user)
+        if not d.received_quantity:raise PermissionDenied
+        location=request.POST.get('storage_location','').strip()
+        if len(location)>150:messages.error(request,'보관 위치는 150자 이내로 입력해 주세요.')
+        else:
+            before=d.storage_location;d.storage_location=location;d.save(update_fields=['storage_location'])
+            event(user,'보관 위치 변경',request=d,detail=f'{before or "미등록"} → {location or "미등록"}')
+            messages.success(request,'보관 위치를 저장했습니다.')
+    return redirect('purchasing:detail',pk=pk)

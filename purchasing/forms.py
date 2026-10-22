@@ -30,20 +30,39 @@ class WonField(forms.DecimalField):
         return super().to_python(value)
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected=True
+
+
+class MultipleFileField(forms.FileField):
+    def clean(self,data,initial=None):
+        from .attachments import validated_files
+        if not data:
+            if self.required:super().clean(data,initial)
+            return []
+        return validated_files([super(MultipleFileField,self).clean(f,initial) for f in (data if isinstance(data,(list,tuple)) else [data])])
+
+
+class AttachmentForm(forms.Form):
+    files=MultipleFileField(label='첨부파일',required=True,widget=MultipleFileInput(attrs={'accept':'.pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.docx,.doc,.hwp,.hwpx,.txt'}))
+
+
 class RequestForm(forms.ModelForm):
+    files=MultipleFileField(label='첨부파일 · 선택',required=False,widget=MultipleFileInput(attrs={'accept':'.pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.docx,.doc,.hwp,.hwpx,.txt'}))
     unit_price=WonField(label='개당 금액 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'),widget=forms.TextInput(attrs={'inputmode':'decimal','placeholder':'예: 50,000','autocomplete':'off'}))
     key=forms.UUIDField(widget=forms.HiddenInput,initial=uuid4)
     reviewer=PersonChoice(label='검토자',queryset=get_user_model().objects.none(),required=False)
     approver=PersonChoice(label='승인자',queryset=get_user_model().objects.none(),required=False)
     class Meta:
         model=PurchaseRequest
-        fields=['product','vendor','quantity','unit_price','url','reason','private']
+        fields=['product','vendor','quantity','unit_price','url','reason','private','needed_by','urgent','urgent_reason','usage_department','storage_location']
         labels=dict(product='구매 품목·모델명·규격',vendor='구매처',quantity='수량',unit_price='개당 금액 · 부가세 포함',url='구매 링크 · 선택',reason='구매 사유',private='유사 구매 안내에서 제외 · 기밀 구매')
-        widgets=dict(reason=forms.Textarea(attrs={'rows':4}),quantity=forms.NumberInput(attrs={'min':1,'max':999999}),
+        widgets=dict(needed_by=forms.DateInput(attrs={'type':'date'}),urgent_reason=forms.TextInput(attrs={'placeholder':'긴급하게 필요한 이유'}),reason=forms.Textarea(attrs={'rows':4}),quantity=forms.NumberInput(attrs={'min':1,'max':999999}),
                      unit_price=forms.NumberInput(attrs={'min':'.01','max':'999999999.99','step':'.01'}),
                      product=forms.TextInput(attrs={'placeholder':'예: 27인치 모니터 / 모델명'}),vendor=forms.TextInput(attrs={'placeholder':'업체명 또는 쇼핑몰명'}))
     def __init__(self,*args,user,policy,**kwargs):
         super().__init__(*args,**kwargs)
+        if not self.instance.pk:self.initial['usage_department']=user.profile.department
         self.mode=mode_for(policy,user) if policy else 'direct'
         director=policy.dev_director if policy and user.profile.department=='개발팀' else policy.production_director if policy else None
         qs=eligible_people(user)
@@ -57,6 +76,11 @@ class RequestForm(forms.ModelForm):
         elif user.username=='p_quality':
             self.initial['reviewer']=qs.filter(username='p_quality_manager').values_list('pk',flat=True).first()
             self.initial['approver']=qs.filter(username='p_quality_lead').values_list('pk',flat=True).first()
+
+    def clean(self):
+        data=super().clean()
+        if data.get('urgent') and not (data.get('urgent_reason') or '').strip():self.add_error('urgent_reason','긴급 요청 사유를 입력해 주세요.')
+        return data
 
 
 class PolicyForm(forms.Form):
