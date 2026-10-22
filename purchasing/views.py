@@ -14,9 +14,9 @@ from django.views.decorators.http import require_POST,require_GET
 from django.views.decorators.debug import sensitive_post_parameters
 from workflow.models import RANKS
 from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseNotice,PurchasePolicy,DemoAccount,PurchasePermission
-from .forms import RequestForm,PolicyForm,AttachmentForm
+from .forms import RequestForm,PolicyForm,AttachmentForm,SupplementForm,AmountChangeForm
 from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests
-from .services import save_request,request_action,submit_report,decide_report,event
+from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount
 from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
 from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns
@@ -61,7 +61,7 @@ def home(request):
     recent=list(qs.select_related('reviewer','approver','director')[:8])
     for d in recent:d.progress_info=progress(d, simplified=True)
     stats=dict(internal=qs.filter(status__in=['review','approval','director']).count(),purchasing=qs.filter(status__in=PURCHASING_STATES).count(),active=qs.filter(status__in=['review','approval','director',*PURCHASING_STATES]).count(),
-               allowed=qs.filter(status='allowed').count(),denied=qs.filter(status__in=['denied','hold','rejected']).count(),
+               allowed=qs.filter(status__in=['allowed','paid']).count(),denied=qs.filter(status__in=['denied','hold','rejected']).count(),
                received=qs.filter(status='received').count())
     notices=list(notices_for(request.user).select_related('request','report')[:6])
     for n in notices:n.display_text=visible_notice(n,request.user)
@@ -72,32 +72,36 @@ def home(request):
 def request_list(request):
     mode=request.GET.get('mode','mine');u=request.user
     qs=requests_for(u).select_related('owner','reviewer','approver','director')
-    titles=dict(mine='내 구매요청',inbox='내가 처리할 구매요청',director='이사 최종승인 목록',completed='구매요청승인완료함',finance='취합·보고 · 구매 진행',all='구매요청 전체')
+    titles=dict(mine='내 구매요청',inbox='내가 처리할 구매요청',director='이사 최종승인 목록',completed='구매요청승인완료함',finance='취합·보고 · 구매 진행',hold='구매보류함',all='구매요청 전체')
     if mode=='mine':qs=qs.filter(owner=u)
     elif mode=='inbox':qs=qs.filter(Q(status='review',reviewer=u)|Q(status='approval',approver=u)|Q(status='director',director=u))
     elif mode=='director':qs=qs.filter(director=u).exclude(status='draft')
     elif mode=='completed':
         if not is_confirmer(u):raise PermissionDenied
-        qs=qs.filter(status__in=['ready','ceo','allowed','denied','hold','paid','received']).exclude(owner=u)
+        qs=qs.filter(status__in=['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received']).exclude(owner=u)
     elif mode=='finance':
         require_finance(u);qs=qs.filter(pk__in=finance_requests(u).values('pk'))
+    elif mode=='hold':
+        require_finance(u);qs=qs.filter(pk__in=finance_requests(u).values('pk'),status='hold')
     elif mode=='all':
         if not is_admin(u):raise PermissionDenied
     else:raise PermissionDenied
-    queue_counts=dict(approved=qs.count(),confirm=qs.filter(status='ready',confirmed_at=None).count(),collect=qs.filter(status='ready',confirmed_at__isnull=False).count()) if mode in ['completed','finance'] else {}
+    queue_counts=dict(approved=qs.count(),confirm=qs.filter(status='ready',confirmed_at=None).count(),collect=qs.filter(status__in=['ready','reapproval'],confirmed_at__isnull=False).count()) if mode in ['completed','finance'] else {}
     stage=request.GET.get('stage','') if mode in ['completed','finance'] else ''
     if stage=='confirm':qs=qs.filter(status='ready',confirmed_at=None)
-    elif stage=='collect':qs=qs.filter(status='ready',confirmed_at__isnull=False)
+    elif stage=='collect':qs=qs.filter(status__in=['ready','reapproval'],confirmed_at__isnull=False)
     selected=request.GET.get('state','')
     states=REQUESTER_STATES if mode=='mine' else PurchaseRequest.STATES
     if mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
     elif selected in dict(states):qs=qs.filter(status=selected)
+    if mode=='mine' and request.GET.get('unread')=='1':qs=qs.filter(completion_unread=True)
     q=request.GET.get('q','').strip()[:120]
     if q:qs=qs.filter(Q(product__icontains=q)|Q(vendor__icontains=q)|Q(owner__first_name__icontains=q))
     if mode=='inbox':qs=qs.order_by('-urgent',F('needed_by').asc(nulls_last=True),'-created_at','-pk')
     docs=list(qs[:100])
     for d in docs:
         d.progress_info=progress(d,simplified=not can_view_purchase(u,d));d.queue_info=pending_columns(d)
+        d.can_collect=bool(d.confirmed_at and (d.status in ['ready','reapproval'] or d.status=='hold' and d.hold_ready))
     return page(request,'requests',titles[mode],documents=docs,mode=mode,states=states,
                 selected=selected,total=qs.count(),q=q,queue_counts=queue_counts,stage=stage)
 
@@ -124,12 +128,18 @@ def compose(request,pk=None):
 def detail(request,pk):
     d=get_object_or_404(requests_for(request.user).select_related('owner','reviewer','approver','director','current_report'),pk=pk)
     notices_for(request.user).filter(request=d,read=False).update(read=True)
+    if d.owner_id==request.user.pk and d.completion_unread:
+        PurchaseRequest.objects.filter(pk=d.pk,revision=d.revision).update(completion_unread=False)
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
-    can_pay=d.status=='allowed' and (finance_assigned(request.user,d) or request.user.profile.is_representative and d.current_report_id and d.current_report.representative_id==request.user.pk)
     simplified=not can_view_purchase(request.user,d)
     return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,visible_events=events_for(d,simplified),approval_cards=approval_track(d),purchase_steps=purchase_progress(d) if not simplified and (d.confirmed_at or d.current_report_id) else [],can_confirm=is_confirmer(request.user) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,can_approve=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id and not d.confirmed_at,
-        can_pay=can_pay,can_receive=d.owner_id==request.user.pk and d.status=='paid',
+        can_receive=d.owner_id==request.user.pk and d.status in ['allowed','paid'],
+        can_supplement=d.status=='supplement' and d.owner_id==request.user.pk,
+        can_request_supplement=is_confirmer(request.user) and d.owner_id!=request.user.pk and d.status=='ready' and not d.confirmed_at and not d.current_report_id,
+        can_prepare_hold=finance_assigned(request.user,d) and d.status=='hold',
+        can_amend=finance_assigned(request.user,d) and d.status=='allowed' and not d.received_quantity and not d.paid_at,
+        supplements=d.supplements.all(),amendments=d.amendments.all(),
         receipt_key=uuid4(),attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
 
 
@@ -155,11 +165,11 @@ def report_new(request):
     require_finance(request.user)
     try:
         ids=selected_ids(request.POST.getlist('requests'))
-        docs=list(requests_for(request.user).filter(pk__in=ids,status__in=['ready','hold'],confirmed_at__isnull=False).select_related('owner').order_by('department','pk'))
-        if len(docs)!=len(ids) or any(not finance_assigned(request.user,d) for d in docs):raise ValidationError('이미 취합되었거나 취합할 수 없는 품목이 있습니다.')
+        docs=list(requests_for(request.user).filter(pk__in=ids,status__in=['ready','hold','reapproval'],confirmed_at__isnull=False).select_related('owner').order_by('department','pk'))
+        if len(docs)!=len(ids) or any(not finance_assigned(request.user,d) or d.status=='hold' and not d.hold_ready for d in docs):raise ValidationError('이미 취합되었거나 취합할 수 없는 품목이 있습니다.')
         if request.POST.get('intent')=='submit':
             report=submit_report(request.user,ids,request.POST.get('title',''),request.POST.get('note',''),request.POST.get('key'))
-            messages.success(request,'대표님에게 품목별 구매승인를 요청했습니다.')
+            messages.success(request,'대표님에게 품목별 구매승인을 요청했습니다.')
             return redirect('purchasing:report_detail',pk=report.pk)
     except ValidationError as exc:
         messages.error(request,' '.join(exc.messages));return redirect('/purchase-lab/requests/?mode=finance')
@@ -307,3 +317,33 @@ def update_location(request,pk):
             event(user,'보관 위치 변경',request=d,detail=f'{before or "미등록"} → {location or "미등록"}')
             messages.success(request,'보관 위치를 저장했습니다.')
     return redirect('purchasing:detail',pk=pk)
+
+
+@login_required
+def supplement(request,pk):
+    d=get_object_or_404(PurchaseRequest,pk=pk,owner=request.user,status='supplement')
+    form=SupplementForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,initial=dict(revision=d.revision,reason=d.reason,url=d.url))
+    if request.method=='POST' and form.is_valid():
+        try:
+            with StoredFiles() as stored,transaction.atomic():
+                d=supplement_request(pk,request.user,form.cleaned_data,form.cleaned_data['revision'])
+                stored.add(d,request.user,form.cleaned_data['files'],'request')
+            messages.success(request,'보완 내용을 제출했습니다. 구매 품목확인자가 다시 확인합니다.')
+            return redirect('purchasing:detail',pk=pk)
+        except ValidationError as exc:form.add_error(None,exc)
+    return page(request,'supplement','구매요청 보완',doc=d,form=form,supplement=d.supplements.first())
+
+
+@login_required
+def amount_change(request,pk):
+    d=get_object_or_404(requests_for(request.user),pk=pk)
+    if not finance_assigned(request.user,d):raise PermissionDenied
+    form=AmountChangeForm(request.POST if request.method=='POST' else None,initial=dict(revision=d.revision,quantity=d.quantity,unit_price=d.unit_price))
+    if request.method=='POST' and form.is_valid():
+        try:
+            values=form.cleaned_data
+            d=amend_amount(pk,request.user,values['quantity'],values['unit_price'],values['reason'],values['revision'])
+            messages.success(request,'금액 증가로 재승인이 필요합니다. 취합·보고에서 다시 구매요청해 주세요.' if d.status=='reapproval' else '금액 변경 이력을 저장했습니다. 기존 승인은 유지됩니다.')
+            return redirect('purchasing:detail',pk=pk)
+        except ValidationError as exc:form.add_error(None,exc)
+    return page(request,'amount_change','승인 후 금액 변경',doc=d,form=form)

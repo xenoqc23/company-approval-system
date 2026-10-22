@@ -14,3 +14,5 @@ body.purchase-workspace{min-width:0;background:#fbfdfc;color:var(--ink);max-widt
 .attachment-row{display:block;padding:.8rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.attachment-row small{margin-top:.3rem}
 
 .purchase-workspace .badge.urgent{background:#fff0d9;color:#a94c16;font-size:.75rem;margin-left:.4rem}
+
+.purchase-workspace .badge.allowed,.purchase-workspace .badge.received{border-radius:999px;background:#def3e5;color:#12613b;font-weight:750}.purchase-workspace .badge.supplement,.purchase-workspace .badge.reapproval{background:#fff1d9;color:#99611c}.bulk-decisions{padding:1rem;border:1px solid #d6e8dd;border-radius:1rem;background:#f4faf7}.bulk-decisions p{margin-bottom:0}.purchase-workspace .pending-approval-summary + .pending-approval-summary{margin-top:1rem}.purchase-workspace .purchase-totals{grid-template-columns:repeat(4,minmax(0,1fr))}@media(max-width:900px){.purchase-workspace .purchase-totals{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:1rem}}

@@ -112,3 +112,18 @@ class PolicyForm(forms.Form):
         if p.enabled:validate_policy_people(p)
         event(actor,'구매 규정 변경',detail=f'버전 {p.version} / 내부 결재: {p.approval_modes}\n사유: {data["reason"]}')
         return p
+
+
+class SupplementForm(forms.Form):
+    revision=forms.IntegerField(widget=forms.HiddenInput)
+    reason=forms.CharField(label='구매 사유 보완',widget=forms.Textarea(attrs={'rows':4}),max_length=10000)
+    url=forms.URLField(label='구매 링크 · 선택',required=False,max_length=1000)
+    response=forms.CharField(label='보완한 내용',max_length=1000,widget=forms.Textarea(attrs={'rows':3}))
+    files=MultipleFileField(label='보완 자료 · 선택',required=False,widget=MultipleFileInput())
+
+
+class AmountChangeForm(forms.Form):
+    revision=forms.IntegerField(widget=forms.HiddenInput)
+    quantity=forms.IntegerField(label='변경 수량',min_value=1,max_value=999999)
+    unit_price=WonField(label='변경 단가 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'))
+    reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':3}))

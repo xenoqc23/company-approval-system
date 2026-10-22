@@ -18,7 +18,7 @@ def shell(request):
     if not request.user.is_authenticated or not active(request.user):return common
     u=request.user;finance=is_finance(u);checker=is_confirmer(u)
     return dict(**common,lab_admin=is_admin(u),lab_finance=finance,lab_confirmer=checker,demo_accounts=demo_choices(),lab_policy=policy(),
-        counts=dict(pending=PurchaseRequest.objects.filter(Q(status='review',reviewer=u)|Q(status='approval',approver=u)|Q(status='director',director=u)).count(),
+        counts=dict(own_completed=PurchaseRequest.objects.filter(owner=u,completion_unread=True).count(),hold=finance_requests(u).filter(status='hold').count() if finance else 0,pending=PurchaseRequest.objects.filter(Q(status='review',reviewer=u)|Q(status='approval',approver=u)|Q(status='director',director=u)).count(),
                     completed=PurchaseRequest.objects.filter(status__in=['ready','hold'],confirmed_at=None).exclude(owner=u).count() if checker else 0,
-                    finance=finance_requests(u).filter(status__in=['ready','hold'],confirmed_at__isnull=False).count() if finance else 0,
+                    finance=finance_requests(u).filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).count() if finance else 0,
                     representative=PurchaseReport.objects.filter(status='pending',representative=u).count(),notices=notices_for(u).filter(read=False).count()))

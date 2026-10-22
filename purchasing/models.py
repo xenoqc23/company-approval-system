@@ -36,7 +36,7 @@ class PurchasePolicy(models.Model):
 
 class PurchaseRequest(models.Model):
     STATES = [('draft','임시저장'),('review','검토 대기'),('approval','승인 대기'),('director','담당 이사 최종승인 대기'),
-              ('ready','승인완료'),('ceo','구매요청'),('allowed','구매승인'),
+              ('ready','승인완료'),('supplement','보완 요청'),('reapproval','금액 변경 · 재승인 대기'),('ceo','구매요청'),('allowed','승인완료 · 수령 대기'),
               ('denied','구매반려'),('hold','구매보류'),('paid','결제 완료 · 수령 대기'),('received','수령 완료'),
               ('rejected','내부 결재 반려'),('cancelled','요청 취소')]
     owner = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='purchase_requests')
@@ -54,6 +54,9 @@ class PurchaseRequest(models.Model):
     usage_department = models.CharField(max_length=30,blank=True)
     storage_location = models.CharField(max_length=150,blank=True)
     received_quantity = models.PositiveIntegerField(default=0)
+    completion_unread = models.BooleanField(default=False)
+    hold_ready = models.BooleanField(default=False)
+    hold_note = models.CharField(max_length=1000,blank=True)
     private = models.BooleanField(default=False)
     status = models.CharField(max_length=12,choices=STATES,default='draft',db_index=True)
     request_key = models.UUIDField(default=uuid4,unique=True,editable=False)
@@ -124,6 +127,32 @@ class PurchaseReportItem(models.Model):
 
     @property
     def total(self):return Decimal(self.snapshot['unit_price'])*self.snapshot['quantity']
+
+
+class PurchaseSupplement(models.Model):
+    request = models.ForeignKey(PurchaseRequest,on_delete=models.PROTECT,related_name='supplements')
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    reason = models.CharField(max_length=1000)
+    before = models.JSONField()
+    after = models.JSONField(null=True,blank=True)
+    response = models.CharField(max_length=1000,blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    resolved_at = models.DateTimeField(null=True,blank=True)
+
+    class Meta:ordering=['-created_at','-pk']
+
+
+class PurchaseAmendment(models.Model):
+    request = models.ForeignKey(PurchaseRequest,on_delete=models.PROTECT,related_name='amendments')
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
+    previous_report = models.ForeignKey(PurchaseReport,on_delete=models.PROTECT)
+    before = models.JSONField()
+    after = models.JSONField()
+    reason = models.CharField(max_length=1000)
+    requires_reapproval = models.BooleanField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:ordering=['-created_at','-pk']
 
 
 class PurchaseEvent(models.Model):

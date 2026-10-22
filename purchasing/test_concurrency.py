@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import connection,close_old_connections
 from .models import PurchaseRequest,PurchaseReport,PurchaseEvent
-from .services import save_request,request_action,submit_report,decide_report
+from .services import save_request,request_action,submit_report,decide_report,amend_amount
 
 
 @skipUnlessDBFeature('has_select_for_update')
@@ -78,3 +78,19 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         key=uuid4();op=lambda:request_action(self.doc.pk,self.users['p_dev'],'receive',quantity=6,receipt_key=key)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         self.doc.refresh_from_db();self.assertEqual((self.doc.status,self.doc.received_quantity,self.doc.remaining_quantity),('paid',6,4));self.assertEqual(self.doc.receipts.count(),1)
+
+    def test_amount_increase_and_receipt_cannot_both_commit(self):
+        r,values=self.allowed_report();decide_report(r.pk,self.users['p_ceo'],values,0,final=True)
+        self.doc.refresh_from_db();revision=self.doc.revision
+        results=self.parallel(lambda:amend_amount(self.doc.pk,self.users['p_finance'],1,Decimal('200'),'금액 증가',revision),lambda:request_action(self.doc.pk,self.users['p_dev'],'receive',quantity=1,receipt_key=uuid4()))
+        self.assertCountEqual(results,['ok','refused'])
+        self.doc.refresh_from_db();self.assertIn(self.doc.status,['reapproval','received'])
+        self.assertEqual(bool(self.doc.amendments.count()),self.doc.status=='reapproval')
+        self.assertEqual(bool(self.doc.receipts.count()),self.doc.status=='received')
+
+    def test_duplicate_amount_change_preserves_one_history_record(self):
+        r,values=self.allowed_report();decide_report(r.pk,self.users['p_ceo'],values,0,final=True)
+        self.doc.refresh_from_db();revision=self.doc.revision
+        op=lambda:amend_amount(self.doc.pk,self.users['p_finance'],1,Decimal('100'),'할인 적용',revision)
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        self.assertEqual(self.doc.amendments.count(),1)

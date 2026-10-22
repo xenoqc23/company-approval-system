@@ -47,7 +47,7 @@ class PurchaseFlowTests(TestCase):
         return request_action(self.approved(who).pk,self.user('prod_director'),'confirm_items')
     def report(self,docs=None):return submit_report(self.user('finance'),[d.pk for d in docs or [self.ready()]],'구매 취합 보고','사유·금액 확인 후 보고합니다.',uuid4())
     def decisions(self,report,choices):
-        return {str(i.pk):dict(decision=choice,reason='불허 또는 보류 사유' if choice in ['deny','hold'] else '') for i,choice in zip(report.items.all(),choices)}
+        return {str(i.pk):dict(decision=choice,reason='반려 또는 보류 사유' if choice in ['deny','hold'] else '') for i,choice in zip(report.items.all(),choices)}
 
     def test_internal_approval_and_purchase_confirmation_are_separate(self):
         d=self.create();self.assertEqual(d.status,'review');self.assertIsNone(d.director)
@@ -165,7 +165,7 @@ class PurchaseFlowTests(TestCase):
 
     def test_hold_can_be_reported_again_without_overwriting_original_batch(self):
         d=self.ready();r=self.report([d]);decide_report(r.pk,self.user('ceo'),self.decisions(r,['hold']),0,final=True)
-        d.refresh_from_db();second=self.report([d]);d.refresh_from_db()
+        d.refresh_from_db();request_action(d.pk,self.user('finance'),'prepare_hold','호환 여부 확인 완료');second=self.report([d]);d.refresh_from_db()
         self.assertEqual((d.status,d.current_report_id),('ceo',second.pk))
         self.assertEqual(r.items.get().decision,'hold');self.assertEqual(d.report_items.count(),2)
 
@@ -238,23 +238,23 @@ class PurchaseFlowTests(TestCase):
 
     def test_owner_sees_simple_progress_but_finance_retains_internal_stages(self):
         d=self.ready();self.as_user('dev')
-        def assert_simple():
+        def assert_simple(label='구매 진행 중'):
             response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
-            self.assertContains(response,'구매 진행 중')
+            self.assertContains(response,label)
             for text in ['경리 취합','대표 구매승인','결제 완료 확인','취합 문서:']:
                 self.assertNotContains(response,text)
             return response
         assert_simple()
         r=self.report([d]);assert_simple()
         decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=True)
-        assert_simple()
+        assert_simple('승인완료')
         self.as_user('finance')
         response=self.client.get(reverse('purchasing:detail',args=[d.pk]))
         self.assertContains(response,'구매 진행 현황');self.assertContains(response,'취합·보고');self.assertContains(response,'대표 구매승인')
         request_action(d.pk,self.user('finance'),'paid','대표 카드 결제 확인')
-        self.as_user('dev');response=assert_simple();self.assertContains(response,'수령 확인')
+        self.as_user('dev');response=assert_simple('승인완료');self.assertContains(response,'수령 확인')
         self.assertContains(self.client.get(reverse('purchasing:home')),'구매 진행상황이 변경되었습니다.')
-        response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=purchasing')
+        response=self.client.get(reverse('purchasing:requests')+'?mode=mine&state=paid')
         self.assertContains(response,d.product);self.assertNotContains(response,'대표 구매승인')
 
     def test_won_entry_round_trip_and_grouping_do_not_change_amount(self):

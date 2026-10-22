@@ -48,7 +48,7 @@ def requests_for(user):
     if not active(user):return PurchaseRequest.objects.none()
     if is_admin(user):return PurchaseRequest.objects.all()
     roles=Q(owner=user)|Q(reviewer=user)|Q(approver=user)|Q(director=user)
-    if is_confirmer(user):roles|=Q(status__in=['ready','ceo','allowed','denied','hold','paid','received'])
+    if is_confirmer(user):roles|=Q(status__in=['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received'])
     if is_finance(user):
         # JSON membership differs between SQLite and MariaDB: keep the same explicit participant check on both.
         roles|=Q(pk__in=finance_requests(user).values('pk'))

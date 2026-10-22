@@ -15,6 +15,17 @@
   boxes.forEach(b=>b.addEventListener('change',update));all.addEventListener('change',()=>{boxes.forEach(b=>b.checked=all.checked);update();});update();
  }
  document.querySelectorAll('[data-report-item]').forEach(item=>{const decision=item.querySelector('[data-item-decision]'),reason=item.querySelector('[data-item-reason]');if(!decision)return;const sync=()=>reason.required=['deny','hold'].includes(decision.value);decision.addEventListener('change',sync);sync();});
+ const reportForm=document.querySelector('[data-report-review]');
+ if(reportForm){
+  const items=[...reportForm.querySelectorAll('[data-report-item]')];
+  const summary=()=>{const counts={pending:0,allow:0,deny:0,hold:0},totals={pending:0n,allow:0n,deny:0n,hold:0n};
+   items.forEach(item=>{const choice=item.querySelector('[data-item-decision]')?.value;if(!choice)return;counts[choice]++;const [whole,frac='']=item.dataset.total.split('.');totals[choice]+=BigInt(whole)*100n+BigInt(frac.padEnd(2,'0'));});
+   return [['allow','승인'],['deny','반려'],['hold','보류'],['pending','검토 전']].map(([key,label])=>`${label} ${counts[key]}건 · ${formatCents(totals[key])}`).join(' / ');};
+  const refresh=()=>{const target=reportForm.querySelector('[data-decision-summary]');if(target)target.textContent=summary();};
+  reportForm.querySelector('[data-approve-all]')?.addEventListener('click',()=>{items.forEach(item=>{const choice=item.querySelector('[data-item-decision]');choice.value='allow';choice.dispatchEvent(new Event('change'));});refresh();});
+  reportForm.addEventListener('change',refresh);refresh();
+  reportForm.querySelector('[data-final-decisions]')?.addEventListener('click',event=>{if(!confirm(summary()+'\n이 결과를 확정할까요? 승인된 품목은 기안자에게 즉시 완료로 전달됩니다.'))event.preventDefault();});
+ }
  const urgent=document.querySelector('[name=urgent]'),urgentReason=document.querySelector('[name=urgent_reason]');if(urgent&&urgentReason){const sync=()=>urgentReason.required=urgent.checked;urgent.addEventListener('change',sync);sync();}
  const form=document.querySelector('[data-request-form]');
  if(form){const qty=form.querySelector('[name=quantity]'),price=form.querySelector('[name=unit_price]');const sum=()=>{let amount=price.value.trim();const valid=/^\d+(?:\.\d{0,2})?$/.test(amount)||/^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(amount);const parts=amount.replaceAll(',','').split('.');const cents=valid?(BigInt(parts[0])*100n+BigInt((parts[1]||'').padEnd(2,'0'))):0n;const count=/^\d{1,6}$/.test(qty.value)?BigInt(qty.value):0n;form.querySelector('[data-price]').textContent=formatCents(cents*count);};qty.addEventListener('input',sum);price.addEventListener('input',sum);sum();

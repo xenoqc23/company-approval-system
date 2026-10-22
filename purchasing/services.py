@@ -5,7 +5,7 @@ from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
 from django.utils import timezone
 from workflow.models import RANKS
-from .models import PurchasePolicy,PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseEvent,PurchaseNotice,DemoAccount,PurchaseReceipt
+from .models import PurchasePolicy,PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseEvent,PurchaseNotice,DemoAccount,PurchaseReceipt,PurchaseSupplement,PurchaseAmendment
 from .access import active,is_admin,is_finance,require_finance,is_confirmer,confirmers,finance_assigned
 
 REQUEST_FIELDS=('product','vendor','quantity','unit_price','url','reason','private','needed_by','urgent','urgent_reason','usage_department','storage_location')
@@ -67,8 +67,9 @@ def validate_policy_people(p):
 
 
 def serialize_request(d):
-    return dict(number=d.number,department=d.department,owner=d.owner.first_name,product=d.product,vendor=d.vendor,
+    data=dict(number=d.number,department=d.department,owner=d.owner.first_name,product=d.product,vendor=d.vendor,
                 quantity=d.quantity,unit_price=str(d.unit_price),total=str(d.total),reason=d.reason,url=d.url,needed_by=d.needed_by.isoformat() if d.needed_by else '',urgent=d.urgent,urgent_reason=d.urgent_reason,usage_department=d.usage_department)
+    return data
 
 
 @transaction.atomic
@@ -150,6 +151,20 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         d.purchase_route=dict(confirmer_id=actor.pk,confirmer_name=actor.first_name,collector_ids=[u.pk for u in people],collector_names=[u.first_name for u in people],representative_id=p.representative_id)
         event(actor,'구매 품목 확인',request=d,detail=reason)
         notify(people,f'{d.product} · 구매 품목 확인 완료, 취합·보고 대기',request=d)
+    elif action=='request_supplement':
+        if not is_confirmer(actor) or actor.pk==d.owner_id:raise PermissionDenied
+        if d.status!='ready' or d.confirmed_at or d.current_report_id:raise ValidationError('구매 품목 확인 전의 승인완료 문서만 보완 요청할 수 있습니다.')
+        if not reason:raise ValidationError('보완이 필요한 내용을 입력해 주세요.')
+        PurchaseSupplement.objects.create(request=d,requested_by=actor,reason=reason,before=serialize_request(d))
+        d.status='supplement';d.decision_reason=reason
+        event(actor,'구매요청 보완 요청',request=d,detail=reason)
+        notify([d.owner],f'{d.product} · 보완 요청 · {reason}',request=d)
+    elif action=='prepare_hold':
+        if not finance_assigned(actor,d):raise PermissionDenied
+        if d.status!='hold':raise ValidationError('보류된 품목만 재보고 준비할 수 있습니다.')
+        if not reason:raise ValidationError('보류 사유를 확인하고 보완 내용을 입력해 주세요.')
+        d.hold_ready=True;d.hold_note=reason
+        event(actor,'보류 품목 재보고 준비',request=d,detail=reason)
     elif action=='cancel':
         if actor.pk!=d.owner_id or d.status not in ['draft','review','approval','director','ready'] or d.current_report_id or d.confirmed_at:
             raise PermissionDenied('구매 품목 확인 전의 본인 요청만 취소할 수 있습니다.')
@@ -164,7 +179,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         notify([d.owner],f'{d.product} · 결제 완료, 물품 수령을 확인해 주세요.',request=d)
     elif action=='receive':
         if d.owner_id!=actor.pk:raise PermissionDenied
-        if d.status!='paid':raise ValidationError('결제 완료로 확인된 품목만 수령 확인할 수 있습니다.')
+        if d.status not in ['allowed','paid']:raise ValidationError('구매승인이 확정된 품목만 수령 확인할 수 있습니다.')
         remaining=d.remaining_quantity
         try:count=remaining if quantity is None else int(quantity)
         except (ValueError,TypeError):raise ValidationError('이번에 수령한 수량을 입력해 주세요.')
@@ -193,12 +208,17 @@ def submit_report(actor,ids,title,note,key):
     if not ids or len(ids)>100 or len(set(ids))!=len(ids) or any(x<1 or x>9223372036854775807 for x in ids):raise ValidationError('중복 없이 1~100개 품목을 선택해 주세요.')
     if PurchaseReport.objects.filter(request_key=key).exists():raise ValidationError('이미 제출한 구매요청입니다.')
     docs=list(PurchaseRequest.objects.select_for_update().filter(pk__in=ids).order_by('pk').select_related('owner'))
-    if len(docs)!=len(ids) or any(d.status not in ['ready','hold'] or not d.confirmed_at or not finance_assigned(actor,d) for d in docs):
+    if len(docs)!=len(ids) or any(d.status not in ['ready','hold','reapproval'] or d.status=='hold' and not d.hold_ready or not d.confirmed_at or not finance_assigned(actor,d) for d in docs):
         raise ValidationError('이미 취합되었거나 구매 품목 확인이 끝나지 않은 품목이 있습니다. 목록을 새로고침해 주세요.')
     report=PurchaseReport.objects.create(created_by=actor,representative=p.representative,title=title.strip(),note=note.strip(),request_key=key)
     for d in docs:
-        PurchaseReportItem.objects.create(report=report,request=d,snapshot=serialize_request(d))
-        d.status,d.current_report,d.decision_reason='ceo',report,'';d.revision+=1;d.save()
+        snapshot=serialize_request(d)
+        if d.status=='reapproval':
+            change=d.amendments.first()
+            snapshot['amendment']=dict(before=change.before,reason=change.reason,previous_report=change.previous_report.number)
+        elif d.status=='hold':snapshot['hold_followup']=dict(reason=d.decision_reason,note=d.hold_note)
+        PurchaseReportItem.objects.create(report=report,request=d,snapshot=snapshot)
+        d.status,d.current_report,d.decision_reason='ceo',report,'';d.hold_ready=False;d.revision+=1;d.save()
         event(actor,'대표 구매요청',request=d,report=report,detail=report.number)
         notify([d.owner],f'{d.product} · 취합·보고 완료, 대표님 구매요청',request=d)
     event(actor,'구매요청 제출',report=report,detail=note)
@@ -227,10 +247,56 @@ def decide_report(pk,actor,decisions,revision,final=False):
             d=docs[item.request_id]
             if d.status!='ceo' or d.current_report_id!=report.pk:raise ValidationError('취합 품목의 진행 상태가 바뀌었습니다. 다시 확인해 주세요.')
             d.status={'allow':'allowed','deny':'denied','hold':'hold'}[item.decision]
-            d.decision_reason=item.reason;d.permitted_at=now;d.revision+=1;d.save()
+            d.decision_reason=item.reason;d.permitted_at=now;d.completion_unread=item.decision=='allow';d.hold_ready=False;d.hold_note='';d.revision+=1;d.save()
             event(actor,'대표 '+item.get_decision_display(),request=d,report=report,detail=item.reason)
-            notify([d.owner]+finance_users(p),f'{d.product} · 대표 {item.get_decision_display()}'+(f' · {item.reason}' if item.reason else ''),request=d)
+            notify([d.owner],f'{d.product} · '+('구매 승인완료 · 물품을 받으면 수령 확인해 주세요.' if item.decision=='allow' else item.get_decision_display()+' · '+item.reason),request=d)
+            notify(finance_users(p),f'{d.product} · 대표 {item.get_decision_display()}'+(f' · {item.reason}' if item.reason else ''),request=d)
         report.status,report.decided_at='decided',now
         event(actor,'구매 검토 결과 확정',report=report)
     else:event(actor,'품목별 검토 임시저장',report=report)
     report.revision+=1;report.save();return report
+
+
+@transaction.atomic
+def supplement_request(pk,actor,values,revision):
+    lock_policy();actor=actor_now(actor)
+    d=PurchaseRequest.objects.select_for_update().get(pk=pk)
+    if actor.pk!=d.owner_id:raise PermissionDenied
+    if d.status!='supplement' or d.revision!=revision:raise ValidationError('보완 상태가 바뀌었습니다. 문서를 다시 열어 주세요.')
+    supplement=d.supplements.select_for_update().filter(resolved_at=None).first()
+    if not supplement:raise ValidationError('보완 요청 내역이 없습니다.')
+    # Descriptive information only: approved items, quantity and price cannot be silently changed.
+    reason=str(values.get('reason') or '').strip();url=str(values.get('url') or '').strip();response=str(values.get('response') or '').strip()
+    if not reason or not response or len(response)>1000:raise ValidationError('구매 사유와 보완 내용을 입력해 주세요.')
+    d.reason,d.url=reason,url;d.full_clean()
+    supplement.after=serialize_request(d);supplement.response=response;supplement.resolved_at=timezone.now();supplement.save()
+    d.status='ready';d.decision_reason='';d.revision+=1;d.save()
+    event(actor,'구매요청 보완 완료',request=d,detail=response)
+    notify([supplement.requested_by],f'{d.product} · 보완 완료 · 구매 품목을 다시 확인해 주세요.',request=d)
+    return d
+
+
+@transaction.atomic
+def amend_amount(pk,actor,quantity,unit_price,reason,revision):
+    lock_policy();actor=actor_now(actor)
+    d=PurchaseRequest.objects.select_for_update().get(pk=pk)
+    if not finance_assigned(actor,d):raise PermissionDenied
+    if d.status!='allowed' or d.received_quantity or d.paid_at or d.revision!=revision:
+        raise ValidationError('수령 전의 구매승인 문서만 금액을 변경할 수 있습니다. 문서를 다시 열어 주세요.')
+    reason=str(reason or '').strip()
+    if not reason or len(reason)>1000:raise ValidationError('금액 변경 사유를 입력해 주세요.')
+    try:
+        count=int(quantity);price=Decimal(str(unit_price))
+        if str(count)!=str(quantity).strip() or not 1<=count<=999999 or not price.is_finite() or price.as_tuple().exponent < -2 or not Decimal('0')<price<=Decimal('999999999.99'):raise ValueError
+    except (ValueError,TypeError,InvalidOperation):raise ValidationError('수량과 단가를 확인해 주세요.')
+    before=serialize_request(d);old=d.total
+    if d.quantity==count and d.unit_price==price:raise ValidationError('변경된 수량 또는 단가가 없습니다.')
+    d.quantity,d.unit_price=count,price
+    if d.total>Decimal('999999999999.99'):raise ValidationError('요청 총액이 입력 가능한 범위를 초과합니다.')
+    increased=d.total>old
+    PurchaseAmendment.objects.create(request=d,changed_by=actor,previous_report=d.current_report,before=before,after=serialize_request(d),reason=reason,requires_reapproval=increased)
+    if increased:d.status='reapproval';d.completion_unread=False
+    d.revision+=1;d.save()
+    event(actor,'구매 금액 변경',request=d,detail=f'{old}원 → {d.total}원 / '+('금액 증가: 재승인 필요' if increased else '금액 감소: 기존 승인 유지')+' / '+reason)
+    notify([d.owner],f'{d.product} · '+('금액 변경으로 구매 진행 중입니다.' if increased else '구매 금액이 변경되었습니다.'),request=d)
+    return d
