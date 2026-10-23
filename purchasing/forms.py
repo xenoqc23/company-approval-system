@@ -4,6 +4,8 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from workflow.models import RANKS
+from workflow.forms import DepartmentEmployeeSelect,department_picker
+from django.conf import settings
 from .models import PurchaseRequest,PurchasePolicy,MODES,dev_modes,other_modes
 from .access import is_admin
 from .services import eligible_people,mode_for,validate_policy_people,event,actor_now,lock_policy,can_request_direct,department_checker
@@ -48,6 +50,8 @@ class AttachmentForm(forms.Form):
 
 
 class RequestForm(forms.ModelForm):
+    reviewer_department=department_picker('reviewer')
+    approver_department=department_picker('approver')
     request_method=forms.ChoiceField(label='요청 방식',choices=[('review','검토 요청'),('direct','구매담당자에게 요청')],initial='review',widget=forms.RadioSelect)
     files=MultipleFileField(label='첨부파일 · 선택',required=False,widget=MultipleFileInput(attrs={'accept':'.pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.docx,.doc,.hwp,.hwpx,.txt'}))
     unit_price=WonField(label='개당 금액 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'),widget=forms.TextInput(attrs={'inputmode':'decimal','placeholder':'예: 50,000','autocomplete':'off'}))
@@ -81,6 +85,16 @@ class RequestForm(forms.ModelForm):
         qs=qs.filter(profile__rank__in=RANKS[minimum:])
         self.fields['reviewer'].queryset=qs
         self.fields['approver'].queryset=qs
+        if settings.INTEGRATED_PURCHASES:
+            for key in ['reviewer','approver']:
+                self.fields[key].widget=DepartmentEmployeeSelect()
+                self.fields[key].widget.choices=self.fields[key].choices
+                self.initial[key+'_department']=user.profile.department
+                person_id=self.data.get(key) if self.is_bound else self.initial.get(key) or getattr(self.instance,key+'_id',None)
+                person=qs.filter(pk=person_id).first() if str(person_id or '').isascii() and str(person_id or '').isdigit() and len(str(person_id))<=18 else None
+                if person:self.initial[key+'_department']=person.profile.department
+        else:
+            self.fields.pop('reviewer_department');self.fields.pop('approver_department')
         self.fields['reviewer'].required=self.mode=='review_approval'
         self.fields['approver'].required=self.mode in ['approval','review_approval']
         if self.instance.pk:self.initial['key']=self.instance.request_key

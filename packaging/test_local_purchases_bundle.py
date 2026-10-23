@@ -8,7 +8,8 @@ import build_local_purchases as package
 
 class PurchaseBundleTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):cls.archive=package.build()
+    def setUpClass(cls):
+        cls.temp=tempfile.TemporaryDirectory();cls.addClassCleanup(cls.temp.cleanup);cls.archive=package.build(Path(cls.temp.name)/'test.zip')
 
     def test_bundle_runtime_sources_checksums_and_private_exclusions(self):
         with ZipFile(self.archive) as z:
@@ -50,7 +51,7 @@ class PurchaseBundleTests(unittest.TestCase):
                  'DJANGO_SECRET_KEY':'isolated-settings-check-only-'+'x'*64,'DB_ENGINE':'mariadb','DB_NAME':'unconnected-test',
                  'DB_USER':'unconnected-test','DB_PASSWORD':'not-a-real-password','DJANGO_ALLOWED_HOSTS':'localhost',
                  'APPROVAL_DATA_DIR':folder}
-            code="import approval_site.settings as s; assert not s.PURCHASE_LAB_ENABLED; assert 'purchasing' not in s.INSTALLED_APPS; assert s.SESSION_COOKIE_NAME=='xenosys_approval_sessionid'; print('Production guard verified without connecting to any database.')"
+            code="import approval_site.settings as s; assert not s.PURCHASE_LAB_ENABLED; assert 'purchasing' in s.INSTALLED_APPS; assert s.INTEGRATED_PURCHASES; assert s.SESSION_COOKIE_NAME=='xenosys_approval_sessionid'; print('Production guard verified without connecting to any database.')"
             result=subprocess.run([sys.executable,'-c',code],cwd=package.ROOT,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
 

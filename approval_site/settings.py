@@ -93,26 +93,35 @@ WEBPUSH_CONTACT = os.environ.get('WEBPUSH_CONTACT', 'https://localhost')
 # Closed-browser push is deferred on NAS; only explicitly enabled local tests use it.
 WEBPUSH_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_WEBPUSH_ENABLED', '0') == '1'
 
-# Purchase-only PC laboratory. Never activates on NAS and never opens the normal data folder.
-INTEGRATED_PURCHASES = not PRODUCTION and os.environ.get('APPROVAL_INTEGRATED_PURCHASES', '0') == '1'
-PURCHASE_LAB_ENABLED = not PRODUCTION and (os.environ.get('APPROVAL_PURCHASE_LAB', '0') == '1' or INTEGRATED_PURCHASES)
+# One application is used on NAS and on a local PC. Only the fictional account
+# switcher and its seed commands are limited to an explicitly marked local lab.
+LOCAL_DEMO_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_LOCAL_DEMO', '0') == '1'
+_legacy_integrated_lab = not PRODUCTION and os.environ.get('APPROVAL_INTEGRATED_PURCHASES', '0') == '1'
+PURCHASE_LAB_ENABLED = not PRODUCTION and (os.environ.get('APPROVAL_PURCHASE_LAB', '0') == '1' or LOCAL_DEMO_ENABLED or _legacy_integrated_lab)
+_STANDALONE_PURCHASE_LAB = PURCHASE_LAB_ENABLED and not (LOCAL_DEMO_ENABLED or _legacy_integrated_lab)
+INTEGRATED_PURCHASES = not _STANDALONE_PURCHASE_LAB and os.environ.get('APPROVAL_PURCHASES_ENABLED', '1') == '1'
+# Register schema on both platforms, including when the legacy UI is selected.
+INSTALLED_APPS.append('purchasing')
+if INTEGRATED_PURCHASES:
+    TEMPLATES[0]['OPTIONS']['context_processors'].append('purchasing.integration.shell')
 if PURCHASE_LAB_ENABLED:
     if DATA_DIR.name != 'purchase-test':
-        raise ImproperlyConfigured('구매 테스트는 별도 purchase-test 데이터 폴더에서만 실행할 수 있습니다.')
+        raise ImproperlyConfigured('가상 테스트는 별도 purchase-test 데이터 폴더에서만 실행할 수 있습니다.')
     if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
         DATABASES['default']['OPTIONS']['transaction_mode'] = 'IMMEDIATE'
-    INSTALLED_APPS.append('purchasing')
-    if not INTEGRATED_PURCHASES:
+    WEBPUSH_ENABLED = False
+    if _STANDALONE_PURCHASE_LAB:
         MIDDLEWARE[-1] = 'purchasing.middleware.PurchaseLabGateMiddleware'
         TEMPLATES[0]['OPTIONS']['context_processors'][-1] = 'purchasing.context.shell'
+        _purchase_cookie_prefix = {'terms-v1':'xenosys_purchase_terms','features-v1':'xenosys_purchase_features','complete-v1':'xenosys_purchase_complete','simple-v1':'xenosys_purchase_simple','departments-v1':'xenosys_purchase_departments'}.get(os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE'),'xenosys_purchase_lab')
+        SESSION_COOKIE_NAME = _purchase_cookie_prefix + '_sessionid'
+        CSRF_COOKIE_NAME = _purchase_cookie_prefix + '_csrftoken'
+        LOGIN_URL = '/purchase-lab/login/'
+    elif LOCAL_DEMO_ENABLED:
+        SESSION_COOKIE_NAME = 'xenosys_full_local_sessionid'
+        CSRF_COOKIE_NAME = 'xenosys_full_local_csrftoken'
+        LOGIN_URL = '/login/'
     else:
-        TEMPLATES[0]['OPTIONS']['context_processors'].append('purchasing.integration.shell')
-    _purchase_cookie_prefix = {'terms-v1':'xenosys_purchase_terms','features-v1':'xenosys_purchase_features','complete-v1':'xenosys_purchase_complete','simple-v1':'xenosys_purchase_simple','departments-v1':'xenosys_purchase_departments'}.get(os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE'),'xenosys_purchase_lab')
-    SESSION_COOKIE_NAME = _purchase_cookie_prefix + '_sessionid'
-    CSRF_COOKIE_NAME = _purchase_cookie_prefix + '_csrftoken'
-    LOGIN_URL = '/purchase-lab/login/'
-    WEBPUSH_ENABLED = False
-    if INTEGRATED_PURCHASES:
         SESSION_COOKIE_NAME = 'xenosys_integrated_local_sessionid'
         CSRF_COOKIE_NAME = 'xenosys_integrated_local_csrftoken'
         LOGIN_URL = '/login/'

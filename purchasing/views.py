@@ -53,7 +53,7 @@ def switch(request):
     from django.conf import settings
     if not settings.PURCHASE_LAB_ENABLED or settings.DATA_DIR.name!='purchase-test':raise PermissionDenied
     from .context import DEMO_ROLES
-    account=get_object_or_404(DemoAccount.objects.filter(user__username__in=[name for name,label in DEMO_ROLES]),user_id=request.POST.get('user') if str(request.POST.get('user','')).isdigit() else None)
+    account=get_object_or_404(DemoAccount.objects.filter(user__username__in=[a.user.username for a in demo_choices()]),user_id=request.POST.get('user') if str(request.POST.get('user','')).isdigit() else None)
     if not active(account.user):raise PermissionDenied
     login(request,account.user,backend='django.contrib.auth.backends.ModelBackend')
     return redirect('dashboard' if settings.INTEGRATED_PURCHASES else 'purchasing:home')
@@ -144,7 +144,7 @@ def compose(request,pk=None):
             return redirect('purchasing:detail',pk=d.pk)
         except ValidationError as exc:form.add_error(None,exc)
     director=form.checker
-    return page(request,'compose','구매요청 작성',form=form,director=director,existing_files=visible_attachments(request.user,instance) if instance else [])
+    return page(request,'compose','구매요청 작성',form=form,director=director,purchase_configured=bool(p and p.enabled and p.dev_director_id and p.production_director_id and p.representative_id and p.finance.exists()),existing_files=visible_attachments(request.user,instance) if instance else [])
 
 
 @login_required

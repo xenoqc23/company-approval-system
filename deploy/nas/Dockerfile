@@ -13,6 +13,7 @@ WORKDIR /app
 COPY manage.py ./
 COPY approval_site ./approval_site
 COPY workflow ./workflow
+COPY purchasing ./purchasing
 COPY deploy/nas ./deploy/nas
 RUN APPROVAL_PRODUCTION=1 DJANGO_DEBUG=0 DJANGO_SECRET_KEY=build-only-unused-key-0000000000000000000000000000000000000000 DB_ENGINE=mariadb DB_NAME=build DB_USER=build DB_PASSWORD=unused DJANGO_ALLOWED_HOSTS=localhost python manage.py collectstatic --noinput && rm -rf var && chmod -R a+rX /app && mkdir -p /data /backups && chown approval:approval /data /backups
 USER approval

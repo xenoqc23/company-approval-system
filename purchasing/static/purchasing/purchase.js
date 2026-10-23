@@ -50,7 +50,7 @@
  const requestForm=document.querySelector('[data-request-form]');
  if(requestForm&&requestForm.querySelector('[name=request_method]')){
   const syncMethod=()=>{const direct=requestForm.querySelector('[name=request_method]:checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
-   fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&(field.name==='approver'||requestForm.dataset.reviewMode==='review_approval');});
+   fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&((field.name==='approver')||(field.name==='reviewer'&&requestForm.dataset.reviewMode==='review_approval'));});
    requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?'담당 이사 확인 후 구매담당자에게 전달됩니다.':'지정한 검토·승인 담당자를 거쳐 구매를 진행합니다.';
   };requestForm.querySelectorAll('[name=request_method]').forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
  }

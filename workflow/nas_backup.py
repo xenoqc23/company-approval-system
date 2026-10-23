@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-from zipfile import ZipFile, ZIP_DEFLATED
+from zipfile import ZipFile, ZIP_DEFLATED, BadZipFile
 from django.conf import settings
 from django.db import connection
 from django.db.utils import ConnectionHandler
@@ -84,6 +84,9 @@ def create_mariadb_backup(kind='manual'):
         staged = Path(folder) / name
         with ZipFile(staged, 'w', ZIP_DEFLATED) as archive:
             archive.write(sql, 'database.sql')
+            from .backup_files import add_files
+            files=add_files(archive)
+            if files:manifest.update(format=2,files=files)
             archive.writestr('manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
         staged.chmod(0o600)
         with staged.open('rb') as stream:
@@ -112,18 +115,22 @@ def verified_sql(name):
         sql = Path(folder) / 'database.sql'
         try:
             with ZipFile(path) as archive:
-                if sorted(archive.namelist()) != ['database.sql', 'manifest.json']:
+                names=archive.namelist()
+                if len(names)!=len(set(names)) or not {'database.sql','manifest.json'}<=set(names) or any(n not in ['database.sql','manifest.json'] and not n.startswith('attachments/') for n in names):
                     raise ValueError('사내결재시스템의 백업 파일이 아닙니다.')
-                if archive.getinfo('manifest.json').file_size > 16384 or archive.getinfo('database.sql').file_size > 10 * 1024**3:
+                if archive.getinfo('manifest.json').file_size > 16*1024*1024 or archive.getinfo('database.sql').file_size > 10 * 1024**3:
                     raise ValueError('백업 파일 크기를 확인해 주세요.')
                 manifest = json.loads(archive.read('manifest.json'))
-                if manifest.get('format') != 1 or manifest.get('engine') != 'mariadb':
+                if not isinstance(manifest,dict):raise ValueError('백업 목록 형식이 올바르지 않습니다.')
+                if manifest.get('format') not in [1,2] or manifest.get('engine') != 'mariadb':
                     raise ValueError('지원하지 않는 백업 형식입니다.')
+                from .backup_files import verify_files
+                verify_files(archive,manifest,Path(folder)/'files')
                 with archive.open('database.sql') as source, sql.open('wb') as target:
                     shutil.copyfileobj(source, target)
             if digest(sql) != manifest.get('sha256'):
                 raise ValueError('백업 파일 무결성 검사에 실패했습니다. 현재 DB는 변경하지 않았습니다.')
-        except (OSError, KeyError, json.JSONDecodeError) as exc:
+        except (OSError, KeyError, json.JSONDecodeError, BadZipFile) as exc:
             raise ValueError('백업 파일을 읽을 수 없습니다.') from exc
         yield sql, manifest
 
@@ -162,6 +169,8 @@ def restore_mariadb(name):
             with prepared.open('wb') as stream:
                 client_run('mariadb-dump', ['--single-transaction', '--quick', '--skip-lock-tables', '--hex-blob', '--no-tablespaces', staging], stdout=stream)
             safety = create_mariadb_backup('before-restore')
+            from .backup_files import install_files
+            install_files(sql.parent/'files')
             connection.close()
             client_run('mariadb', ['--execute', f'DROP DATABASE `{dbname}`; CREATE DATABASE `{dbname}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'])
             with prepared.open('rb') as stream:

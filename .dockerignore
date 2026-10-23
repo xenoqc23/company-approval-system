@@ -6,6 +6,8 @@
 !approval_site/**
 !workflow/
 !workflow/**
+!purchasing/
+!purchasing/**
 !deploy/
 !deploy/nas/
 !deploy/nas/**

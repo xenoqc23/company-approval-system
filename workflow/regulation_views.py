@@ -78,7 +78,7 @@ def preview_route(request):
 
 @login_required
 def regulations(request, pk=None):
-    if settings.INTEGRATED_PURCHASES and (pk or request.GET.get('tab') not in ['annual','benefits','awards']):
+    if settings.INTEGRATED_PURCHASES and (pk and ApprovalRule.objects.filter(pk=pk,kind__in=['leave','stock']).exists() or not pk and request.GET.get('tab') not in ['annual','benefits','awards','delegation']):
         from purchasing.integrated_rules import regulations as integrated_rules
         return integrated_rules(request,pk)
     if not manager(request.user):

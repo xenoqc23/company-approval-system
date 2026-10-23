@@ -1,4 +1,4 @@
-"""Local-only adapters: shared workflow shell, lists and separate notice cursors.
+"""Shared application adapters: shared workflow shell, lists and separate notice cursors.
 
 Purchase sources stay in their own transactional tables. Historical workflow
 purchases are never converted or re-approved by these adapters.
@@ -14,7 +14,7 @@ from .progress import progress, visible_notice
 
 def shell(request):
     if not settings.INTEGRATED_PURCHASES:return {}
-    common=dict(integrated_purchases=True,purchase_base_template='purchasing/integrated_base.html',purchase_page=request.path.startswith('/purchases/'))
+    common=dict(integrated_purchases=True,purchase_demo_enabled=settings.PURCHASE_LAB_ENABLED and not settings.PRODUCTION,purchase_base_template='purchasing/integrated_base.html',purchase_page=request.path.startswith('/purchases/'))
     if not request.user.is_authenticated or not active(request.user):return common
     from .context import shell as purchase_shell
     data=purchase_shell(request);data.update(common)

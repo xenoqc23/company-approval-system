@@ -4,3 +4,6 @@ RESET_LOCAL_PURCHASES.bat text eol=crlf
 SETUP_LOCAL_INTEGRATED.bat text eol=crlf
 RUN_LOCAL_INTEGRATED.bat text eol=crlf
 RESET_LOCAL_INTEGRATED.bat text eol=crlf
+SETUP_LOCAL_FULL.bat text eol=crlf
+RUN_LOCAL_FULL.bat text eol=crlf
+RESET_LOCAL_FULL.bat text eol=crlf

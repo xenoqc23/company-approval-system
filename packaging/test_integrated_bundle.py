@@ -7,7 +7,8 @@ import build_integrated_local as package
 
 class IntegratedBundleTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):cls.archive=package.build()
+    def setUpClass(cls):
+        cls.temp=tempfile.TemporaryDirectory();cls.addClassCleanup(cls.temp.cleanup);cls.archive=package.build(Path(cls.temp.name)/'test.zip')
     def test_sources_assets_checksums_and_private_exclusions(self):
         with ZipFile(self.archive) as z:
             self.assertIsNone(z.testzip());root=package.NAME+'/'
@@ -35,7 +36,7 @@ class IntegratedBundleTests(unittest.TestCase):
     def test_production_cannot_activate_integrated_preview(self):
         with tempfile.TemporaryDirectory() as folder:
             env={**os.environ,'APPROVAL_INTEGRATED_PURCHASES':'1','APPROVAL_PURCHASE_LAB':'1','APPROVAL_PRODUCTION':'1','DJANGO_DEBUG':'0','DB_ENGINE':'mariadb','DB_NAME':'unconnected-test','DB_USER':'unconnected','DB_PASSWORD':'not-real','DJANGO_SECRET_KEY':'settings-check-only-'+'x'*64,'DJANGO_ALLOWED_HOSTS':'localhost','APPROVAL_DATA_DIR':folder}
-            code="import approval_site.settings as s; assert not s.INTEGRATED_PURCHASES; assert not s.PURCHASE_LAB_ENABLED; assert 'purchasing' not in s.INSTALLED_APPS"
+            code="import approval_site.settings as s; assert s.INTEGRATED_PURCHASES; assert not s.PURCHASE_LAB_ENABLED; assert 'purchasing' in s.INSTALLED_APPS; assert not s.LOCAL_DEMO_ENABLED"
             r=subprocess.run([sys.executable,'-c',code],cwd=package.ROOT,env=env,capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr)
     def make_data(self,root,foreign=False):
         data=root/'var/integrated-test/purchase-test';data.mkdir(parents=True);(data/'.purchase-lab').write_text('purchase-lab-v1');(data/'.integrated-lab').write_text('integrated-local-fictional-v1')

@@ -44,15 +44,15 @@ def mode_for(p,user):
 
 
 def eligible_people(user):
-    return get_user_model().objects.filter(is_active=True,profile__approved=True,profile__department_confirmed=True,
-        profile__department=user.profile.department,profile__representative_slot__isnull=True).exclude(pk=user.pk).exclude(
-        username='admin').select_related('profile')
+    people=get_user_model().objects.filter(is_active=True,profile__approved=True,profile__department_confirmed=True,
+        profile__representative_slot__isnull=True).exclude(pk=user.pk).exclude(username='admin').select_related('profile')
+    return people if settings.INTEGRATED_PURCHASES else people.filter(profile__department=user.profile.department)
 
 
 def validate_intermediate(user,person,director,minimum):
     if (not person or not eligible_people(user).filter(pk=person.pk).exists()
             or person.profile.rank not in RANKS or RANKS.index(person.profile.rank)<minimum):
-        raise ValidationError('같은 부서의 적합한 상위 검토·승인 담당자를 선택해 주세요.')
+        raise ValidationError('규정과 직급 조건에 맞는 검토·승인 담당자를 선택해 주세요.')
 
 
 def valid_director(user,department):

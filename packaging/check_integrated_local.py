@@ -3,13 +3,13 @@ import argparse,json
 from pathlib import Path
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright,expect
-p=argparse.ArgumentParser();p.add_argument('--base-url',default='http://127.0.0.1:18117');p.add_argument('--password-file',type=Path,required=True);p.add_argument('--ids-file',type=Path,required=True);p.add_argument('--output',type=Path,default=Path('test-results/integrated'));a=p.parse_args();base=a.base_url.rstrip('/');assert urlsplit(base).hostname in ['localhost','127.0.0.1'];ids=json.loads(a.ids_file.read_text());a.output.mkdir(parents=True,exist_ok=True)
+p=argparse.ArgumentParser();p.add_argument('--admin-username',default='p_admin');p.add_argument('--base-url',default='http://127.0.0.1:18117');p.add_argument('--password-file',type=Path,required=True);p.add_argument('--ids-file',type=Path,required=True);p.add_argument('--output',type=Path,default=Path('test-results/integrated'));a=p.parse_args();base=a.base_url.rstrip('/');assert urlsplit(base).hostname in ['localhost','127.0.0.1'];ids=json.loads(a.ids_file.read_text());a.output.mkdir(parents=True,exist_ok=True)
 def switch(page,role):
  page.locator('#integrated-role').select_option(str(ids['p_'+role]));page.locator('.integrated-test-tools button').click();page.wait_for_url(base+'/')
 def doc(page,pk):page.goto(base+f'/purchases/requests/{pk}/')
 def shot(page,name):page.screenshot(path=str(a.output/name),full_page=True)
 def login(page,who):
- page.goto(base+'/login/');page.locator('[name=username]').fill('p_'+who);page.locator('[name=password]').fill(a.password_file.read_text().strip());page.get_by_role('button',name='로그인',exact=True).click();page.wait_for_url(base+'/')
+ page.goto(base+'/login/');page.locator('[name=username]').fill(a.admin_username if who=='admin' else 'p_'+who);page.locator('[name=password]').fill(a.password_file.read_text().strip());page.get_by_role('button',name='로그인',exact=True).click();page.wait_for_url(base+'/')
 def create(page,role,name,method='direct',quote=False):
  switch(page,role);page.goto(base+'/purchases/new/')
  if method=='direct':page.locator('[name=request_method][value=direct]').check()

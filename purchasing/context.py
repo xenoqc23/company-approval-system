@@ -9,7 +9,9 @@ DEMO_ROLES=[('p_quality','그 외 부서 · 기안자'),('p_quality_manager','�
 
 
 def demo_choices():
+    if settings.PRODUCTION or not settings.PURCHASE_LAB_ENABLED:return []
     p=policy();roles=DEMO_ROLES if p and p.department_routing else LEGACY_ROLES
+    if settings.LOCAL_DEMO_ENABLED:roles=[('admin' if name=='p_admin' else name,label) for name,label in roles]
     accounts={a.user.username:a for a in DemoAccount.objects.select_related('user').filter(user__username__in=[name for name,label in roles])}
     result=[]
     for name,label in roles:
