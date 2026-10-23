@@ -201,7 +201,7 @@ class DocumentForm(forms.ModelForm):
         self.fields['approval_mode'].initial = 'base'
         from django.conf import settings
         if settings.INTEGRATED_PURCHASES:
-            self.fields['approval_mode'].choices=[('base','검토·승인 요청'),('ceo','대표 결재 요청')]
+            self.fields['approval_mode'].choices=[('base','검토 요청'),('ceo','대표 결재 요청')]
             if self.instance.owner_id:
                 for stage in ['reviewer','approver']:self.fields[stage].queryset=self.fields[stage].queryset.exclude(pk=self.instance.owner_id)
         if not self.is_bound and self.instance.owner_id:
@@ -369,6 +369,13 @@ class AwardRuleForm(forms.Form):
 
 
 class ApprovalFlowPolicyForm(forms.ModelForm):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        from django.conf import settings
+        if settings.INTEGRATED_PURCHASES:
+            self.fields['enabled'].label='생산 재고·기존 구매 양식에 단계별 결재 적용'
+            self.fields['enabled'].help_text='새 휴가원과 구매요청은 검토자가 다음 승인 단계를 결정합니다.'
+            self.fields['purchase_threshold'].label='기존 구매 양식의 대표 추가 결재 기준 · 총금액 (원 이상)'
     class Meta:
         from .models import ApprovalFlowPolicy
         model = ApprovalFlowPolicy

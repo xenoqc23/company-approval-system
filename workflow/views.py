@@ -396,6 +396,15 @@ def detail(request, pk):
             actions += [('cancel_approval','최종 승인 취소')]
     if u.profile.is_representative and not u.profile.representative_can_approve:
         actions = []
+    workflow_task=''
+    if settings.INTEGRATED_PURCHASES:
+        labels={'forward':'승인자에게 전달','review_final':'승인완료','approve':'승인완료'}
+        actions=[(key,labels.get(key,label)) for key,label in actions]
+        keys={key for key,label in actions}
+        if 'forward' in keys:workflow_task='내용을 확인하고 승인완료하거나 승인자에게 전달해 주세요.' if 'review_final' in keys else '내용을 확인하고 승인자를 지정해 전달해 주세요.'
+        elif 'approve' in keys:workflow_task='신청 내용을 확인하고 승인 또는 반려를 선택해 주세요.'
+        elif doc.owner_id==u.pk:
+            workflow_task='최종 결재가 완료되었습니다.' if doc.status=='approved' else '검토자의 확인을 기다리고 있습니다.' if doc.status=='review' else '승인자의 확인을 기다리고 있습니다.' if doc.status in ['approve','executive'] else ''
     try:
         amount = leave_amount(doc) if doc.kind == 'leave' else 0
     except ValidationError:
@@ -414,7 +423,7 @@ def detail(request, pk):
     approval_cancelled = doc.final_approval_required and doc.status == 'cancelled' and bool(doc.approved_at)
     approval_confirmed = doc.final_approval_required and doc.status == 'approved' and bool(doc.approved_at)
     return page(request, 'detail', '재고 요청 상세' if doc.kind == 'stock' else '기안 상세',
-                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount, assignment_form=assignment_form, forward_form=forward_form, progressive_steps=progressive_steps(doc) if doc.progressive else [], procurement_log=procurement_log,
+                'stock' if doc.kind == 'stock' else 'mine', doc=doc, actions=actions, amount=amount,workflow_task=workflow_task, assignment_form=assignment_form, forward_form=forward_form, progressive_steps=progressive_steps(doc) if doc.progressive else [], procurement_log=procurement_log,
                 common_overlaps=common_overlaps, review_confirmed=review_confirmed, review_cancelled=review_cancelled,
                 approval_confirmed=approval_confirmed, approval_cancelled=approval_cancelled,
                 my_review_confirmed=review_confirmed and doc.reviewer_id == u.pk,

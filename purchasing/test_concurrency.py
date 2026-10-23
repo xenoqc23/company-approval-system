@@ -28,7 +28,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         self.users={u.username:u for u in get_user_model().objects.select_related('profile')}
         v=dict(product='동시 처리 시험품',vendor='가상구매처',quantity=1,unit_price=Decimal('123.45'),url='',reason='동시 처리 검증',private=False,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director'])
         self.doc=save_request(self.users['p_dev'],v,submit=True,key=uuid4())
-        self.doc=request_action(self.doc.pk,self.users['p_dev_lead'],'approve')
+        self.doc=request_action(self.doc.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']) if settings.INTEGRATED_PURCHASES else request_action(self.doc.pk,self.users['p_dev_lead'],'approve')
         self.doc=request_action(self.doc.pk,self.users['p_dev_director'],'approve')
         self.doc=request_action(self.doc.pk,self.users['p_prod_director'],'confirm_items')
     def parallel(self,*operations):
@@ -103,7 +103,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         return save_request(self.users['p_dev_manager'],dict(product='부서별 동시 처리 시험',vendor='가상처',quantity=10,unit_price=Decimal('50000'),reason='동시 처리 검증',private=False,request_method=method,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director']),submit=True,key=uuid4())
 
     def test_department_combined_final_approval_confirms_only_once(self):
-        d=self.department_request('review');request_action(d.pk,self.users['p_dev_lead'],'approve')
+        d=self.department_request('review');request_action(d.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']) if settings.INTEGRATED_PURCHASES else request_action(d.pk,self.users['p_dev_lead'],'approve')
         op=lambda:request_action(d.pk,self.users['p_dev_director'],'approve')
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         d.refresh_from_db();self.assertEqual(d.confirmation_method,'with_approval');self.assertEqual(d.events.filter(event='승인 시 구매 내용 함께 확인').count(),1)
@@ -120,3 +120,10 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         key=uuid4();op=lambda:request_action(d.pk,self.users['p_dev_manager'],'receive',quantity=6,receipt_key=key)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         d.refresh_from_db();self.assertEqual((d.received_quantity,d.remaining_quantity,d.status),((10,0,'received') if settings.INTEGRATED_PURCHASES else (6,4,'allowed')));self.assertEqual(d.receipts.count(),1)
+
+    def test_reviewer_finish_and_forward_cannot_both_commit(self):
+        if not settings.INTEGRATED_PURCHASES:self.skipTest('Reviewer-led full application only.')
+        d=self.department_request('review');PurchasePolicy.objects.get(pk=1).review_final_users.add(self.users['p_dev_lead'])
+        results=self.parallel(lambda:request_action(d.pk,self.users['p_dev_lead'],'review_final'),lambda:request_action(d.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']))
+        self.assertCountEqual(results,['ok','refused']);d.refresh_from_db();self.assertIn(d.status,['ready','approval'])
+        self.assertEqual(PurchaseEvent.objects.filter(request=d,event__in=['내부 승인완료','검토 완료']).count(),1)

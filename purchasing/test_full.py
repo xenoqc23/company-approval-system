@@ -23,17 +23,17 @@ class FullApplicationTests(TestCase):
     create=fixtures.DepartmentPurchaseTests.create
     def test_original_departments_and_selectors_are_available_without_conflicting_notes(self):
         self.as_user('quality');r=self.client.get(reverse('purchasing:new'))
-        for label in ['검토자 부서','승인자 부서','결재선 지정']:self.assertContains(r,label)
+        for label in ['검토자 부서','결재선 지정']:self.assertContains(r,label)
         self.assertNotContains(r,'이 직급은 규정에 따라 본인 전결로 내부 결재를 완료합니다.')
-        self.assertContains(r,'data-department-picker')
+        self.assertContains(r,'data-department-picker');self.assertNotContains(r,'name="approver"')
     def test_cross_department_internal_approval_keeps_author_department_checker(self):
         d=self.create('quality','review',reviewer=self.user('dev_lead'),approver=self.user('prod_director'))
         self.assertEqual(d.purchase_checker,self.user('prod_director'))
-        request_action(d.pk,self.user('dev_lead'),'approve');d=request_action(d.pk,self.user('prod_director'),'approve')
+        request_action(d.pk,self.user('dev_lead'),'forward',new_person=self.user('prod_director'));d=request_action(d.pk,self.user('prod_director'),'approve')
         self.assertEqual(d.confirmation_method,'with_approval')
     def test_development_request_with_other_department_approver_still_requires_dev_checker(self):
         d=self.create('dev_manager','review',reviewer=self.user('quality_lead'),approver=self.user('prod_director'))
-        request_action(d.pk,self.user('quality_lead'),'approve');d=request_action(d.pk,self.user('prod_director'),'approve')
+        request_action(d.pk,self.user('quality_lead'),'forward',new_person=self.user('prod_director'));d=request_action(d.pk,self.user('prod_director'),'approve')
         self.assertEqual(d.purchase_checker,self.user('dev_director'));self.assertIsNone(d.confirmed_at)
     def test_original_common_rules_remain_editable_and_full_editor_is_kept(self):
         r=ApprovalRule.objects.create(name='기존 공통 규정',kind='all',enabled=False,reviewer_ranks=RANKS[1:],approver_ranks=RANKS[1:])

@@ -35,6 +35,7 @@ class PurchasePolicy(models.Model):
     production_director = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,related_name='+')
     representative = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,related_name='+')
     finance = models.ManyToManyField(settings.AUTH_USER_MODEL,related_name='+')
+    review_final_users = models.ManyToManyField(settings.AUTH_USER_MODEL,blank=True,related_name='+')
     development_modes = models.JSONField(default=dev_modes)
     other_modes = models.JSONField(default=other_modes)
     approval_modes = models.JSONField(default=approval_modes)

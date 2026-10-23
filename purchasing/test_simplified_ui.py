@@ -41,7 +41,7 @@ class SimplifiedInterfaceTests(TestCase):
         history=self.client.get('/documents/?mode=history&kind=office')
         self.assertEqual(history.context['document_count'],1)
         self.assertContains(history,r.title);self.assertContains(history,'결재완료')
-        self.assertContains(history,'수령 대기');self.assertNotContains(history,r.number)
+        self.assertNotContains(history,'수령 대기');self.assertNotContains(history,r.number)
         self.assertEqual(self.client.get('/documents/?mode=history&kind=leave').context['document_count'],0)
 
     def test_whole_receipt_without_quantity_updates_finance_done_tab_and_ceo_history(self):
@@ -59,7 +59,7 @@ class SimplifiedInterfaceTests(TestCase):
         self.assertContains(done,'결재완료');self.assertContains(done,'수령 완료');self.assertNotContains(done,d.number)
         self.assertNotContains(done,'받은 수량');self.assertNotContains(done,'일부 수령')
         self.as_user('ceo');history=self.client.get('/documents/?mode=history')
-        self.assertContains(history,'결재완료');self.assertContains(history,'수령 완료')
+        self.assertContains(history,'결재완료');self.assertNotContains(history,'수령 완료')
 
     def test_existing_partial_receipt_remains_waiting_and_button_finishes_remainder(self):
         d=self.confirmed();self.final([d],['allow'])
@@ -72,7 +72,7 @@ class SimplifiedInterfaceTests(TestCase):
     def test_requester_gets_only_named_milestones_and_actionable_notices(self):
         d=self.create('quality','review');owner=d.owner
         self.assertEqual(PurchaseNotice.objects.filter(user=owner,request=d).count(),0)
-        request_action(d.pk,self.user('quality_manager'),'approve')
+        request_action(d.pk,self.user('quality_manager'),'forward',new_person=self.user('quality_lead'))
         request_action(d.pk,self.user('quality_lead'),'approve')
         request_action(d.pk,self.user('prod_director'),'confirm_items')
         r=self.report([d]);texts=list(PurchaseNotice.objects.filter(user=owner,request=d).order_by('pk').values_list('text',flat=True))
@@ -84,7 +84,7 @@ class SimplifiedInterfaceTests(TestCase):
 
     def test_combined_approval_sends_one_owner_milestone(self):
         d=self.create('dev_manager','review',reviewer=self.user('dev_lead'),approver=self.user('dev_director'))
-        request_action(d.pk,self.user('dev_lead'),'approve');before=PurchaseNotice.objects.filter(user=d.owner,request=d).count()
+        request_action(d.pk,self.user('dev_lead'),'forward',new_person=self.user('dev_director'));before=PurchaseNotice.objects.filter(user=d.owner,request=d).count()
         request_action(d.pk,self.user('dev_director'),'approve')
         self.assertEqual(PurchaseNotice.objects.filter(user=d.owner,request=d).count(),before+1)
 
@@ -101,8 +101,8 @@ class SimplifiedInterfaceTests(TestCase):
 
     def test_simple_rule_editor_and_staff_deep_link(self):
         self.as_user('admin');r=self.client.get('/regulations/?tab=leave')
-        self.assertContains(r,'검토·승인 요청')
-        self.assertContains(r,'대표 결재 요청');self.assertContains(r,'검토자 전결 설정')
+        self.assertContains(r,'검토 요청')
+        self.assertContains(r,'대표 결재 요청');self.assertContains(r,'검토자 승인완료 권한')
         self.assertNotContains(r,'name="allow_self_approval"');self.assertNotContains(r,'name="approver_is_author"')
         self.assertNotContains(r,'name="allow_skip_review"')
         self.assertContains(self.client.get(reverse('purchasing:regulations')),'purchase_settings=1#purchase-assignments')
@@ -120,7 +120,7 @@ class SimplifiedInterfaceTests(TestCase):
             form=DocumentForm(instance=Document(owner=user,kind='leave'))
             self.assertFalse(form.fields['reviewer'].queryset.filter(pk=user.pk).exists())
             self.assertFalse(form.fields['approver'].queryset.filter(pk=user.pk).exists())
-            self.assertEqual(list(form.fields['approval_mode'].choices),[('base','검토·승인 요청'),('ceo','대표 결재 요청')])
+            self.assertEqual(list(form.fields['approval_mode'].choices),[('base','검토 요청'),('ceo','대표 결재 요청')])
         form=ApprovalRuleForm(instance=rule)
         self.assertNotIn('allow_self_approval',form.fields)
 
@@ -140,6 +140,6 @@ class SimplifiedInterfaceTests(TestCase):
         ApprovalRule.objects.create(name='옛 본인 고정 규정',kind='leave',enabled=True,approver_is_author=True,reviewer_ranks=RANKS[1:],approver_ranks=RANKS[1:])
         with self.assertRaises(ValidationError):save_document(Document(owner=owner,reviewer=owner,kind='leave',reason='본인 승인 차단 확인',leave_type='annual',start_date=date(2027,11,1),end_date=date(2027,11,1)),owner,submit=True)
         d=save_document(Document(owner=owner,reviewer=self.user('quality_lead'),approver=self.user('prod_director'),kind='leave',reason='기존 결재 방식 보존 확인',leave_type='annual',start_date=date(2027,11,1),end_date=date(2027,11,1)),owner,submit=True)
-        self.assertFalse(d.progressive)  # Preserve the existing disabled progressive-flow setting.
-        self.assertEqual(d.approver_id,self.user('prod_director').pk)
-        self.assertEqual(act_on_document(d.pk,self.user('quality_lead'),'review').status,'approve')
+        self.assertTrue(d.progressive)
+        self.assertIsNone(d.approver_id)
+        self.assertEqual(act_on_document(d.pk,self.user('quality_lead'),'forward',new_person=self.user('prod_director')).status,'approve')

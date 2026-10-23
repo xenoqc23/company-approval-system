@@ -10,6 +10,7 @@ from workflow.models import ApprovalRule,ApprovalFlowPolicy,RegulationLock
 from workflow.forms import ApprovalRuleForm
 from workflow.regulations import save_rule
 from workflow.views import page
+from django.forms.models import model_to_dict
 
 
 class ScopedRuleForm(ApprovalRuleForm):
@@ -47,6 +48,26 @@ def regulations(request,pk=None):
         messages.info(request,'기존 공통·구매 규정은 보존됩니다. 새 휴가원·구매요청은 문서별 규정에서 설정해 주세요.');return redirect('regulations')
     kind=instance.kind if instance else 'stock' if tab=='stock' else 'leave'
     label='휴가원' if kind=='leave' else '생산 재고'
+    if request.method=='POST' and request.POST.get('intent')=='toggle_rule':
+        with transaction.atomic():
+            RegulationLock.objects.select_for_update().get_or_create(pk=1)
+            rule=get_object_or_404(ApprovalRule.objects.select_for_update(),pk=request.POST.get('rule') if str(request.POST.get('rule','')).isascii() and str(request.POST.get('rule','')).isdigit() and len(str(request.POST.get('rule','')))<=18 else None,kind=kind,deleted_at__isnull=True)
+            try:
+                if str(rule.version)!=request.POST.get('version'):raise ValidationError('다른 창에서 규정이 변경되었습니다. 새로고침 후 다시 선택해 주세요.')
+                enabled=request.POST.get('enabled')=='1'
+                if enabled:
+                    data=model_to_dict(rule);data['enabled']=True
+                    data['allow_representative_direct']=bool(rule.allow_representative_direct or rule.allow_self_approval or rule.skip_review or rule.approver_is_author)
+                    check=ScopedRuleForm(data,kind=kind,instance=rule)
+                    if not check.is_valid():raise ValidationError('규정의 상세 설정을 확인한 후 사용으로 변경해 주세요.')
+                    save_rule(request.user,check)
+                else:
+                    rule.enabled=False;rule.version+=1;rule.save(update_fields=['enabled','version','updated_at'])
+                    from workflow.services import audit
+                    audit(request.user,'전결규정 사용 안 함',detail=f'{rule.pk} / {rule.name} / 버전 {rule.version}')
+                messages.success(request,f'{rule.name}: '+('사용 중' if enabled else '사용 안 함')+'으로 변경했습니다. 기존 제출 문서는 유지됩니다.')
+            except ValidationError as exc:messages.error(request,' '.join(exc.messages))
+        return redirect(reverse('regulations')+'?tab='+kind)
     form=ScopedRuleForm(request.POST if request.method=='POST' and request.POST.get('intent')!='threshold' else None,kind=kind,instance=instance,
         initial={} if instance else dict(kind=kind,reviewer_ranks=['주임','대리','과장','팀장','부장','이사'],approver_ranks=['주임','대리','과장','팀장','부장','이사']))
     p=ApprovalFlowPolicy.objects.filter(pk=1).first()
@@ -68,6 +89,9 @@ def regulations(request,pk=None):
                 save_rule(request.user,form);messages.success(request,f'{label} 규정을 저장했습니다. 기존 제출 문서는 유지됩니다.');return redirect(reverse('regulations')+'?tab='+kind)
         except ValidationError as exc:form.add_error(None,exc)
     groups=[('1. 규정 이름과 사용 여부',['name','enabled']),('2. 결재 가능한 직급',['reviewer_ranks','approver_ranks']),('3. 과장급 이상의 요청 방식',['allow_representative_direct'])]
+    rules=list(ApprovalRule.objects.filter(kind=kind,deleted_at__isnull=True).prefetch_related('review_final_users','authors'))
+    for rule in rules:rule.representative_choice=bool(rule.allow_representative_direct or rule.allow_self_approval or rule.skip_review or rule.approver_is_author)
     return page(request,'integrated_rule_edit',f'{label} 결재 규정','regulations',kind=kind,rule_label=label,rule_form=form,threshold_form=threshold,
+        used_rule_count=sum(rule.enabled for rule in rules),unused_rule_count=sum(not rule.enabled for rule in rules),
         field_groups=[(label,[form[name] for name in names]) for label,names in groups],review_final_fields=[form[name] for name in ['allow_review_final','review_final_users']],advanced_fields=[form[name] for name in ['author_ranks','author_departments','authors','fixed_reviewer','fixed_approver']+(['skip_review'] if kind=='stock' else [])],
-        rules=ApprovalRule.objects.filter(kind=kind,deleted_at__isnull=True).prefetch_related('review_final_users'),common_rules=ApprovalRule.objects.filter(kind='all',deleted_at__isnull=True))
+        rules=rules,common_rules=ApprovalRule.objects.filter(kind='all',deleted_at__isnull=True))

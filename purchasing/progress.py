@@ -26,6 +26,8 @@ def approval_track(d):
     if d.route.get('workflow')!='separated-v2' and d.director_id:
         cards.append(dict(label='기존 문서 최종승인',person=person(d.director),done=bool(d.director_at or finished),current=d.status=='director',time=d.director_at))
     if direct:cards[2].update(label='승인 생략',person='직접 요청',done=d.submitted_at is not None,time=None)
+    if d.route.get('reviewer_final'):
+        cards=cards[:2];cards[1].update(label='검토·승인',done=True,current=False,time=d.intermediate_at)
     return cards
 
 
@@ -78,6 +80,8 @@ def pending_columns(d):
 
 
 def task_for(d,user,permissions):
+    if permissions.get('can_forward'):
+        return dict(kind='review',message='내용을 확인하고 승인완료하거나 승인자에게 전달해 주세요.' if permissions.get('can_review_final') else '내용을 확인하고 승인자를 지정해 전달해 주세요.')
     if permissions['can_approve']:
         return dict(kind='approve',message='구매 내용을 확인하고 승인자에게 전달해 주세요.' if d.status=='review' else '구매 내용을 확인하고 내부 승인을 완료해 주세요.')
     if permissions['can_confirm']:return dict(kind='confirm',message='구매 내용을 확인하면 구매 담당자에게 전달됩니다.')
@@ -86,6 +90,7 @@ def task_for(d,user,permissions):
         return dict(kind='collect_hold' if d.hold_ready else 'hold',message='보완이 끝났습니다. 품목을 선택해 다시 구매요청해 주세요.' if d.hold_ready else '보류 사유를 확인하고, 보완한 내용을 기록해 주세요.')
     if permissions['can_collect']:return dict(kind='collect',message='구매할 품목을 모아 대표님께 구매승인을 요청해 주세요.')
     if permissions['can_decide_purchase']:return dict(kind='decide',message='요청된 품목을 확인하고 승인·반려·보류를 선택해 주세요.')
+    if user.profile.is_representative:return dict(kind='done' if d.status in ['allowed','paid','received','denied'] else 'waiting',message='대표 결재 결과를 확인해 주세요.')
     if permissions['can_receive']:return dict(kind='receive',message='요청한 물품을 모두 받으셨다면 수령 완료를 눌러 주세요.')
     if d.status=='received':return dict(kind='done',message='구매승인과 물품 수령이 모두 완료되었습니다.')
     if d.status in ['denied','rejected','cancelled']:return dict(kind='done',message='요청이 종료되었습니다. 처리 사유를 확인해 주세요.')

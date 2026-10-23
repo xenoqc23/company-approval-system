@@ -8,7 +8,7 @@ from workflow.forms import DepartmentEmployeeSelect,department_picker
 from django.conf import settings
 from .models import PurchaseRequest,PurchasePolicy,MODES,dev_modes,other_modes
 from .access import is_admin
-from .services import eligible_people,mode_for,validate_policy_people,event,actor_now,lock_policy,can_request_direct,department_checker
+from .services import eligible_people,mode_for,validate_policy_people,event,actor_now,lock_policy,can_request_direct,department_checker,forward_people
 from django.db import transaction
 
 
@@ -52,7 +52,7 @@ class AttachmentForm(forms.Form):
 class RequestForm(forms.ModelForm):
     reviewer_department=department_picker('reviewer')
     approver_department=department_picker('approver')
-    request_method=forms.ChoiceField(label='요청 방식',choices=[('review','검토·승인 요청'),('direct','구매담당자에게 요청')],initial='review',widget=forms.RadioSelect)
+    request_method=forms.ChoiceField(label='요청 방식',choices=[('review','검토 요청'),('direct','구매담당자에게 요청')],initial='review',widget=forms.RadioSelect)
     files=MultipleFileField(label='첨부파일 · 선택',required=False,widget=MultipleFileInput(attrs={'accept':'.pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.docx,.doc,.hwp,.hwpx,.txt'}))
     unit_price=WonField(label='개당 금액 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'),widget=forms.TextInput(attrs={'inputmode':'decimal','placeholder':'예: 50,000','autocomplete':'off'}))
     key=forms.UUIDField(widget=forms.HiddenInput,initial=uuid4)
@@ -74,7 +74,7 @@ class RequestForm(forms.ModelForm):
         if self.department_routing and self.checker and self.checker.pk==user.pk and not policy.director_self_request:self.checker=policy.production_director if user.profile.department=='개발팀' else policy.dev_director
         if not self.department_routing:self.fields.pop('request_method')
         else:
-            if not self.can_direct:self.fields['request_method'].choices=[('review','검토·승인 요청')]
+            if not self.can_direct:self.fields['request_method'].choices=[('review','검토 요청')]
             self.initial['request_method']=self.instance.route.get('request_method','review') if self.instance.pk else 'review'
         method=self.data.get('request_method','review') if self.is_bound else self.initial.get('request_method','review')
         self.mode='direct' if self.department_routing and method=='direct' else mode_for(policy,user) if policy else 'direct'
@@ -104,6 +104,10 @@ class RequestForm(forms.ModelForm):
         elif user.username=='p_dev_manager':
             self.initial['reviewer']=qs.filter(username='p_dev_lead').values_list('pk',flat=True).first()
             self.initial['approver']=qs.filter(username='p_dev_director').values_list('pk',flat=True).first()
+        if settings.INTEGRATED_PURCHASES:
+            self.fields.pop('approver',None);self.fields.pop('approver_department',None)
+            self.mode='direct' if method=='direct' else 'review_approval';self.review_mode='review_approval'
+            self.fields['reviewer'].required=self.mode=='review_approval' and self.data.get('intent')!='draft'
 
     def clean(self):
         data=super().clean()
@@ -118,7 +122,7 @@ class PolicyForm(forms.Form):
     dev_director=PersonChoice(label='개발팀 구매 확인 담당자',queryset=get_user_model().objects.none(),required=False)
     production_director=PersonChoice(label='그 외 부서 구매 확인 담당자',queryset=get_user_model().objects.none(),required=False)
     direct_ranks=forms.MultipleChoiceField(label='구매담당자에게 요청할 수 있는 직급',choices=[(r,r) for r in RANKS[3:]],required=False,widget=forms.CheckboxSelectMultiple)
-    review_mode=forms.ChoiceField(label='검토·승인 요청 경로',choices=[('review_approval','검토자 → 승인자'),('approval','승인자만 지정')])
+    review_mode=forms.ChoiceField(label='검토 요청 경로',choices=[('review_approval','검토자 → 승인자'),('approval','승인자만 지정')])
     combine_confirmation=forms.BooleanField(label='담당 이사가 최종 승인하면 구매 확인까지 함께 처리',required=False)
     director_self_request=forms.BooleanField(label='담당 이사의 직접 요청은 구매담당자에게 바로 전달',required=False)
     revision=forms.IntegerField(widget=forms.HiddenInput)
@@ -176,13 +180,38 @@ class AmountChangeForm(forms.Form):
 
 class IntegratedPolicyForm(PolicyForm):
     """Routes only; personnel are exclusively managed on the shared staff page."""
+    review_final_users=PersonMultiple(label='승인완료 가능한 검토자 · 과장급 이상',queryset=get_user_model().objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         for name in ['dev_director','production_director','finance','representative']:self.fields.pop(name)
+        self.fields.pop('review_mode',None)
+        from workflow.people import review_final_people
+        self.fields['review_final_users'].queryset=review_final_people()
+        self.initial['review_final_users']=list(self.instance.review_final_users.values_list('pk',flat=True))
     def clean(self):
         data=super().clean()
         p=self.instance
-        data.update(dev_director=p.dev_director,production_director=p.production_director,finance=list(p.finance.all()),representative=p.representative)
+        data.update(dev_director=p.dev_director,production_director=p.production_director,finance=list(p.finance.all()),representative=p.representative,review_mode='review_approval')
+        return data
+    @transaction.atomic
+    def save(self,actor):
+        p=super().save(actor)
+        before=list(p.review_final_users.values_list('pk',flat=True));people=self.cleaned_data['review_final_users']
+        p.review_final_users.set(people)
+        event(actor,'구매 검토 승인완료 권한 변경',detail=f'{before} → {[u.pk for u in people]} / {self.cleaned_data["reason"]}')
+        return p
+
+
+class PurchaseForwardForm(forms.Form):
+    new_person_department=department_picker('new_person')
+    new_person=PersonChoice(label='승인자',queryset=get_user_model().objects.none(),widget=DepartmentEmployeeSelect())
+    def __init__(self,*args,document,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['new_person'].queryset=forward_people(document)
+        if document.reviewer_id:self.initial['new_person_department']=document.reviewer.profile.department
+    def clean(self):
+        data=super().clean();person=data.get('new_person');department=data.get('new_person_department')
+        if person and department and person.profile.department!=department:self.add_error('new_person','선택한 부서에 속한 승인자를 지정해 주세요.')
         return data
 
 

@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand,CommandError
 from django.db import transaction
 from django.utils import timezone
 from workflow.models import Profile,AnnualBalance,ApprovalRule,ApprovalFlowPolicy,CompanyHolidayLock
-from purchasing.models import DemoAccount
+from purchasing.models import DemoAccount,PurchasePolicy
 
 class Command(BaseCommand):
     def add_arguments(self,parser):parser.add_argument('--password-file')
@@ -32,5 +32,6 @@ class Command(BaseCommand):
         ApprovalRule.objects.filter(kind='leave').delete()
         r=ApprovalRule.objects.create(name='휴가원 기본 규정',kind='leave',enabled=True,reviewer_ranks=['주임','대리','과장','팀장','부장','이사'],approver_ranks=['주임','대리','과장','팀장','부장','이사'],allow_skip_review=False,allow_self_approval=False,allow_review_final=True,allow_representative_direct=True)
         r.review_final_users.set(Profile.objects.filter(rank__in=['과장','팀장','부장','이사']).exclude(user__username='p_admin').values_list('user_id',flat=True))
+        PurchasePolicy.objects.get(pk=1).review_final_users.set(Profile.objects.filter(rank__in=['과장','팀장','부장','이사'],manage_system=False).values_list('user_id',flat=True))
         marker.write_text('integrated-local-fictional-v1')
         self.stdout.write('기존 사내결재 화면 + 새 구매요청 통합 준비 완료. 문서는 빈 상태이며 가상 연차만 부여했습니다.')

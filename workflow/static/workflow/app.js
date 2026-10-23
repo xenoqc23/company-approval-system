@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#approval-footnote').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : !finalApproval ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
     document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
     document.querySelector('#compose-help-route').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : !finalApproval ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
-    document.querySelector('#submit-label').textContent = directRepresentative ? '대표 결재 요청' : selfComplete ? '기안 제출' : isStock ? '재고 요청 제출' : '기안 제출';
+    document.querySelector('#submit-label').textContent = directRepresentative ? '대표 결재 요청' : selfComplete ? '기안 제출' : isStock ? '재고 요청 제출' : form.dataset.reviewerOnly === 'true' && id('kind').value === 'leave' ? '검토 요청' : '기안 제출';
     id('product').placeholder = isStock ? '예: 제품 사용자 매뉴얼, 제품 보관함' : '예: A4 복사용지';
     document.querySelector('#leave-preview').hidden = !isLeave;
     document.querySelector('#start-date-label').innerHTML = (annual ? '시작일' : '사용 날짜') + ' <em>*</em>';
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modePicker.hidden = route.available_modes.length < 2;
         const select = id('approval_mode');
         const selectedMode = select.value || 'base';
-        const labels = {base:'검토·승인 요청',ceo:'대표 결재 요청'};
+        const labels = {base:'검토 요청',ceo:'대표 결재 요청'};
         select.replaceChildren(...route.available_modes.map(value => new Option(labels[value], value)));
         select.value = route.available_modes.includes(selectedMode) ? selectedMode : 'base';
         if (select.value !== selectedMode) { resolveRoute(); return; }

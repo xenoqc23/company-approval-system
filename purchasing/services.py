@@ -66,6 +66,20 @@ def can_request_direct(p,user):
     return bool(p and user.profile.rank in ['과장','팀장','부장','이사'] and user.profile.rank in p.direct_ranks)
 
 
+def reviewer_can_finish(actor,d,p=None):
+    p=p or PurchasePolicy.objects.filter(pk=1).first()
+    from workflow.people import review_final_people
+    return bool(p and active(actor) and d.status=='review' and d.reviewer_id==actor.pk and d.owner_id!=actor.pk
+        and actor.profile.rank in ['과장','팀장','부장','이사'] and not actor.profile.is_representative
+        and not actor.profile.manage_system and review_final_people().filter(pk=actor.pk).exists() and p.review_final_users.filter(pk=actor.pk).exists())
+
+
+def forward_people(d):
+    minimum=max(RANKS.index(d.rank) if d.rank in RANKS else len(RANKS),
+        RANKS.index(d.reviewer.profile.rank) if d.reviewer and d.reviewer.profile.rank in RANKS else len(RANKS))
+    return eligible_people(d.owner).filter(profile__rank__in=RANKS[minimum:]).exclude(pk=d.reviewer_id)
+
+
 def department_checker(p,user):
     return p.dev_director if user.profile.department=='개발팀' else p.production_director
 
@@ -135,17 +149,20 @@ def save_request(actor,values,submit=False,pk=None,key=None):
         director=None
         if mode not in ['direct','approval','review_approval']:raise ValidationError('직급별 경로를 규정에서 확인해 주세요.')
         reviewer,approver=values.get('reviewer'),values.get('approver')
+        deferred=settings.INTEGRATED_PURCHASES and method=='review'
+        if deferred:mode='review_approval';approver=None
         minimum=RANKS.index(d.rank) if d.rank in RANKS else len(RANKS)
         if mode=='direct' and (d.rank not in RANKS or minimum<RANKS.index('과장')):raise ValidationError('구매담당자에게 요청은 과장급 이상에게만 허용됩니다.')
         if mode=='review_approval':
             validate_intermediate(actor,reviewer,director,minimum)
             minimum=max(minimum,RANKS.index(reviewer.profile.rank))
-        if mode in ['approval','review_approval']:validate_intermediate(actor,approver,director,minimum)
-        if mode=='review_approval' and reviewer.pk==approver.pk:raise ValidationError('검토자와 승인자를 서로 다른 직원으로 지정해 주세요.')
+        if mode in ['approval','review_approval'] and not deferred:validate_intermediate(actor,approver,director,minimum)
+        if mode=='review_approval' and approver and reviewer.pk==approver.pk:raise ValidationError('검토자와 승인자를 서로 다른 직원으로 지정해 주세요.')
         d.reviewer=reviewer if mode=='review_approval' else None
         d.approver=approver if mode in ['approval','review_approval'] else None
         d.director=None
         d.route=dict(workflow='separated-v2',version=p.version,mode=mode,department=d.department,rank=d.rank,reviewer_id=d.reviewer_id,approver_id=d.approver_id)
+        if deferred:d.route['reviewer_decides']=True
         if p.department_routing:
             checker=department_checker(p,actor)
             self_request=checker.pk==actor.pk and method=='direct' and p.director_self_request
@@ -172,13 +189,33 @@ def save_request(actor,values,submit=False,pk=None,key=None):
 
 
 @transaction.atomic
-def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,storage_location=None):
+def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,storage_location=None,new_person=None):
     p=lock_policy();actor=actor_now(actor);d=PurchaseRequest.objects.select_for_update().select_related('owner','reviewer','approver','director').get(pk=pk)
     now=timezone.now();reason=(reason or '').strip()
     if len(reason)>1000:raise ValidationError('사유는 1000자 이내로 입력해 주세요.')
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
-    if action in ['approve','reject']:
+    if action in ['forward','review_final','approve','reject'] and actor.pk==d.owner_id:raise PermissionDenied('기안자는 본인 문서를 검토·승인할 수 없습니다.')
+    if action in ['forward','review_final']:
+        if not d.route.get('reviewer_decides') or d.status!='review' or assigned!=actor.pk or d.owner_id==actor.pk:raise PermissionDenied('현재 검토자만 처리할 수 있습니다.')
+        if action=='forward':
+            person=forward_people(d).filter(pk=getattr(new_person,'pk',None)).first()
+            if not person:raise ValidationError('본인과 기안자를 제외하고 규정·직급 조건에 맞는 승인자를 선택해 주세요.')
+            d.approver=person;d.reviewed_at=now;d.status='approval'
+            d.route={**d.route,'approver_id':person.pk,'approver_name':person.first_name}
+            event(actor,'검토 완료',request=d,detail=reason or f'{person.first_name}님에게 승인 요청')
+            notify([person],f'{d.product} · {actor.first_name}님의 검토가 완료되어 승인 요청이 도착했습니다.',request=d)
+            notify([d.owner],f'{d.product} · {actor.first_name}님이 검토를 완료했습니다.',request=d,owner_update=True)
+        else:
+            if not reviewer_can_finish(actor,d,p):raise PermissionDenied('구매 규정에서 승인완료 권한을 받은 검토자만 처리할 수 있습니다.')
+            d.approver=actor;d.reviewed_at=d.intermediate_at=now;d.status='ready'
+            d.route={**d.route,'reviewer_final':True,'approver_id':actor.pk,'review_final_policy_version':p.version}
+            event(actor,'내부 승인완료',request=d,detail=reason or '지정 검토자의 승인완료')
+            if d.route.get('combine_confirmation') and actor.pk==d.purchase_checker_id and checker_assigned(actor,d):confirm_purchase(d,actor,p,'with_approval')
+            elif not d.confirmed_at:notify(list(request_confirmers(d)),f'{d.product} · 구매 내용 확인 요청',request=d)
+            notify([d.owner],f'{d.product} · {actor.first_name}님이 검토·승인을 완료했습니다.',request=d,owner_update=True)
+    elif action in ['approve','reject']:
         if assigned!=actor.pk:raise PermissionDenied('현재 단계에 배정된 담당자만 처리할 수 있습니다.')
+        if action=='approve' and d.status=='review' and d.route.get('reviewer_decides'):raise ValidationError('승인완료 또는 승인자에게 전달을 선택해 주세요.')
         if action=='reject':
             if not reason:raise ValidationError('반려 사유를 입력해 주세요.')
             d.status,d.decision_reason='rejected',reason

@@ -9,19 +9,20 @@
   const update=()=>{const n=boxes.filter(b=>b.checked).length;select.querySelector('[data-selected-count]').textContent=`${n}건 선택`;select.querySelector('[data-batch-button]').disabled=n===0;all.checked=boxes.length>0 && n===boxes.length;all.indeterminate=n>0 && n<boxes.length;};
   boxes.forEach(b=>b.addEventListener('change',update));all.addEventListener('change',()=>{boxes.forEach(b=>b.checked=all.checked);update();});update();
  }
- document.querySelectorAll('[data-report-item]').forEach(item=>{const decision=item.querySelector('[data-item-decision]'),reason=item.querySelector('[data-item-reason]');if(!decision)return;const sync=()=>reason.required=['deny','hold'].includes(decision.value);decision.addEventListener('change',sync);sync();});
+ const decisionFor=item=>item.querySelector('[data-item-decision]:checked')?.value||item.querySelector('select[data-item-decision]')?.value||'pending';
+ document.querySelectorAll('[data-report-item]').forEach(item=>{const choices=item.querySelectorAll('[data-item-decision]'),reason=item.querySelector('[data-item-reason]');if(!choices.length)return;const sync=()=>{const value=decisionFor(item),needs=['deny','hold'].includes(value);if(reason){reason.required=needs;reason.disabled=!needs;if(!needs)reason.value='';}const panel=item.querySelector('[data-reason-field]');if(panel)panel.hidden=!needs;const label=item.querySelector('[data-reason-label]');if(label)label.textContent=value==='hold'?'보류 사유':'반려 사유';const pending=item.querySelector('[data-decision-needed]');if(pending)pending.hidden=value!=='pending';};choices.forEach(choice=>choice.addEventListener('change',sync));sync();});
  const reportForm=document.querySelector('[data-report-review]');
  if(reportForm){
   const items=[...reportForm.querySelectorAll('[data-report-item]')];
   const summary=()=>{const counts={pending:0,allow:0,deny:0,hold:0},totals={pending:0n,allow:0n,deny:0n,hold:0n};
-   items.forEach(item=>{const choice=item.querySelector('[data-item-decision]')?.value;if(!choice)return;counts[choice]++;const [whole,frac='']=item.dataset.total.split('.');totals[choice]+=BigInt(whole)*100n+BigInt(frac.padEnd(2,'0'));});
-   return [['allow','승인'],['deny','반려'],['hold','보류'],['pending','검토 전']].map(([key,label])=>`${label} ${counts[key]}건 · ${formatCents(totals[key])}`).join(' / ');};
+   items.forEach(item=>{const choice=decisionFor(item);counts[choice]++;const [whole,frac='']=item.dataset.total.split('.');totals[choice]+=BigInt(whole)*100n+BigInt(frac.padEnd(2,'0'));});
+   return [['allow','승인'],['deny','반려'],['hold','보류'],['pending','선택 필요']].map(([key,label])=>`${label} ${counts[key]}건 · ${formatCents(totals[key])}`).join(' / ');};
   const refresh=()=>{const target=reportForm.querySelector('[data-decision-summary]');if(target)target.textContent=summary();};
-  reportForm.querySelector('[data-approve-all]')?.addEventListener('click',()=>{items.forEach(item=>{const choice=item.querySelector('[data-item-decision]');choice.value='allow';choice.dispatchEvent(new Event('change'));});refresh();});
+  reportForm.querySelector('[data-approve-all]')?.addEventListener('click',()=>{items.forEach(item=>{const radio=item.querySelector('[data-item-decision][value=allow]'),select=item.querySelector('select[data-item-decision]');if(radio){radio.checked=true;radio.dispatchEvent(new Event('change',{bubbles:true}));}else if(select){select.value='allow';select.dispatchEvent(new Event('change',{bubbles:true}));}});refresh();});
   reportForm.addEventListener('change',refresh);refresh();
-  reportForm.querySelector('[data-final-decisions]')?.addEventListener('click',event=>{if(!confirm(summary()+'\n이 결과를 확정할까요? 승인된 품목은 기안자에게 즉시 완료로 전달됩니다.'))event.preventDefault();});
+  reportForm.querySelector('[data-final-decisions]')?.addEventListener('click',event=>{const pending=items.find(item=>decisionFor(item)==='pending');if(pending){event.preventDefault();pending.tabIndex=-1;pending.focus();pending.querySelector('[data-decision-needed]').hidden=false;reportForm.querySelector('[data-decision-summary]').textContent='선택이 필요한 품목이 있습니다. 각 품목의 승인·반려·보류를 선택해 주세요.';return;}if(!confirm(summary()+'\n이 결과를 확정할까요? 승인된 품목은 기안자에게 결재완료로 전달됩니다.'))event.preventDefault();});
  }
- const urgent=document.querySelector('[name=urgent]'),urgentReason=document.querySelector('[name=urgent_reason]');if(urgent&&urgentReason){const sync=()=>urgentReason.required=urgent.checked;urgent.addEventListener('change',sync);sync();}
+ const urgent=document.querySelector('[name=urgent]'),urgentReason=document.querySelector('[name=urgent_reason]');if(urgent&&urgentReason){const sync=()=>{urgentReason.required=urgent.checked;const box=document.querySelector('[data-urgent-reason]');if(box)box.hidden=!urgent.checked;};urgent.addEventListener('change',sync);sync();}
  const form=document.querySelector('[data-request-form]');
  if(form){const qty=form.querySelector('[name=quantity]'),price=form.querySelector('[name=unit_price]');const sum=()=>{let amount=price.value.trim();const valid=/^\d+(?:\.\d{0,2})?$/.test(amount)||/^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(amount);const parts=amount.replaceAll(',','').split('.');const cents=valid?(BigInt(parts[0])*100n+BigInt((parts[1]||'').padEnd(2,'0'))):0n;const count=/^\d{1,6}$/.test(qty.value)?BigInt(qty.value):0n;form.querySelector('[data-price]').textContent=formatCents(cents*count);};qty.addEventListener('input',sum);price.addEventListener('input',sum);sum();
   const field=form.querySelector('[name=product]'),box=form.querySelector('[data-hints-results]');let timer,controller,cursor=0;
@@ -52,14 +53,14 @@
  if(requestForm&&requestForm.querySelector('[name=request_method]')){
   const syncMethod=()=>{const direct=requestForm.querySelector('[name=request_method]:checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
    fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&((field.name==='approver')||(field.name==='reviewer'&&requestForm.dataset.reviewMode==='review_approval'));});
-   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토·승인 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?'담당 이사 확인 후 구매담당자에게 전달됩니다.':'지정한 검토·승인 담당자를 거쳐 구매를 진행합니다.';
+   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?requestForm.querySelector('[data-direct-note]').textContent.trim():'검토자가 승인완료하거나 승인자에게 전달합니다.';
   };requestForm.querySelectorAll('[name=request_method]').forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
  }
  const policyForm=document.querySelector('[data-policy-form]');
  if(policyForm&&policyForm.querySelector('[data-route-preview]')){
   const preview=()=>{const rank=policyForm.querySelector('[data-preview-rank]').value,method=policyForm.querySelector('[data-preview-method]').value,dev=policyForm.querySelector('[data-preview-department]').value==='dev';
    const allowed=[...policyForm.querySelectorAll('[name=direct_ranks]:checked')].map(e=>e.value).includes(rank),who=policyForm.querySelector(dev?'#id_dev_director':'#id_production_director')?.selectedOptions[0]?.textContent||policyForm.querySelector(dev?'[data-preview-checker-dev]':'[data-preview-checker-other]')?.textContent||'담당자 미지정';
-   const text=method==='direct'&&!allowed?'이 직급은 검토·승인 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
+   const text=method==='direct'&&!allowed?'이 직급은 검토 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]')?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'검토자 판단 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
   };policyForm.addEventListener('change',preview);preview();
  }
  const simpleRule=document.querySelector('[data-simple-leave-rule]');

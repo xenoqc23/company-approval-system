@@ -16,9 +16,9 @@ from django.views.decorators.http import require_POST,require_GET
 from django.views.decorators.debug import sensitive_post_parameters
 from workflow.models import RANKS
 from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseNotice,PurchasePolicy,DemoAccount,PurchasePermission
-from .forms import RequestForm,PolicyForm,AttachmentForm,SupplementForm,AmountChangeForm
+from .forms import RequestForm,PolicyForm,AttachmentForm,SupplementForm,AmountChangeForm,PurchaseForwardForm
 from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests,checker_assigned,checker_requests
-from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount
+from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount,reviewer_can_finish
 from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
 from .fulfillment import receipt_info,report_fulfillment,report_receipt_label
@@ -158,7 +158,10 @@ def detail(request,pk):
     simplified=not can_view_purchase(request.user,d)
     permissions=dict(
         can_confirm=checker_assigned(request.user,d) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,
-        can_approve=assigned==request.user.pk,
+        can_approve=assigned==request.user.pk and not (d.status=='review' and d.route.get('reviewer_decides')),
+        can_forward=assigned==request.user.pk and d.status=='review' and bool(d.route.get('reviewer_decides')),
+        can_review_final=bool(d.route.get('reviewer_decides')) and reviewer_can_finish(request.user,d),
+        can_reject=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id and not d.confirmed_at,
         can_receive=d.owner_id==request.user.pk and d.status in ['allowed','paid'],
         can_supplement=d.status=='supplement' and d.owner_id==request.user.pk,
@@ -167,11 +170,12 @@ def detail(request,pk):
         can_amend=finance_assigned(request.user,d) and d.status=='allowed' and not d.received_quantity and not d.paid_at,
         can_collect=finance_assigned(request.user,d) and d.status in ['ready','reapproval'] and bool(d.confirmed_at),
         can_decide_purchase=d.status=='ceo' and request.user.profile.is_representative and d.current_report_id and d.current_report.representative_id==request.user.pk)
-    has_secondary=any(permissions[key] for key in ['can_cancel','can_approve','can_request_supplement','can_amend']) or d.owner_id==request.user.pk and bool(d.received_quantity)
+    has_secondary=any(permissions[key] for key in ['can_cancel','can_reject','can_request_supplement','can_amend']) or d.owner_id==request.user.pk and bool(d.received_quantity)
     return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,
         visible_events=events_for(d,simplified),approval_cards=approval_track(d),
-        purchase_steps=purchase_progress(d) if not simplified and (d.confirmed_at or d.current_report_id) else [],
+        purchase_steps=(purchase_progress(d)[:3] if request.user.profile.is_representative else purchase_progress(d)) if not simplified and (d.confirmed_at or d.current_report_id) else [],
         task=task_for(d,request.user,permissions),has_secondary=has_secondary,**permissions,
+        forward_form=PurchaseForwardForm(document=d) if permissions['can_forward'] else None,
         approve_combined=permissions['can_approve'] and d.status in ['approval','director'] and d.route.get('combine_confirmation') and d.purchase_checker_id==request.user.pk and d.owner_id!=request.user.pk and checker_assigned(request.user,d),
         supplements=d.supplements.all(),amendments=d.amendments.all(),receipt_key=uuid4(),
         attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),
@@ -181,9 +185,21 @@ def detail(request,pk):
 @login_required
 @require_POST
 def act(request,pk):
-    get_object_or_404(requests_for(request.user),pk=pk)
+    document=get_object_or_404(requests_for(request.user),pk=pk)
     try:
-        request_action(pk,request.user,request.POST.get('action',''),request.POST.get('reason',''),quantity=request.POST.get('quantity'),receipt_key=request.POST.get('receipt_key'),storage_location=request.POST.get('storage_location'));messages.success(request,'처리했습니다.')
+        action=request.POST.get('action','');person=None
+        if action=='forward':
+            form=PurchaseForwardForm(request.POST,document=document)
+            if not form.is_valid():raise ValidationError('승인자 부서와 직원을 확인해 주세요. 기안자·검토자 본인은 선택할 수 없습니다.')
+            person=form.cleaned_data['new_person']
+        d=request_action(pk,request.user,action,request.POST.get('reason',''),quantity=request.POST.get('quantity'),receipt_key=request.POST.get('receipt_key'),storage_location=request.POST.get('storage_location'),new_person=person)
+        text='처리 결과를 저장했습니다.'
+        if action=='forward' or action=='approve' and d.status=='approval':text=f'{d.approver.first_name}님에게 승인 요청을 보냈습니다.'
+        elif action in ['review_final','approve'] and d.status=='ready':text='승인완료되어 '+('구매 담당자' if d.confirmed_at else '구매확인 담당자')+'에게 전달했습니다.'
+        elif action=='confirm_items':text='구매 내용을 확인하고 구매 담당자에게 전달했습니다.'
+        elif action=='receive':text='수령 완료로 등록했습니다.'
+        elif action=='reject':text='반려 처리하고 기안자에게 알렸습니다.'
+        messages.success(request,text)
     except ValidationError as exc:messages.error(request,' '.join(exc.messages))
     return redirect('purchasing:detail',pk=pk)
 
@@ -240,15 +256,18 @@ def report_detail(request,pk):
         if not can_decide:raise PermissionDenied
         try:
             revision=int(request.POST.get('revision','-1'))
-            decisions={str(i.pk):dict(decision=request.POST.get(f'decision_{i.pk}',''),reason=request.POST.get(f'reason_{i.pk}','')) for i in items}
+            decisions={str(i.pk):dict(decision=request.POST.get(f'decision_{i.pk}','pending'),reason=request.POST.get(f'reason_{i.pk}','')) for i in items}
             decide_report(pk,request.user,decisions,revision,final=request.POST.get('intent')=='final')
             messages.success(request,'품목별 결정을 확정했습니다.' if request.POST.get('intent')=='final' else '검토 내용을 임시저장했습니다.')
             return redirect('purchasing:report_detail',pk=pk)
         except (ValueError,ValidationError) as exc:
             messages.error(request,' '.join(exc.messages) if isinstance(exc,ValidationError) else '화면을 다시 열어 주세요.')
+            for item in items:
+                choice=request.POST.get(f'decision_{item.pk}','pending')
+                if choice in dict(PurchaseReportItem.DECISIONS):item.decision=choice;item.reason=request.POST.get(f'reason_{item.pk}','')[:1000]
     fulfillment=report_fulfillment(report,items)
-    return page(request,'report_detail',report.number,fulfillment=fulfillment,receipt_label=report_receipt_label(fulfillment),report=report,items=items,can_decide=can_decide,
-                decisions=PurchaseReportItem.DECISIONS,total=sum((i.total for i in items),Decimal('0')),
+    return page(request,'report_detail',report.number,fulfillment=fulfillment,receipt_label=report_receipt_label(fulfillment),show_receipts=not request.user.profile.is_representative,report=report,items=items,can_decide=can_decide,
+                decisions=[('allow','승인'),('deny','반려'),('hold','보류')],total=sum((i.total for i in items),Decimal('0')),
                 allowed_total=sum((i.total for i in items if i.decision=='allow'),Decimal('0')),
                 denied_total=sum((i.total for i in items if i.decision=='deny'),Decimal('0')),
                 hold_total=sum((i.total for i in items if i.decision=='hold'),Decimal('0')))

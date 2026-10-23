@@ -27,7 +27,7 @@ def decorate_route(route, kind, owner, rule):
     simple_leave=app_settings.INTEGRATED_PURCHASES and kind=='leave'
     if not settings.enabled and not simple_leave:
         return route
-    route.update(progressive=bool(settings.enabled or simple_leave and route['mode']=='ceo'), flow_version=settings.version,
+    route.update(progressive=bool(settings.enabled or simple_leave), flow_version=settings.version,
         leave_threshold=str(settings.leave_threshold), purchase_threshold=str(settings.purchase_threshold),
         allow_review_final=bool(rule and rule.allow_review_final), stock_final_approval=kind == 'stock')
     if route['mode'] == 'base':
@@ -73,7 +73,9 @@ def prepare(document, route):
 def forward_candidates(document):
     from .delegation import route_people
     rank = document.route_snapshot.get('reviewer_rank') or document.reviewer.profile.rank
-    return route_people(document.route_snapshot, 'approver', rank).exclude(pk=document.owner_id)
+    people=route_people(document.route_snapshot, 'approver', rank).exclude(pk=document.owner_id)
+    from django.conf import settings
+    return people.exclude(pk=document.reviewer_id) if settings.INTEGRATED_PURCHASES else people
 
 
 def review_final_rule(document, actor):
@@ -130,7 +132,9 @@ def handle_action(document, actor, action, reason, new_person):
     now = timezone.now()
     if action not in {'forward','review_final','escalate','approve','reject','review','cancel_review','cancel_approval'}:
         return False
-    if action in {'forward','review_final','escalate','reject','cancel_review','cancel_approval'} and not reason.strip():
+    from django.conf import settings
+    required={'escalate','reject','cancel_review','cancel_approval'} if settings.INTEGRATED_PURCHASES else {'forward','review_final','escalate','reject','cancel_review','cancel_approval'}
+    if action in required and not reason.strip():
         raise ValidationError('처리 사유를 입력해 주세요.')
     if action == 'forward':
         if document.status != 'review' or document.reviewer_id != actor.pk:
