@@ -199,6 +199,11 @@ class DocumentForm(forms.ModelForm):
         self.fields['approval_mode'].label = '결재방식'
         self.fields['approval_mode'].required = False
         self.fields['approval_mode'].initial = 'base'
+        from django.conf import settings
+        if settings.INTEGRATED_PURCHASES:
+            self.fields['approval_mode'].choices=[('base','검토·승인 요청'),('ceo','대표 결재 요청')]
+            if self.instance.owner_id:
+                for stage in ['reviewer','approver']:self.fields[stage].queryset=self.fields[stage].queryset.exclude(pk=self.instance.owner_id)
         if not self.is_bound and self.instance.owner_id:
             from .delegation import resolve_route
             kind = self.initial.get('kind', self.instance.kind)
@@ -312,6 +317,10 @@ class ApprovalRuleForm(forms.ModelForm):
         self.fields['review_final_users'].help_text='기안자와 관계없이, 이 직원이 검토자로 배정되면 검토자 전결을 선택할 수 있습니다. 미선택 시 누구에게도 부여하지 않습니다.'
         for stage in ['fixed_reviewer', 'fixed_approver']:
             self.fields[stage].queryset = approval_people()
+        from django.conf import settings
+        if settings.INTEGRATED_PURCHASES:
+            for name in ['allow_self_approval','approver_is_author','allow_skip_review']:self.fields.pop(name,None)
+            self.fields['allow_representative_direct'].label='과장·팀장·부장·이사에게 대표 결재 요청 허용'
 
     class Meta:
         from .models import ApprovalRule
@@ -322,6 +331,10 @@ class ApprovalRuleForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        from django.conf import settings
+        if settings.INTEGRATED_PURCHASES:
+            for name in ['allow_self_approval','approver_is_author','allow_skip_review']:
+                data.pop(name,None);setattr(self.instance,name,False)
         if data.get('allow_review_final') and not data.get('review_final_users'):
             self.add_error('review_final_users','전결 가능한 검토자를 한 명 이상 선택해 주세요.')
         if not data.get('skip_review') and not data.get('reviewer_ranks'):

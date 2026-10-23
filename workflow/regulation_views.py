@@ -69,6 +69,7 @@ def preview_route(request):
         route['reviewer_ids'] = list(route_people(route, 'reviewer').values_list('pk', flat=True))
         route['approver_ids'] = list(route_people(route, 'approver', review_rank).values_list('pk', flat=True)) if route['final_approval_required'] else []
         route['self_allowed'] = rank in route['approvers'] and route['final_approval_required']
+        if settings.INTEGRATED_PURCHASES:route['self_allowed']=False
         response = JsonResponse(route)
     except (ValueError, InvalidOperation, ValidationError) as exc:
         response = JsonResponse({'error': ' '.join(exc.messages) if isinstance(exc, ValidationError) else '종류·금액·직급을 확인해 주세요.'}, status=400)

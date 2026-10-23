@@ -3,7 +3,7 @@ def receipt_info(d):
     if d.status not in ['allowed','paid','received']:
         return dict(label='수령 대상 아님' if d.status in ['denied','rejected','cancelled'] else '구매승인 전',tone='muted',eligible=False)
     rows=list(d.receipts.all());last=rows[-1] if rows else None
-    return dict(label='수령 완료' if d.status=='received' else '일부 수령' if d.received_quantity else '수령 대기',tone='positive' if d.status=='received' else 'active' if d.received_quantity else 'waiting',eligible=True,received=d.received_quantity,quantity=d.quantity,who=last.received_by.first_name if last else '',at=last.created_at if last else d.received_at)
+    return dict(label='수령 완료' if d.status=='received' else '수령 대기',tone='positive' if d.status=='received' else 'waiting',eligible=True,received=d.received_quantity,quantity=d.quantity,who=last.received_by.first_name if last else '',at=last.created_at if last else d.received_at)
 
 
 def report_fulfillment(report,items):
@@ -17,3 +17,8 @@ def report_fulfillment(report,items):
             item.receipt_info=receipt_info(d);counts['eligible']+=1
             counts['done' if d.status=='received' else 'partial' if d.received_quantity else 'waiting']+=1
     return counts
+
+
+def report_receipt_label(counts):
+    if not counts['eligible']:return '—'
+    return '수령 완료' if counts['done']==counts['eligible'] else '수령 대기'

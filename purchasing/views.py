@@ -21,7 +21,7 @@ from .access import active,is_admin,is_finance,requests_for,reports_for,require_
 from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount
 from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
-from .fulfillment import receipt_info,report_fulfillment
+from .fulfillment import receipt_info,report_fulfillment,report_receipt_label
 from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns, DISPLAY_LABELS, task_for
 
 
@@ -101,6 +101,7 @@ def request_list(request, purchase_tab=None):
     elif receipt=='done':qs=qs.filter(status='received')
     if settings.INTEGRATED_PURCHASES and purchase_tab=='items':
         qs=qs.filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False)
+    elif settings.INTEGRATED_PURCHASES and purchase_tab=='completed':qs=qs.filter(status='received')
     selected=request.GET.get('state','')
     states=REQUESTER_STATES if mode=='mine' else list(DISPLAY_LABELS.items())
     if settings.INTEGRATED_PURCHASES:
@@ -214,11 +215,17 @@ def report_new(request):
 @login_required
 def report_list(request):
     if settings.INTEGRATED_PURCHASES and not (is_finance(request.user) or request.user.profile.is_representative):raise PermissionDenied
+    if settings.INTEGRATED_PURCHASES and request.user.profile.is_representative:
+        return redirect(reverse('documents')+'?mode=pending&kind=office')
     tab=request.GET.get('tab','items') if is_finance(request.user) and settings.INTEGRATED_PURCHASES else 'sent'
-    if tab in ['items','hold']:return request_list(request,purchase_tab=tab)
+    if tab in ['items','hold','completed']:return request_list(request,purchase_tab=tab)
     qs=reports_for(request.user).prefetch_related('items__request__receipts__received_by')
     reports=list(qs[:100])
-    for report in reports:report.fulfillment=report_fulfillment(report,list(report.items.all()))
+    for report in reports:
+        items=list(report.items.all());report.fulfillment=report_fulfillment(report,items)
+        report.receipt_label=report_receipt_label(report.fulfillment)
+        report.requesters=' · '.join(dict.fromkeys(i.snapshot.get('owner','') for i in items))
+        report.vendors=' · '.join(dict.fromkeys(i.snapshot.get('vendor','') for i in items))
     return page(request,'reports','구매요청함',reports=reports,purchase_tab='sent',inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
 
 
@@ -240,7 +247,7 @@ def report_detail(request,pk):
         except (ValueError,ValidationError) as exc:
             messages.error(request,' '.join(exc.messages) if isinstance(exc,ValidationError) else '화면을 다시 열어 주세요.')
     fulfillment=report_fulfillment(report,items)
-    return page(request,'report_detail',report.number,fulfillment=fulfillment,report=report,items=items,can_decide=can_decide,
+    return page(request,'report_detail',report.number,fulfillment=fulfillment,receipt_label=report_receipt_label(fulfillment),report=report,items=items,can_decide=can_decide,
                 decisions=PurchaseReportItem.DECISIONS,total=sum((i.total for i in items),Decimal('0')),
                 allowed_total=sum((i.total for i in items if i.decision=='allow'),Decimal('0')),
                 denied_total=sum((i.total for i in items if i.decision=='deny'),Decimal('0')),
@@ -413,7 +420,7 @@ def open_notice(request,pk):
 
 def inbox_counts(user):
     qs=finance_requests(user)
-    return dict(items=qs.filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).count(),sent=reports_for(user).count(),hold=qs.filter(status='hold').count())
+    return dict(items=qs.filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).count(),sent=reports_for(user).count(),hold=qs.filter(status='hold').count(),completed=qs.filter(status='received').count())
 
 
 @login_required
@@ -436,16 +443,16 @@ def report_export(request,pk):
     from django.utils.http import content_disposition_header
     report=get_object_or_404(reports_for(request.user),pk=pk)
     book=Workbook();sheet=book.active;sheet.title='구매요청'
-    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유','구매승인 결과','사유','현재 받은 수량','현재 수령 현황'])
+    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유','구매승인 결과','사유','수령 상태'])
     for item in report.items.select_related('request'):
         s=item.snapshot;d=item.request;info=receipt_info(d)
         current=d.current_report_id==report.pk
-        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason',''),item.get_decision_display(),item.reason,d.received_quantity if current and info['eligible'] else '',info['label'] if current else '변경 후 다시 요청'])
-        for i in [1,2,3,4,5,6,10,11,12,14]:sheet.cell(sheet.max_row,i).data_type='s'
+        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason',''),item.get_decision_display(),item.reason,info['label'] if current else '변경 후 다시 요청'])
+        for i in [1,2,3,4,5,6,10,11,12,13]:sheet.cell(sheet.max_row,i).data_type='s'
     sheet.freeze_panes='A2';sheet.auto_filter.ref=sheet.dimensions
     from openpyxl.styles import Alignment,Font,PatternFill
     from openpyxl.utils import get_column_letter
-    for col in range(1,15):sheet.column_dimensions[get_column_letter(col)].width=25 if col in [5,6,10,12,14] else 18
+    for col in range(1,14):sheet.column_dimensions[get_column_letter(col)].width=25 if col in [5,6,10,12,13] else 18
     for cells in sheet:
         for cell in cells:cell.alignment=Alignment(vertical='top',wrap_text=True)
     for cell in sheet[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='0B4F3D')

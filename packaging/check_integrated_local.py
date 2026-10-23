@@ -3,7 +3,7 @@ import argparse,json
 from pathlib import Path
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright,expect
-p=argparse.ArgumentParser();p.add_argument('--admin-username',default='p_admin');p.add_argument('--base-url',default='http://127.0.0.1:18117');p.add_argument('--password-file',type=Path,required=True);p.add_argument('--ids-file',type=Path,required=True);p.add_argument('--output',type=Path,default=Path('test-results/integrated'));a=p.parse_args();base=a.base_url.rstrip('/');assert urlsplit(base).hostname in ['localhost','127.0.0.1'];ids=json.loads(a.ids_file.read_text());a.output.mkdir(parents=True,exist_ok=True)
+p=argparse.ArgumentParser();p.add_argument('--admin-username',default='p_admin');p.add_argument('--base-url',default='http://127.0.0.1:18131');p.add_argument('--password-file',type=Path,required=True);p.add_argument('--ids-file',type=Path,required=True);p.add_argument('--output',type=Path,default=Path('test-results/integrated'));a=p.parse_args();base=a.base_url.rstrip('/');assert urlsplit(base).hostname in ['localhost','127.0.0.1'];ids=json.loads(a.ids_file.read_text());a.output.mkdir(parents=True,exist_ok=True)
 def switch(page,role):
  page.locator('#integrated-role').select_option(str(ids['p_'+role]));page.locator('.integrated-test-tools button').click();page.wait_for_url(base+'/')
 def doc(page,pk):page.goto(base+f'/purchases/requests/{pk}/')
@@ -16,7 +16,7 @@ def create(page,role,name,method='direct',quote=False):
  page.locator('#id_product').fill(name);page.locator('#id_vendor').fill('가상구매처');page.locator('#id_quantity').fill('10');page.locator('#id_unit_price').fill('50,000');page.locator('#id_reason').fill('기존 사내결재 화면에서 통합 경로를 확인하는 가상 요청입니다.');page.locator('#id_needed_by').fill('2026-11-04')
  expect(page.locator('[data-price]')).to_have_text('500,000원')
  if quote:page.locator('#id_files').set_input_files({'name':'가상견적서.pdf','mimeType':'application/pdf','buffer':b'%PDF fictional quote'})
- page.get_by_role('button',name='구매담당자에게 요청' if method=='direct' else '검토 요청',exact=True).click();page.wait_for_url('**/requests/*/');return int(urlsplit(page.url).path.rstrip('/').split('/')[-1])
+ page.get_by_role('button',name='구매담당자에게 요청' if method=='direct' else '검토·승인 요청',exact=True).click();page.wait_for_url('**/requests/*/');return int(urlsplit(page.url).path.rstrip('/').split('/')[-1])
 def approve(page,role,pk,label):
  switch(page,role);page.goto(base+'/documents/?mode=pending');expect(page.locator('tbody')).to_contain_text('통합시험');doc(page,pk);page.get_by_role('button',name=label,exact=True).click();page.wait_for_load_state('networkidle')
 with sync_playwright() as tool:
@@ -29,7 +29,7 @@ with sync_playwright() as tool:
  watcher=browser.new_context(viewport={'width':1440,'height':1000},locale='ko-KR');w=watcher.new_page();login(w,'quality_manager');w.goto(base+'/documents/?mode=pending')
  normal=create(page,'quality','통합시험 현장용 모니터','review',quote=True)
  w.bring_to_front();w.evaluate("window.dispatchEvent(new Event('xenosys-refresh-notifications'))");expect(w.locator('#notification-toasts')).to_contain_text('통합시험 현장용 모니터',timeout=20000);shot(w,'05-shared-arrival-popup.png');watcher.close();page.bring_to_front()
- approve(page,'quality_manager',normal,'검토 완료 · 승인자에게 전달');approve(page,'quality_lead',normal,'내부 승인 완료')
+ approve(page,'quality_manager',normal,'검토 완료 · 승인자에게 전달');approve(page,'quality_lead',normal,'승인 완료')
  switch(page,'finance');assert context.request.get(base+f'/purchases/requests/{normal}/').status==404
  switch(page,'prod_director');doc(page,normal);page.get_by_role('button',name='구매 내용 확인',exact=True).click();page.wait_for_load_state('networkidle')
  dev=create(page,'dev_manager','통합시험 개발용 키보드');switch(page,'prod_director');assert context.request.get(base+f'/purchases/requests/{dev}/').status==404
@@ -44,12 +44,11 @@ with sync_playwright() as tool:
  switch(page,'ceo');page.goto(report);page.get_by_role('button',name='전체 품목 승인으로 선택',exact=True).click()
  for name,choice,reason in [('통합시험 추가 장치','deny','보유 물품을 먼저 사용합니다.'),('통합시험 호환 연결장치','hold','호환 여부를 확인합니다.')]:
   item=page.locator('[data-report-item]').filter(has=page.get_by_role('heading',name=name,exact=True));item.locator('[data-item-decision]').select_option(choice);item.locator('[data-item-reason]').fill(reason)
- page.get_by_role('button',name='선택한 결과 확정',exact=True).click();page.wait_for_load_state('networkidle');expect(page.locator('[data-report-fulfillment]')).to_contain_text('승인 4건 · 반려 1건 · 보류 1건');shot(page,'07-item-decisions.png')
- switch(page,'quality');expect(page.locator('[data-live-count=completed_unread]').first).to_contain_text('1');page.goto(base+'/documents/?mode=completed&unread=1');expect(page.locator('tbody')).to_contain_text('통합시험 현장용 모니터');doc(page,normal);expect(page.locator('.heading .badge.large')).to_have_text('구매 승인완료');expect(page.locator('[data-purchase-progress]')).to_have_count(0);page.locator('[data-receipt-form] [name=quantity]').fill('6');page.get_by_role('button',name='받은 수량 등록',exact=True).click();page.wait_for_load_state('networkidle');shot(page,'08-requester-partial-receipt.png')
- switch(page,'finance');page.goto(base+'/purchases/reports/?tab=sent');row=page.locator('tbody tr').filter(has_text=urlsplit(report).path.split('/')[-2]) if False else page.locator('tbody tr').first;expect(row).to_contain_text('일부 수령 1개');shot(page,'09-finance-partial-receipt.png');page.goto(report);expect(page.locator('[data-report-fulfillment]')).to_contain_text('일부 수령 1개 품목')
- switch(page,'quality');doc(page,normal);page.locator('[data-receipt-form] [name=quantity]').fill('4');page.get_by_role('button',name='받은 수량 등록',exact=True).click();page.wait_for_load_state('networkidle')
- switch(page,'dev_manager');doc(page,dev);page.locator('[data-receipt-form] [name=quantity]').fill('10');page.get_by_role('button',name='받은 수량 등록',exact=True).click();page.wait_for_load_state('networkidle')
- switch(page,'finance');page.goto(report);expect(page.locator('[data-report-fulfillment]')).to_contain_text('승인된 4개 품목 중 2개 수령 완료');shot(page,'10-finance-receipt-complete.png')
+ page.get_by_role('button',name='선택한 결과 확정',exact=True).click();page.wait_for_load_state('networkidle');expect(page.locator('[data-report-fulfillment]')).to_contain_text('일부 승인 · 보류');shot(page,'07-item-decisions.png')
+ switch(page,'ceo');page.goto(base+'/documents/?mode=pending');expect(page.locator('tbody')).not_to_contain_text('2026.10.23 구매요청');page.goto(base+'/documents/?mode=history&kind=office');expect(page.locator('tbody')).to_contain_text('일부 승인 · 보류');expect(page.locator('#workspace-navigation')).not_to_contain_text('구매요청함');shot(page,'08-ceo-common-history.png')
+ switch(page,'quality');expect(page.locator('[data-live-count=completed_unread]').first).to_contain_text('1');page.goto(base+'/documents/?mode=completed&unread=1');expect(page.locator('tbody')).to_contain_text('통합시험 현장용 모니터');doc(page,normal);expect(page.locator('.heading .badge.large')).to_have_text('결재완료');expect(page.locator('[data-purchase-progress]')).to_have_count(0);expect(page.locator('[data-receipt-complete] [name=quantity]')).to_have_count(0);page.get_by_role('button',name='수령 완료',exact=True).click();page.wait_for_load_state('networkidle');shot(page,'09-simple-receipt.png')
+ switch(page,'dev_manager');doc(page,dev);page.get_by_role('button',name='수령 완료',exact=True).click();page.wait_for_load_state('networkidle')
+ switch(page,'finance');page.goto(base+'/purchases/reports/?tab=completed');expect(page.locator('tbody tr')).to_have_count(2);expect(page.locator('tbody')).to_contain_text('결재완료');expect(page.locator('tbody')).to_contain_text('수령 완료');expect(page.locator('tbody')).not_to_contain_text('일부 수령');expect(page.locator('tbody')).not_to_contain_text('PUR-');shot(page,'10-finance-completed-tab.png');page.goto(report);expect(page.locator('[data-report-fulfillment]')).to_contain_text('수령 대기')
  with page.expect_download() as download:page.get_by_role('button',name='엑셀 다운로드',exact=True).click()
  assert download.value.suggested_filename.endswith('.xlsx')
  page.goto(base+'/purchases/reports/');expect(page.locator('[data-select-item]')).to_have_count(0);page.get_by_role('link',name='보류 1',exact=True).click();expect(page.locator('tbody')).to_contain_text('호환 여부');shot(page,'11-hold-in-same-inbox.png')
@@ -64,5 +63,5 @@ with sync_playwright() as tool:
     page.set_viewport_size({'width':width,'height':1000});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),(role,route,width)
    page.set_viewport_size({'width':1440,'height':1000})
  assert not errors,errors;assert not assets,assets
- result=dict(passed=True,shared_shell=True,shared_inbox=True,arrival_popup=True,department_routing=True,combined_approval=True,director_self_request=True,unified_finance_menu=True,per_item_approval=True,completion_unread=True,partial_receipts=True,finance_receipt_summary=True,private_purchase_details=True,private_files=True,excel_download=True,separated_rule_ui=True,shared_permission_ui=True,responsive=True,js_errors=errors,failed_assets=assets)
+ result=dict(passed=True,shared_shell=True,shared_inbox=True,arrival_popup=True,department_routing=True,combined_approval=True,director_self_request=True,unified_finance_menu=True,per_item_approval=True,completion_unread=True,simple_receipt=True,finance_completed_tab=True,ceo_shared_history=True,private_purchase_details=True,private_files=True,excel_download=True,separated_rule_ui=True,shared_permission_ui=True,responsive=True,js_errors=errors,failed_assets=assets)
  (a.output/'results.json').write_text(json.dumps(result,ensure_ascii=False,indent=2));print(json.dumps(result,ensure_ascii=False));browser.close()

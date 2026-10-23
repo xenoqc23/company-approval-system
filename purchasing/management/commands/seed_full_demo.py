@@ -11,7 +11,7 @@ class Command(BaseCommand):
     def add_arguments(self,parser):parser.add_argument('--password-file')
     @transaction.atomic
     def handle(self,*args,**options):
-        if settings.PRODUCTION or not settings.LOCAL_DEMO_ENABLED or settings.DATA_DIR.name!='purchase-test' or settings.DATA_DIR.parent.name!='full-nas-test':raise CommandError('별도 full-nas-test 로컬 데이터에서만 가상 직원을 만듭니다.')
+        if settings.PRODUCTION or not settings.LOCAL_DEMO_ENABLED or settings.DATA_DIR.name!='purchase-test' or settings.DATA_DIR.parent.name not in ['full-nas-test','full-nas-test-v2']:raise CommandError('별도 full-nas-test 로컬 데이터에서만 가상 직원을 만듭니다.')
         marker=settings.DATA_DIR/'.full-local'
         if DemoAccount.objects.exists():
             if not marker.exists():raise CommandError('기존 데이터는 사용하지 않습니다. 새 폴더에서 실행해 주세요.')

@@ -22,10 +22,12 @@ def pending_for(user):
 
 
 def decorate_route(route, kind, owner, rule):
+    from django.conf import settings as app_settings
     settings = policy()
-    if not settings.enabled:
+    simple_leave=app_settings.INTEGRATED_PURCHASES and kind=='leave'
+    if not settings.enabled and not simple_leave:
         return route
-    route.update(progressive=True, flow_version=settings.version,
+    route.update(progressive=bool(settings.enabled or simple_leave and route['mode']=='ceo'), flow_version=settings.version,
         leave_threshold=str(settings.leave_threshold), purchase_threshold=str(settings.purchase_threshold),
         allow_review_final=bool(rule and rule.allow_review_final), stock_final_approval=kind == 'stock')
     if route['mode'] == 'base':
@@ -33,8 +35,9 @@ def decorate_route(route, kind, owner, rule):
         if rule and rule.approver_is_author:
             route['fixed_approver_id'] = None
     from .delegation import simplified_eligible, rank_index
-    if (rule and rule.allow_representative_direct and simplified_eligible(owner)
-            and rank_index(owner.profile.rank) >= rank_index('팀장') and active_representative()):
+    direct_allowed=(not rule or rule.allow_representative_direct or rule.allow_self_approval or rule.skip_review or rule.approver_is_author) if simple_leave else bool(rule and rule.allow_representative_direct)
+    if (direct_allowed and simplified_eligible(owner)
+            and rank_index(owner.profile.rank) >= rank_index('과장' if simple_leave else '팀장') and active_representative()):
         route['available_modes'].append('ceo')
     return route
 
@@ -116,7 +119,7 @@ def finish(document, actor, event, reason=''):
     document.route_snapshot = {**document.route_snapshot, 'final_actor_id': actor.pk,
         'final_actor_name': actor.first_name, 'final_method': event}
     audit(actor, event, document, reason + (f'\n연차 {document.charged}일 차감' if document.kind == 'leave' else ''))
-    notify(document, [document.owner] + accountants(document), '최종 결재가 완료되었습니다.', '승인완료')
+    notify(document, [document.owner] + accountants(document), f'{actor.first_name}님의 최종 결재가 완료되었습니다.', '승인완료')
 
 
 def handle_action(document, actor, action, reason, new_person):
@@ -141,7 +144,7 @@ def handle_action(document, actor, action, reason, new_person):
         document.route_snapshot = {**document.route_snapshot, 'approver_id':new_person.pk,
             'approver_rank':new_person.profile.rank, 'approver_name':new_person.first_name}
         audit(actor,'상위 결재 요청',document,reason)
-        notify(document,[document.owner,new_person],'검토가 완료되어 승인자에게 전달되었습니다.','승인대기')
+        notify(document,[document.owner,new_person],f'{actor.first_name}님이 검토를 완료했습니다.','승인대기')
     elif action == 'review_final':
         authority=review_final_rule(document,actor)
         if not authority:
@@ -164,7 +167,7 @@ def handle_action(document, actor, action, reason, new_person):
         document.route_snapshot = {**document.route_snapshot,'representative_id':rep.user_id,
             'representative_name':rep.user.first_name}
         audit(actor,'대표 결재 요청',document,reason)
-        notify(document,[document.owner,rep.user],'승인자가 대표 결재를 요청했습니다.','대표결재대기')
+        notify(document,[document.owner,rep.user],f'{actor.first_name}님이 승인을 완료하고 대표 결재를 요청했습니다.','대표결재대기')
     elif action == 'approve':
         if document.status == 'approve' and document.approver_id == actor.pk and not actor.profile.is_representative:
             document.approver_decided_at = now

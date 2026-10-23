@@ -206,6 +206,9 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     actor.profile = Profile.objects.get(user=actor)
     document = Document.objects.select_for_update().get(pk=pk)
+    from django.conf import settings
+    if settings.INTEGRATED_PURCHASES and document.owner_id==actor.pk and action in ['review','approve','forward','review_final','escalate']:
+        raise PermissionDenied('기안자는 본인 문서를 검토·승인할 수 없습니다.')
     if actor.profile.is_representative and not (actor.profile.representative_can_approve
             and document.progressive and document.representative_id == actor.pk
             and action in ['approve','reject','cancel_approval']):
@@ -231,7 +234,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             document.status = 'approve'
             audit(actor, '검토 승인', document)
             approver_stage = '검토완료 · 승인대기' if document.owner_id == document.approver_id else '승인대기'
-            notify(document, [document.owner, document.approver], '검토가 완료되었습니다. 최종 승인을 기다리고 있습니다.',
+            notify(document, [document.owner, document.approver], f'{actor.first_name}님이 검토를 완료했습니다.',
                    '검토완료', {document.approver_id: approver_stage})
     elif action == 'approve':
         if not document.final_approval_required or document.status != 'approve' or document.approver_id != actor.pk:
@@ -246,7 +249,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             adjust_charges(document, 1)
         document.status, document.approved_at = 'approved', now
         audit(actor, '최종 승인', document, f'연차 {document.charged}일 차감' if document.kind == 'leave' else '')
-        notify(document, [document.owner] + accountants(document), '최종 승인되었습니다.', '승인완료')
+        notify(document, [document.owner] + accountants(document), f'{actor.first_name}님의 최종 결재가 완료되었습니다.', '승인완료')
     elif action == 'reject':
         if not ((document.status == 'review' and document.reviewer_id == actor.pk) or
                 (document.final_approval_required and document.status == 'approve' and document.approver_id == actor.pk)):

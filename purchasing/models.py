@@ -118,6 +118,13 @@ class PurchaseReport(models.Model):
     def number(self):return f'BATCH-{timezone.localtime(self.created_at):%Y%m%d}-{self.pk:04d}'
     @property
     def result_label(self):
+        if settings.INTEGRATED_PURCHASES:
+            states=set(self.items.values_list('decision',flat=True))
+            if self.status!='decided':return '대표 결재 대기'
+            if 'hold' in states:return '일부 승인 · 보류' if 'allow' in states else '보류' if states=={'hold'} else '반려 · 보류'
+            if states=={'allow'}:return '결재완료'
+            if states=={'deny'}:return '반려'
+            return '결재완료 · 일부 승인' if 'allow' in states else '결정 완료'
         if self.status!='decided':return '구매 승인 대기'
         states=set(self.items.values_list('decision',flat=True))
         labels={'allow':'구매 승인완료','deny':'구매반려','hold':'구매보류'}

@@ -165,11 +165,12 @@ def dashboard(request):
 def documents(request):
     mode = request.GET.get('mode', 'mine')
     accounting_categories, selected_kind = [], ''
+    document_categories=[]
     qs = visible_documents(request.user).select_related('owner', 'owner__profile', 'reviewer', 'approver')
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
               'completed': '내 기안 결재완료', 'deleted': '삭제 문서 보관함', 'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
               'stock': '생산 재고 요청함', 'all': '전체 문서', 'search': '문서 검색'}
-    if settings.INTEGRATED_PURCHASES and mode=='completed':titles['completed']='내 기안 승인완료'
+    if settings.INTEGRATED_PURCHASES and mode=='completed':titles['completed']='내 기안 결재완료'
     if mode == 'mine':
         qs = qs.filter(owner=request.user).exclude(status='draft')
     elif mode == 'completed':
@@ -241,6 +242,7 @@ def documents(request):
         if kinds:
             matching |= Q(kind__in=kinds)
         qs = qs.filter(matching)
+    category_counts=dict(qs.order_by().values_list('kind').annotate(n=Count('pk')))
     for key in ['kind', 'status', 'shipment']:
         if key == 'kind' and mode == 'accounting':
             continue
@@ -263,11 +265,20 @@ def documents(request):
     if settings.INTEGRATED_PURCHASES:qs=qs.order_by('-created_at','-pk')
     shown=qs[:100];count=qs.count()
     if settings.INTEGRATED_PURCHASES:
-        from purchasing.integration import list_requests,merge_rows
+        from purchasing.integration import list_requests,list_reports,merge_rows
         purchases=list_requests(request.user,mode,request.GET)
-        count+=purchases.count();shown=merge_rows(shown,purchases[:100],request.user)
+        reports=list_reports(request.user,mode,request.GET)
+        count+=purchases.count()+reports.count();shown=merge_rows(shown,purchases[:100],request.user,reports=reports[:100])
+        if mode not in ['accounting','stock','deleted']:
+            params=request.GET.copy();params.pop('kind',None)
+            category_counts['office']=category_counts.get('office',0)+list_requests(request.user,mode,params).count()+list_reports(request.user,mode,params).count()
+            for key,label in [('', '전체'),('leave','휴가원'),('office','구매요청'),('stock','생산 재고')]:
+                query=request.GET.copy();query['mode']=mode
+                if key:query['kind']=key
+                else:query.pop('kind',None)
+                document_categories.append(dict(key=key,label=label,count=sum(category_counts.values()) if not key else category_counts.get(key,0),url='?'+query.urlencode(),selected=request.GET.get('kind','')==key))
     return page(request, 'documents', titles[mode], mode, documents=shown, document_count=count,
-                mode=mode, states=([(k,v) for k,v in [('draft','작성 중'),('review','검토·승인 중'),('purchasing','구매 진행 중'),('approved','승인완료'),('hold','보류'),('rejected','반려'),('cancelled','취소')]] if settings.INTEGRATED_PURCHASES and mode not in ['stock','accounting'] else [(k, ('결재완료' if stock_final_routes else '검토완료') if k == 'approved' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES),
+                mode=mode, document_categories=document_categories,states=([(k,v) for k,v in [('draft','작성 중'),('review','검토·승인 중'),('purchasing','구매 진행 중'),('approved','결재완료'),('hold','보류'),('rejected','반려'),('cancelled','취소')]] if settings.INTEGRATED_PURCHASES and mode not in ['stock','accounting'] else [(k, ('결재완료' if stock_final_routes else '검토완료') if k == 'approved' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES),
                 kinds=Document.KINDS, departments=DEPARTMENTS,
                 accounting_categories=accounting_categories, selected_kind=selected_kind,
                 can_export_purchases=mode == 'accounting' and selected_kind == 'office',

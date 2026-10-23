@@ -21,13 +21,15 @@ class ScopedRuleForm(ApprovalRuleForm):
         for name in ['amount_over','amount_to']:
             self.fields[name].widget=forms.HiddenInput();self.fields[name].required=False
         self.initial['amount_over']=0
+        if kind=='leave' and self.instance.pk:
+            self.initial['allow_representative_direct']=bool(self.instance.allow_representative_direct or self.instance.allow_self_approval or self.instance.skip_review or self.instance.approver_is_author)
         self.fields['name'].label='규정 이름'
         self.fields['authors'].label='특정 기안자에게만 적용 · 선택사항'
         self.fields['allow_review_final'].label='지정한 검토자가 승인까지 완료할 수 있음'
-        self.fields['allow_self_approval'].label='과장급 이상 본인 전결 허용'
-        self.fields['allow_skip_review'].label='과장급 이상 승인자에게 바로 요청 허용'
+        self.fields['allow_representative_direct'].label='과장·팀장·부장·이사에게 대표 결재 요청 허용'
     def clean(self):
         data=super().clean();data['amount_over']=Decimal('0');data['amount_to']=None
+        if self.kind=='leave':data['skip_review']=False
         return data
 
 
@@ -65,7 +67,7 @@ def regulations(request,pk=None):
             elif form.is_valid():
                 save_rule(request.user,form);messages.success(request,f'{label} 규정을 저장했습니다. 기존 제출 문서는 유지됩니다.');return redirect(reverse('regulations')+'?tab='+kind)
         except ValidationError as exc:form.add_error(None,exc)
-    groups=[('1. 적용할 대상',['name','enabled','author_ranks','author_departments']),('2. 검토와 승인 권한',['reviewer_ranks','approver_ranks','allow_review_final','review_final_users']),('3. 과장급 이상이 선택할 방식',['allow_skip_review','allow_self_approval','allow_representative_direct'])]
+    groups=[('1. 규정 이름과 사용 여부',['name','enabled']),('2. 결재 가능한 직급',['reviewer_ranks','approver_ranks']),('3. 과장급 이상의 요청 방식',['allow_representative_direct'])]
     return page(request,'integrated_rule_edit',f'{label} 결재 규정','regulations',kind=kind,rule_label=label,rule_form=form,threshold_form=threshold,
-        field_groups=[(label,[form[name] for name in names]) for label,names in groups],advanced_fields=[form[name] for name in ['authors','fixed_reviewer','fixed_approver','skip_review','approver_is_author']],
+        field_groups=[(label,[form[name] for name in names]) for label,names in groups],review_final_fields=[form[name] for name in ['allow_review_final','review_final_users']],advanced_fields=[form[name] for name in ['author_ranks','author_departments','authors','fixed_reviewer','fixed_approver']+(['skip_review'] if kind=='stock' else [])],
         rules=ApprovalRule.objects.filter(kind=kind,deleted_at__isnull=True).prefetch_related('review_final_users'),common_rules=ApprovalRule.objects.filter(kind='all',deleted_at__isnull=True))

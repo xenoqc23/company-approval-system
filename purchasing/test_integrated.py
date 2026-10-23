@@ -49,7 +49,7 @@ class IntegratedTests(TestCase):
 
     def test_original_document_and_new_purchase_ids_do_not_collide(self):
         old=self.old();d=self.create();self.as_user('quality_manager')
-        r=self.client.get('/documents/');self.assertContains(r,'DOC-LEGACY-1');self.assertContains(r,d.number)
+        r=self.client.get('/documents/');self.assertContains(r,'DOC-LEGACY-1');self.assertContains(r,d.product)
         self.assertContains(r,reverse('detail',args=[old.pk]));self.assertContains(r,reverse('purchasing:detail',args=[d.pk]))
         old.refresh_from_db();self.assertEqual((old.status,old.shipment),('approved',''))
 
@@ -67,10 +67,10 @@ class IntegratedTests(TestCase):
     def test_sent_report_does_not_stay_in_actionable_items_and_receipt_remains(self):
         d=self.confirmed();r=self.final([d],['allow']);self.as_user('finance')
         self.assertEqual(self.client.get(reverse('purchasing:reports')).context['total'],0)
-        self.assertContains(self.client.get(reverse('purchasing:reports')+'?tab=sent'),r.number)
+        self.assertContains(self.client.get(reverse('purchasing:reports')+'?tab=sent'),r.title)
         request_action(d.pk,d.owner,'receive',quantity=6,receipt_key=uuid4())
-        self.assertContains(self.client.get(reverse('purchasing:reports')+'?tab=sent'),'일부 수령 1개')
-        response=self.client.get(reverse('purchasing:report_detail',args=[r.pk]));self.assertContains(response,'6 / 10개')
+        self.assertContains(self.client.get(reverse('purchasing:reports')+'?tab=sent'),'수령 완료')
+        response=self.client.get(reverse('purchasing:report_detail',args=[r.pk]));self.assertContains(response,'수령 완료');self.assertNotContains(response,'6 / 10개')
 
     def test_hold_tab_is_scoped_and_followup_before_retry_is_preserved(self):
         d=self.confirmed();self.final([d],['hold']);self.as_user('finance')
@@ -91,7 +91,7 @@ class IntegratedTests(TestCase):
         self.assertEqual(self.client.get('/notifications/status/').json()['completed_unread'],0)
         r=self.final([d],['allow']);self.assertEqual(self.client.get('/notifications/status/').json()['completed_unread'],1)
         self.client.post('/notices/');self.assertEqual(self.client.get('/notifications/status/').json()['completed_unread'],1)
-        response=self.client.get('/documents/?mode=completed&unread=1');self.assertContains(response,d.number)
+        response=self.client.get('/documents/?mode=completed&unread=1');self.assertContains(response,d.product)
         self.client.get(reverse('purchasing:detail',args=[d.pk]));self.assertEqual(self.client.get('/notifications/status/').json()['completed_unread'],0)
 
     def test_two_notice_cursors_and_combined_notice_page(self):

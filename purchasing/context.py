@@ -35,6 +35,8 @@ def shell(request):
         cards.append(dict(title='검토·승인할 요청',key='pending',count=result['counts']['pending'],url='/purchase-lab/requests/?mode=inbox',note='구매 내용을 확인하고 다음 담당자에게 전달하세요.'))
     if checker:cards.append(dict(title='구매 내용 확인',key='completed',count=result['counts']['completed'],url='/purchase-lab/requests/?mode=completed&stage=confirm',note='내부 승인이 끝난 요청을 확인해 주세요.'))
     if finance:cards.append(dict(title='모아서 구매요청',key='finance',count=result['counts']['finance'],url='/purchase-lab/requests/?mode=finance',note='확인된 품목을 선택해 대표님께 요청하세요.'))
-    if u.profile.is_representative:cards.append(dict(title='구매승인 결정',key='representative',count=result['counts']['representative'],url='/purchase-lab/reports/',note='품목별로 승인·반려·보류를 선택해 주세요.'))
+    if u.profile.is_representative:
+        if settings.INTEGRATED_PURCHASES:result['counts']['pending']+=result['counts']['representative']
+        else:cards.append(dict(title='구매승인 결정',key='representative',count=result['counts']['representative'],url='/purchase-lab/reports/',note='품목별로 승인·반려·보류를 선택해 주세요.'))
     result['work_cards']=cards
     return result

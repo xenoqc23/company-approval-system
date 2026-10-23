@@ -28,7 +28,9 @@ class Command(BaseCommand):
             u.profile.save()
             AnnualBalance.objects.get_or_create(user=u,year=timezone.localdate().year,defaults=dict(total=16,used=0,grant_initialized=True,total_manual=True))
         p,_=ApprovalFlowPolicy.objects.get_or_create(pk=1);p.enabled=True;p.save()
-        r=ApprovalRule.objects.create(name='휴가원 기본 규정',kind='leave',enabled=True,reviewer_ranks=['주임','대리','과장','팀장','부장','이사'],approver_ranks=['주임','대리','과장','팀장','부장','이사'],allow_skip_review=True,allow_self_approval=True,allow_review_final=True,allow_representative_direct=True)
+        # This fresh fictional database has no documents; omit superseded sample rules.
+        ApprovalRule.objects.filter(kind='leave').delete()
+        r=ApprovalRule.objects.create(name='휴가원 기본 규정',kind='leave',enabled=True,reviewer_ranks=['주임','대리','과장','팀장','부장','이사'],approver_ranks=['주임','대리','과장','팀장','부장','이사'],allow_skip_review=False,allow_self_approval=False,allow_review_final=True,allow_representative_direct=True)
         r.review_final_users.set(Profile.objects.filter(rank__in=['과장','팀장','부장','이사']).exclude(user__username='p_admin').values_list('user_id',flat=True))
         marker.write_text('integrated-local-fictional-v1')
         self.stdout.write('기존 사내결재 화면 + 새 구매요청 통합 준비 완료. 문서는 빈 상태이며 가상 연차만 부여했습니다.')

@@ -79,7 +79,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         request_action(self.doc.pk,self.users['p_finance'],'paid','실제 결제 확인')
         key=uuid4();op=lambda:request_action(self.doc.pk,self.users['p_dev'],'receive',quantity=6,receipt_key=key)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
-        self.doc.refresh_from_db();self.assertEqual((self.doc.status,self.doc.received_quantity,self.doc.remaining_quantity),('paid',6,4));self.assertEqual(self.doc.receipts.count(),1)
+        self.doc.refresh_from_db();self.assertEqual((self.doc.status,self.doc.received_quantity,self.doc.remaining_quantity),(('received',10,0) if settings.INTEGRATED_PURCHASES else ('paid',6,4)));self.assertEqual(self.doc.receipts.count(),1)
 
     def test_amount_increase_and_receipt_cannot_both_commit(self):
         r,values=self.allowed_report();decide_report(r.pk,self.users['p_ceo'],values,0,final=True)
@@ -119,4 +119,4 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         decide_report(r.pk,self.users['p_ceo'],{str(r.items.get().pk):dict(decision='allow',reason='')},0,final=True)
         key=uuid4();op=lambda:request_action(d.pk,self.users['p_dev_manager'],'receive',quantity=6,receipt_key=key)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
-        d.refresh_from_db();self.assertEqual((d.received_quantity,d.remaining_quantity,d.status),(6,4,'allowed'));self.assertEqual(d.receipts.count(),1)
+        d.refresh_from_db();self.assertEqual((d.received_quantity,d.remaining_quantity,d.status),((10,0,'received') if settings.INTEGRATED_PURCHASES else (6,4,'allowed')));self.assertEqual(d.receipts.count(),1)

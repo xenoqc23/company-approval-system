@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const finalApproval = !isStock || form.dataset.stockFinalApproval === 'true';
     const deferredApprover = form.dataset.progressive === 'true' && (id('approval_mode')?.value || 'base') === 'base';
     const directRepresentative = id('approval_mode')?.value === 'ceo';
-    const selfComplete = finalApproval && id('approval_mode')?.value === 'self';
+    const selfComplete = false;
     const skipReview = finalApproval && (selfComplete || directRepresentative || form.dataset.skipReview === 'true');
     const annual = id('leave_type').value === 'annual';
     document.querySelectorAll('[data-kind]').forEach(card => {
@@ -131,11 +131,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#quantity-price-grid').classList.toggle('single-column', isStock);
     document.querySelector('#representative-mode-note').hidden = !directRepresentative;
     document.querySelector('#approval-heading').textContent = directRepresentative ? '대표 결재 요청' : !finalApproval || deferredApprover ? '검토자 지정' : '결재선 지정';
-    document.querySelector('#compose-intro').textContent = directRepresentative ? '신청 내용을 작성해 대표에게 최종 결재를 요청합니다.' : deferredApprover ? '신청 내용을 작성하고 검토자만 선택해 주세요. 다음 승인자는 검토자가 결정합니다.' : selfComplete ? '신청 내용을 확인하세요. 본인 전결은 제출 즉시 완료됩니다.' : !finalApproval ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
-    document.querySelector('#approval-footnote').textContent = selfComplete ? '본인 전결로 제출하면 즉시 완료됩니다. 처리자·시각과 적용 규정이 기록됩니다.' : !finalApproval ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
+    document.querySelector('#compose-intro').textContent = directRepresentative ? '신청 내용을 작성해 대표에게 최종 결재를 요청합니다.' : deferredApprover ? '신청 내용을 작성하고 검토자만 선택해 주세요. 다음 승인자는 검토자가 결정합니다.' : selfComplete ? '다른 결재 담당자에게 요청합니다.' : !finalApproval ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
+    document.querySelector('#approval-footnote').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : !finalApproval ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
     document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
-    document.querySelector('#compose-help-route').textContent = selfComplete ? '전결로 제출·완료를 누르면 최종 승인과 동일하게 처리됩니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : !finalApproval ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
-    document.querySelector('#submit-label').textContent = directRepresentative ? '대표 결재 요청' : selfComplete ? '전결로 제출·완료' : isStock ? '재고 요청 제출' : '기안 제출';
+    document.querySelector('#compose-help-route').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : !finalApproval ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
+    document.querySelector('#submit-label').textContent = directRepresentative ? '대표 결재 요청' : selfComplete ? '기안 제출' : isStock ? '재고 요청 제출' : '기안 제출';
     id('product').placeholder = isStock ? '예: 제품 사용자 매뉴얼, 제품 보관함' : '예: A4 복사용지';
     document.querySelector('#leave-preview').hidden = !isLeave;
     document.querySelector('#start-date-label').innerHTML = (annual ? '시작일' : '사용 날짜') + ' <em>*</em>';
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modePicker.hidden = route.available_modes.length < 2;
         const select = id('approval_mode');
         const selectedMode = select.value || 'base';
-        const labels = {base:route.progressive ? '검토 요청' : '규정 기본', skip:'검토 생략', self:'본인 전결',ceo:'대표 결재 요청'};
+        const labels = {base:'검토·승인 요청',ceo:'대표 결재 요청'};
         select.replaceChildren(...route.available_modes.map(value => new Option(labels[value], value)));
         select.value = route.available_modes.includes(selectedMode) ? selectedMode : 'base';
         if (select.value !== selectedMode) { resolveRoute(); return; }
@@ -217,8 +217,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fixed) id(stage).value = String(fixed);
       }
       document.querySelector('#route-preview').textContent = `${route.name} · ${route.path}${route.note ? ' · ' + route.note : ''}`;
-      document.querySelector('#approval-footnote').textContent = route.progressive && route.mode === 'base' ? '검토자는 허용 범위에서 전결하거나 상위 승인자를 지정합니다. 기준 이상에서도 허용된 전결은 유지하며 승인자는 대표 결재 요청도 선택할 수 있습니다.' : route.direct_representative ? '대표에게 직접 최종 결재를 요청합니다. 대표 승인 전에는 완료되지 않습니다.' : route.self_complete ? '본인 전결로 제출하면 즉시 완료됩니다. 처리자·시각과 적용 규정이 기록됩니다.' : route.skip_review ? '검토 없이 최종 승인자가 승인하면 완료됩니다. 자격을 충족하면 본인 승인도 가능합니다.' : '기안자 ≤ 검토자 ≤ 승인자 직급 조건을 적용합니다. 같은 사람도 단계별로 확인합니다.';
-      document.querySelector('#compose-help-route').textContent = route.progressive && route.mode === 'base' ? '검토자를 선택해 제출하면 검토자가 다음 결재 단계를 결정합니다.' : route.direct_representative ? '대표 계정으로 결재 요청 알림이 전달됩니다.' : route.self_complete ? '전결로 제출·완료를 누르면 최종 승인과 동일하게 처리됩니다.' : route.skip_review ? '승인자를 선택하면 승인대기 알림이 전달됩니다.' : '담당자를 선택하면 결재 순서대로 알림이 전달됩니다.';
+      document.querySelector('#approval-footnote').textContent = route.progressive && route.mode === 'base' ? '검토자는 허용 범위에서 전결하거나 상위 승인자를 지정합니다. 기준 이상에서도 허용된 전결은 유지하며 승인자는 대표 결재 요청도 선택할 수 있습니다.' : route.direct_representative ? '대표에게 직접 최종 결재를 요청합니다. 대표 승인 전에는 완료되지 않습니다.' : route.self_complete ? '다른 결재 담당자에게 요청합니다.' : route.skip_review ? '검토 없이 최종 승인자가 승인하면 완료됩니다. 기안자 본인은 승인자로 지정할 수 없습니다.' : '기안자 ≤ 검토자 ≤ 승인자 직급 조건을 적용합니다. 같은 사람도 단계별로 확인합니다.';
+      document.querySelector('#compose-help-route').textContent = route.progressive && route.mode === 'base' ? '검토자를 선택해 제출하면 검토자가 다음 결재 단계를 결정합니다.' : route.direct_representative ? '대표 계정으로 결재 요청 알림이 전달됩니다.' : route.self_complete ? '다른 결재 담당자에게 요청합니다.' : route.skip_review ? '승인자를 선택하면 승인대기 알림이 전달됩니다.' : '담당자를 선택하면 결재 순서대로 알림이 전달됩니다.';
     } catch (error) {
       if (sequence === routeSequence) document.querySelector('#route-preview').textContent = error.message || '경로를 확인하지 못했습니다. 제출 시 최신 규정을 다시 확인합니다.';
     }
@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
       result.replaceChildren();
       for (const text of [route.name, route.path,
         ...(route.skip_review ? [] : ['검토 가능 직급: ' + route.reviewers.join(' · ')]),
-        ...(!route.final_approval_required ? [] : ['승인 가능 직급: ' + (route.approvers.join(' · ') || '해당 직급 없음'), '본인 승인: ' + (route.self_allowed ? '자격 충족 시 가능' : '불가')]),
+        ...(!route.final_approval_required ? [] : ['승인 가능 직급: ' + (route.approvers.join(' · ') || '해당 직급 없음'), '기안자 본인 승인 불가']),
         route.note]) {
         if (!text) continue;
         const paragraph = document.createElement('p'); paragraph.textContent = text; result.appendChild(paragraph);

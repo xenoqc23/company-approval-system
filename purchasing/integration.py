@@ -65,7 +65,7 @@ def list_requests(user, mode, params):
 
 def row(d,user,unread=False):
     p=progress(d,simplified=True)
-    d.kind='office';d.get_kind_display=lambda:'구매요청서';d.type_label='구매요청서'
+    d.kind='office';d.get_kind_display=lambda:'구매요청서';d.type_label='구매요청서';d.is_purchase=True
     d.title=d.product;d.status_label=p['list_label'];d.shipment_label=p['receipt']
     d.integration_url=reverse('purchasing:edit' if d.status=='draft' else 'purchasing:detail',args=[d.pk])
     d.has_owner_unseen=d.owner_id==user.pk and d.completion_unread
@@ -74,13 +74,56 @@ def row(d,user,unread=False):
     return d
 
 
-def merge_rows(old, new, user, limit=100):
+def merge_rows(old, new, user, limit=100, reports=()):
     old=list(old)
     for d in old:d.integration_url=reverse('detail',args=[d.pk])
     new=list(new)
     unread=set(PurchaseNotice.objects.filter(user=user,read=False,request_id__in=[d.pk for d in new]).values_list('request_id',flat=True))
-    docs=old+[row(d,user,d.pk in unread) for d in new]
+    docs=old+[row(d,user,d.pk in unread) for d in new]+[report_row(r,user) for r in reports]
     return sorted(docs,key=lambda d:(d.created_at,d.pk),reverse=True)[:limit]
+
+
+def list_reports(user,mode,params):
+    """A representative sees each batch once, in the shared inbox/history."""
+    qs=reports_for(user).filter(representative=user)
+    if not user.profile.is_representative or params.get('kind') not in [None,'','office']:return qs.none()
+    if mode=='pending':qs=qs.filter(status='pending')
+    elif mode=='history':qs=qs.filter(status='decided')
+    elif mode=='search':
+        if not params.get('q','').strip():return qs.none()
+    else:return qs.none()
+    q=params.get('q','').strip()[:120]
+    if q:qs=qs.filter(Q(title__icontains=q)|Q(created_by__first_name__icontains=q)|Q(items__request__product__icontains=q)|Q(items__request__owner__first_name__icontains=q)|Q(items__request__vendor__icontains=q)).distinct()
+    state=params.get('status','')
+    if state=='review':qs=qs.filter(status='pending')
+    elif state=='approved':qs=qs.filter(status='decided').exclude(items__decision__in=['pending','hold'])
+    elif state=='hold':qs=qs.filter(status='decided',items__decision='hold').distinct()
+    elif state=='rejected':qs=qs.filter(status='decided',items__decision='deny').distinct()
+    elif state:qs=qs.none()
+    if params.get('shipment')=='received':
+        from .fulfillment import report_fulfillment,report_receipt_label
+        ids=[r.pk for r in qs.prefetch_related('items__request__receipts__received_by') if report_receipt_label(report_fulfillment(r,list(r.items.all())))=='수령 완료']
+        qs=qs.filter(pk__in=ids)
+    elif params.get('shipment'):qs=qs.none()
+    for key,lookup in [('from','created_at__date__gte'),('to','created_at__date__lte')]:
+        try:
+            if params.get(key):qs=qs.filter(**{lookup:date.fromisoformat(params[key])})
+        except ValueError:pass
+    return qs.prefetch_related('items__request__receipts__received_by')
+
+
+def report_row(r,user):
+    from types import SimpleNamespace
+    from .fulfillment import report_fulfillment,report_receipt_label
+    items=list(r.items.all())
+    names=' · '.join(dict.fromkeys(i.snapshot.get('owner','') for i in items))
+    vendors=' · '.join(dict.fromkeys(i.snapshot.get('vendor','') for i in items))
+    return SimpleNamespace(pk=r.pk,kind='office',product=r.title,title=r.title,number=r.number,
+        is_purchase=True,is_purchase_report=True,owner=SimpleNamespace(first_name=names),vendor=vendors,
+        get_kind_display=lambda:'구매요청',created_at=r.created_at,status='approve' if r.status=='pending' else 'approved',
+        status_label=r.result_label,shipment_label=report_receipt_label(report_fulfillment(r,items)),
+        integration_url=reverse('purchasing:report_detail',args=[r.pk]),has_owner_unseen=False,
+        has_new_notice=PurchaseNotice.objects.filter(user=user,report=r,read=False).exists())
 
 
 def purchase_summary(user, after=None):
@@ -110,7 +153,7 @@ def filter_states(mode):
         'confirm_wait':dict(status__in=['ready','supplement'],confirmed_at__isnull=True),
         'confirmed':dict(confirmed_at__isnull=False),
     }
-    labels=[('draft','작성 중'),('internal','검토·승인 중'),('purchasing','구매 진행 중'),('approved','구매 승인완료'),('received','수령 완료'),('hold','보류'),('closed','반려·취소')]
+    labels=[('draft','작성 중'),('internal','검토·승인 중'),('purchasing','구매 진행 중'),('approved','결재완료'),('received','수령 완료'),('hold','보류'),('closed','반려·취소')]
     if mode=='completed':labels=[('confirm_wait','확인 대기'),('confirmed','확인완료'),('hold','보류')]
     if mode=='inbox':labels=[('internal','검토·승인 중')]
     return labels,{k:groups[k] for k,label in labels}

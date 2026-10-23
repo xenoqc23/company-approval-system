@@ -24,7 +24,7 @@
       <a class="pending-approval-summary{% if nav_waiting %} has-pending{% endif %}" href="{% url 'documents' %}?mode=pending" aria-label="내가 처리할 미결 {{ nav_waiting }}건">
         <span>미결 <strong><span data-live-count="waiting" data-keep-zero>{{ nav_waiting }}</span>건</strong></span><small>내가 검토·승인할 문서 <span aria-hidden="true">↗</span></small>
       </a>
-      <a class="pending-approval-summary completion-summary{% if completed_unread %} has-pending{% endif %}" href="{% url 'documents' %}?mode=completed&amp;unread=1"><span>{% if integrated_purchases %}승인완료{% else %}결재완료{% endif %} · 미확인 <strong><span data-live-count="completed_unread" data-keep-zero>{{ completed_unread }}</span>건</strong></span><small>내 기안 완료 확인 ↗</small></a>
+      <a class="pending-approval-summary completion-summary{% if completed_unread %} has-pending{% endif %}" href="{% url 'documents' %}?mode=completed&amp;unread=1"><span>결재완료 · 미확인 <strong><span data-live-count="completed_unread" data-keep-zero>{{ completed_unread }}</span>건</strong></span><small>내 기안 완료 확인 ↗</small></a>
       <p class="mint-progress-count" role="status">{% if integrated_purchases %}휴가원·재고 진행 중{% else %}내 기안 진행 중{% endif %} <strong>{{ progress_count }}건</strong></p>
       {% if progress_doc %}<form class="mint-progress-picker" method="get" action="{% url 'dashboard' %}#approval-progress">
         <input type="hidden" name="home_kind" value="{{ home_kind }}">

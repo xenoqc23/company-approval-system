@@ -31,11 +31,12 @@
     const response=await fetch(form.dataset.hints+'?q='+encodeURIComponent(field.value),{signal:controller.signal,cache:'no-store'});
     if(!response.ok||response.redirected)throw Error();const data=await response.json();if(cursor!==version)return;box.replaceChildren();box.hidden=false;
     const title=document.createElement('strong');title.textContent=`유사 구매요청 ${data.count}건`;box.append(title);
-    data.results.forEach(r=>{const p=document.createElement('p');p.textContent=`${r.product} · ${r.department} · ${r.quantity}개 · ${r.status}${r.received?' · 수령 '+r.received+'개':''}${r.usage_department?' · 사용 '+r.usage_department:''}${r.location?' · 보관 '+r.location:''}`;box.append(p);});
+    data.results.forEach(r=>{const p=document.createElement('p');p.textContent=`${r.product} · ${r.department} · ${r.quantity}개 · ${r.status}${r.usage_department?' · 사용 '+r.usage_department:''}${r.location?' · 보관 '+r.location:''}`;box.append(p);});
     const note=document.createElement('small');note.textContent='과거 수령 내역도 포함합니다. 현재 재고를 뜻하지 않으며 추가 구매를 계속 요청할 수 있습니다.';box.append(note);
    }catch{if(cursor===version){box.hidden=false;box.textContent='유사 구매내역을 확인하지 못했습니다. 요청은 계속 작성할 수 있습니다.';}}finally{clearTimeout(timeout);}},400);
   });
  }
+ document.querySelectorAll('[data-receipt-complete]').forEach(form=>form.addEventListener('submit',event=>{if(!confirm('요청한 물품을 모두 받으셨나요? 수령 완료로 표시합니다.'))event.preventDefault();}));
  document.querySelectorAll('[data-receipt-form]').forEach(form=>form.addEventListener('submit',event=>{
   const quantity=Number(form.querySelector('[name=quantity]').value),remaining=Number(form.dataset.remaining);
   if(!Number.isSafeInteger(quantity)||quantity<1||quantity>remaining){event.preventDefault();return;}
@@ -51,16 +52,18 @@
  if(requestForm&&requestForm.querySelector('[name=request_method]')){
   const syncMethod=()=>{const direct=requestForm.querySelector('[name=request_method]:checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
    fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&((field.name==='approver')||(field.name==='reviewer'&&requestForm.dataset.reviewMode==='review_approval'));});
-   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?'담당 이사 확인 후 구매담당자에게 전달됩니다.':'지정한 검토·승인 담당자를 거쳐 구매를 진행합니다.';
+   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토·승인 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?'담당 이사 확인 후 구매담당자에게 전달됩니다.':'지정한 검토·승인 담당자를 거쳐 구매를 진행합니다.';
   };requestForm.querySelectorAll('[name=request_method]').forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
  }
  const policyForm=document.querySelector('[data-policy-form]');
  if(policyForm&&policyForm.querySelector('[data-route-preview]')){
   const preview=()=>{const rank=policyForm.querySelector('[data-preview-rank]').value,method=policyForm.querySelector('[data-preview-method]').value,dev=policyForm.querySelector('[data-preview-department]').value==='dev';
    const allowed=[...policyForm.querySelectorAll('[name=direct_ranks]:checked')].map(e=>e.value).includes(rank),who=policyForm.querySelector(dev?'#id_dev_director':'#id_production_director')?.selectedOptions[0]?.textContent||policyForm.querySelector(dev?'[data-preview-checker-dev]':'[data-preview-checker-other]')?.textContent||'담당자 미지정';
-   const text=method==='direct'&&!allowed?'이 직급은 검토 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
+   const text=method==='direct'&&!allowed?'이 직급은 검토·승인 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
   };policyForm.addEventListener('change',preview);preview();
  }
+ const simpleRule=document.querySelector('[data-simple-leave-rule]');
+ if(simpleRule){const update=()=>{const option=simpleRule.querySelector('[name=allow_representative_direct]');simpleRule.querySelector('[data-rule-ceo-preview]').hidden=!option?.checked;};simpleRule.addEventListener('change',update);update();}
  const runtime=document.querySelector('[data-purchase-status]');
  if(runtime){let busy=false,stopped=false;const poll=async()=>{if(busy||stopped||document.hidden)return;busy=true;try{const r=await fetch(runtime.dataset.purchaseStatus,{cache:'no-store'});if(r.redirected||!r.ok)return;const data=await r.json();if(String(data.user)!==runtime.dataset.currentUser){stopped=true;return;}document.querySelectorAll('[data-live]').forEach(node=>node.textContent=data.counts[node.dataset.live]||0);}catch{}finally{busy=false;}};setInterval(poll,15000);window.addEventListener('focus',poll);}
 })();

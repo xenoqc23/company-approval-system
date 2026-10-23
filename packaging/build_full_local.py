@@ -3,7 +3,7 @@ from pathlib import Path
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 from hashlib import sha256
 ROOT=Path(__file__).resolve().parents[1]
-NAME='xenosys-local-full-20261023'
+NAME='xenosys-local-simple-20261023'
 
 def build(destination=None):
     out=Path(destination) if destination else ROOT/'releases'/f'{NAME}.zip'
@@ -13,8 +13,8 @@ def build(destination=None):
     for folder in ['workflow/templates','workflow/static','purchasing/templates','purchasing/static','deploy/nas']:
         files.extend(str(p.relative_to(ROOT)) for p in (ROOT/folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts)
     payload={n:(ROOT/n).read_bytes() for n in sorted(set(files))}
-    payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_FULL_20261023.md').read_bytes()
-    examples=ROOT/'docs/full-local-examples'
+    payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_SIMPLE_20261023.md').read_bytes()
+    examples=ROOT/'docs/simple-local-examples'
     if examples.is_dir():payload.update({f'examples/{p.name}':p.read_bytes() for p in sorted(examples.glob('*.png'))})
     assert not any(any(part in {'var','data','.env','.git','.venv','releases','__pycache__'} for part in Path(n).parts) for n in payload)
     assert not any(n.endswith(('.sqlite3','.db','.pem','.key','.csv')) for n in payload)

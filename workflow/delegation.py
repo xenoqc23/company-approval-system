@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from .models import ApprovalRule, DEPARTMENTS, RANKS
 from .people import approval_people, validate_approval_person
+from django.conf import settings
 
 
 def rank_index(rank):
@@ -62,6 +63,13 @@ def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base')
             if rule.allow_self_approval and owner_rank in candidate_ranks(snapshot, 'approver'):
                 snapshot['available_modes'].append('self')
     from .progressive import decorate_route
+    if settings.INTEGRATED_PURCHASES:
+        # Old rule records remain intact, but new submissions cannot self-approve.
+        snapshot['available_modes']=['base']
+        snapshot['author_id']=getattr(owner,'pk',None)
+        for stage in ['reviewer','approver']:
+            if snapshot.get('fixed_'+stage+'_id')==snapshot['author_id']:snapshot['fixed_'+stage+'_id']=None
+        if kind=='leave':snapshot['skip_review']=False
     decorate_route(snapshot, kind, owner, selected_rule)
     if mode not in snapshot['available_modes']:
         raise ValidationError('선택한 결재방식의 권한이 없거나 규정이 변경되었습니다. 과장급 이상에게 허용된 결재방식을 확인해 주세요.')
@@ -84,6 +92,7 @@ def candidate_ranks(route, stage, reviewer_rank=None):
 
 def route_people(route, stage, reviewer_rank=None):
     people = approval_people().filter(profile__rank__in=candidate_ranks(route, stage, reviewer_rank))
+    if settings.INTEGRATED_PURCHASES and route.get('author_id'):people=people.exclude(pk=route['author_id'])
     fixed = route.get('fixed_' + stage + '_id')
     return people.filter(pk=fixed) if fixed else people
 
@@ -113,6 +122,8 @@ def validate_route_people(document, route):
             continue
         person = getattr(document, stage)
         validate_approval_person(person)
+        if settings.INTEGRATED_PURCHASES and person.pk==document.owner_id:
+            raise ValidationError('기안자는 본인 문서를 검토·승인할 수 없습니다. 다른 직원을 선택해 주세요.')
         review_rank = document.reviewer.profile.rank if document.reviewer else None
         if person.profile.rank not in candidate_ranks(route, stage, review_rank):
             raise ValidationError('결재자는 전결 허용 범위와 기안자 ≤ 검토자 ≤ 승인자 직급 조건을 충족해야 합니다.')

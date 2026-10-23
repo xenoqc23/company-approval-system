@@ -27,8 +27,10 @@ def event(actor,label,request=None,report=None,detail=''):
     return PurchaseEvent.objects.create(actor=actor,event=label,request=request,report=report,detail=detail)
 
 
-def notify(users,text,request=None,report=None):
+def notify(users,text,request=None,report=None,owner_update=False):
     ids={u.pk for u in users if u and active(u)}
+    if settings.INTEGRATED_PURCHASES and request and not owner_update:
+        ids.discard(request.owner_id)
     PurchaseNotice.objects.bulk_create([PurchaseNotice(user_id=pk,text=text[:250],request=request,report=report) for pk in ids])
 
 
@@ -134,7 +136,7 @@ def save_request(actor,values,submit=False,pk=None,key=None):
         if mode not in ['direct','approval','review_approval']:raise ValidationError('직급별 경로를 규정에서 확인해 주세요.')
         reviewer,approver=values.get('reviewer'),values.get('approver')
         minimum=RANKS.index(d.rank) if d.rank in RANKS else len(RANKS)
-        if mode=='direct' and (d.rank not in RANKS or minimum<RANKS.index('과장')):raise ValidationError('본인 전결은 과장급 이상에게만 허용됩니다.')
+        if mode=='direct' and (d.rank not in RANKS or minimum<RANKS.index('과장')):raise ValidationError('구매담당자에게 요청은 과장급 이상에게만 허용됩니다.')
         if mode=='review_approval':
             validate_intermediate(actor,reviewer,director,minimum)
             minimum=max(minimum,RANKS.index(reviewer.profile.rank))
@@ -194,7 +196,11 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         if d.status=='approval':users.append(d.approver)
         elif d.status=='director':users.append(d.director)
         elif d.status=='ready' and not d.confirmed_at:users+=list(request_confirmers(d))
-        notify(users,f'{d.product} · {label}'+(f' · {reason}' if reason else ''),request=d)
+        if settings.INTEGRATED_PURCHASES:
+            notify([u for u in users if u and u.pk!=d.owner_id],f'{d.product} · {actor.first_name}님 {label}',request=d)
+            owner_text=f'{actor.first_name}님이 '+('검토를 완료했습니다.' if label=='검토 완료' else '요청을 반려했습니다.' if d.status=='rejected' else '승인을 완료했습니다.')
+            notify([d.owner],f'{d.product} · {owner_text}'+(f' · {reason}' if d.status=='rejected' else ''),request=d,owner_update=True)
+        else:notify(users,f'{d.product} · {label}'+(f' · {reason}' if reason else ''),request=d)
     elif action=='confirm_items':
         if not checker_assigned(actor,d) or d.owner_id==actor.pk:raise PermissionDenied('이 문서에 지정된 구매 확인 담당자만 처리할 수 있습니다.')
         if d.status not in ['ready','hold'] or d.confirmed_at or (d.current_report_id and d.current_report.status!='decided'):raise ValidationError('승인완료 후 아직 확인하지 않은 문서만 처리할 수 있습니다.')
@@ -206,7 +212,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         PurchaseSupplement.objects.create(request=d,requested_by=actor,reason=reason,before=serialize_request(d))
         d.status='supplement';d.decision_reason=reason
         event(actor,'구매요청 보완 요청',request=d,detail=reason)
-        notify([d.owner],f'{d.product} · 보완 요청 · {reason}',request=d)
+        notify([d.owner],f'{d.product} · 보완 요청 · {reason}',request=d,owner_update=True)
     elif action=='prepare_hold':
         if not finance_assigned(actor,d):raise PermissionDenied
         if d.status!='hold':raise ValidationError('보류된 품목만 재보고 준비할 수 있습니다.')
@@ -229,6 +235,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         if d.owner_id!=actor.pk:raise PermissionDenied
         if d.status not in ['allowed','paid']:raise ValidationError('구매승인이 완료된 뒤 받은 수량을 등록할 수 있습니다.')
         remaining=d.remaining_quantity
+        if settings.INTEGRATED_PURCHASES:quantity=None
         try:count=remaining if quantity is None else int(quantity)
         except (ValueError,TypeError):raise ValidationError('이번에 수령한 수량을 입력해 주세요.')
         if quantity is not None and (isinstance(quantity,bool) or str(quantity).strip()!=str(count)):raise ValidationError('수령 수량은 정수로 입력해 주세요.')
@@ -242,7 +249,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         d.received_quantity+=count;d.storage_location=location
         if d.remaining_quantity==0:d.status,d.received_at='received',now
         event(actor,'물품 수령 완료' if d.status=='received' else '물품 부분 수령',request=d,detail=f'이번 수령 {count}개 / 누적 {d.received_quantity}개 / 미수령 {d.remaining_quantity}개'+(f' / 보관 위치 {location}' if location else ''))
-        notify([u for u in finance_users(p) if finance_assigned(u,d)],f'{d.product} · '+('수령 완료' if d.status=='received' else '일부 수령')+f' · {d.received_quantity}/{d.quantity}개 · {actor.first_name}',request=d)
+        notify([u for u in finance_users(p) if finance_assigned(u,d)],f'{d.product} · '+('수령 완료' if d.status=='received' else '일부 수령')+f' · {actor.first_name}',request=d)
     else:raise ValidationError('지원하지 않는 처리입니다.')
     d.revision+=1;d.save();return d
 
@@ -297,7 +304,7 @@ def decide_report(pk,actor,decisions,revision,final=False):
             d.status={'allow':'allowed','deny':'denied','hold':'hold'}[item.decision]
             d.decision_reason=item.reason;d.permitted_at=now;d.completion_unread=item.decision=='allow';d.hold_ready=False;d.hold_note='';d.revision+=1;d.save()
             event(actor,'대표 '+item.get_decision_display(),request=d,report=report,detail=item.reason)
-            notify([d.owner],f'{d.product} · '+('구매 승인완료 · 물품을 받으면 받은 수량을 등록해 주세요.' if item.decision=='allow' else item.get_decision_display()+' · '+item.reason),request=d)
+            notify([d.owner],f'{d.product} · '+(f'{actor.first_name}님의 최종 결재가 완료되었습니다.' if item.decision=='allow' else f'{actor.first_name}님 '+item.get_decision_display()+' · '+item.reason),request=d,owner_update=True)
             notify([u for u in finance_users(p) if finance_assigned(u,d)],f'{d.product} · 대표 {item.get_decision_display()}'+(f' · {item.reason}' if item.reason else ''),request=d)
         report.status,report.decided_at='decided',now
         event(actor,'구매 검토 결과 확정',report=report)

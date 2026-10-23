@@ -118,8 +118,9 @@ if PURCHASE_LAB_ENABLED:
         CSRF_COOKIE_NAME = _purchase_cookie_prefix + '_csrftoken'
         LOGIN_URL = '/purchase-lab/login/'
     elif LOCAL_DEMO_ENABLED:
-        SESSION_COOKIE_NAME = 'xenosys_full_local_sessionid'
-        CSRF_COOKIE_NAME = 'xenosys_full_local_csrftoken'
+        _full_prefix = 'xenosys_simple_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='simple-full-v2' else 'xenosys_full_local'
+        SESSION_COOKIE_NAME = _full_prefix + '_sessionid'
+        CSRF_COOKIE_NAME = _full_prefix + '_csrftoken'
         LOGIN_URL = '/login/'
     else:
         SESSION_COOKIE_NAME = 'xenosys_integrated_local_sessionid'
