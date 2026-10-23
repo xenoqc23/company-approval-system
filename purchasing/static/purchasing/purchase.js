@@ -53,14 +53,14 @@
  if(requestForm&&requestForm.querySelector('[name=request_method]')){
   const syncMethod=()=>{const direct=requestForm.querySelector('[name=request_method]:checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
    fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&((field.name==='approver')||(field.name==='reviewer'&&requestForm.dataset.reviewMode==='review_approval'));});
-   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?requestForm.querySelector('[data-direct-note]').textContent.trim():'검토자가 승인완료하거나 승인자에게 전달합니다.';
+   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?requestForm.querySelector('[data-direct-note]').textContent.trim():'검토자가 다음 승인자를 지정해 승인 요청합니다.';
   };requestForm.querySelectorAll('[name=request_method]').forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
  }
  const policyForm=document.querySelector('[data-policy-form]');
  if(policyForm&&policyForm.querySelector('[data-route-preview]')){
   const preview=()=>{const rank=policyForm.querySelector('[data-preview-rank]').value,method=policyForm.querySelector('[data-preview-method]').value,dev=policyForm.querySelector('[data-preview-department]').value==='dev';
    const allowed=[...policyForm.querySelectorAll('[name=direct_ranks]:checked')].map(e=>e.value).includes(rank),who=policyForm.querySelector(dev?'#id_dev_director':'#id_production_director')?.selectedOptions[0]?.textContent||policyForm.querySelector(dev?'[data-preview-checker-dev]':'[data-preview-checker-other]')?.textContent||'담당자 미지정';
-   const text=method==='direct'&&!allowed?'이 직급은 검토 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]')?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'검토자 판단 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
+   const text=method==='direct'&&!allowed?'이 직급은 검토 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]')?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'검토자 판단 → '):'')+who+' 구매 확인 → 구매담당자 결제 요청 → 대표님 결제 → 경리 결제 완료 등록';policyForm.querySelector('[data-route-preview]').textContent=text;
   };policyForm.addEventListener('change',preview);preview();
  }
  const simpleRule=document.querySelector('[data-simple-leave-rule]');

@@ -107,8 +107,7 @@ def validate_policy_people(p):
         if p.review_mode not in ['approval','review_approval']:raise ValidationError('검토 요청 경로를 확인해 주세요.')
     if not confirmers().exists():raise ValidationError('직원 권한관리에서 구매요청승인완료함 담당자를 지정해 주세요.')
     if not p.representative or not active(p.representative) or not p.representative.profile.is_representative:
-        raise ValidationError('직원 권한관리에서 구매승인 대표를 지정해 주세요.')
-    if settings.INTEGRATED_PURCHASES and not p.representative.profile.representative_can_approve:raise ValidationError('직원 권한관리에서 대표의 결재 권한을 켜 주세요.')
+        raise ValidationError('직원 권한관리에서 결제 내역을 조회할 대표를 지정해 주세요.')
     if not finance_users(p):raise ValidationError('구매 담당자를 지정해 주세요.')
 
 
@@ -139,6 +138,7 @@ def save_request(actor,values,submit=False,pk=None,key=None):
         raise ValidationError('수량과 단가를 확인해 주세요.')
     if d.total>Decimal('999999999999.99'):raise ValidationError('요청 총액이 입력 가능한 범위를 초과합니다.')
     if submit:
+        if settings.INTEGRATED_PURCHASES and not d.url.strip():raise ValidationError('구매 링크를 입력해 주세요.')
         validate_policy_people(p)
         method=str(values.get('request_method') or 'review')
         if p.department_routing:
@@ -262,7 +262,15 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         if not reason:raise ValidationError('취소 사유를 입력해 주세요.')
         d.status,d.decision_reason='cancelled',reason;event(actor,'구매요청 취소',request=d,detail=reason)
         notify([d.reviewer,d.approver,d.director],f'{d.product} · 요청 취소',request=d)
+    elif action=='finance_reject':
+        if not finance_assigned(actor,d):raise PermissionDenied
+        if d.status not in ['ready','reapproval','hold'] or not d.confirmed_at:raise ValidationError('대표님께 올리기 전의 확인된 품목만 여기서 반려할 수 있습니다. 결제 요청 후에는 해당 요청에서 처리해 주세요.')
+        if not reason:raise ValidationError('반려 사유를 입력해 주세요.')
+        d.status='denied';d.decision_reason=reason
+        event(actor,'경리 구매반려',request=d,detail=reason)
+        notify([d.owner],f'{d.product} · 구매요청이 반려되었습니다. {reason}',request=d,owner_update=True)
     elif action=='paid':
+        if d.current_report_id and d.current_report.payment_tracking:raise ValidationError('결제 요청에서 품목을 선택해 결제 완료를 등록해 주세요.')
         if not (finance_assigned(actor,d) or actor.profile.is_representative and d.current_report_id and d.current_report.representative_id==actor.pk):raise PermissionDenied
         if d.status!='allowed':raise ValidationError('대표님이 구매승인를 확정한 품목만 결제 완료로 기록할 수 있습니다.')
         if not reason:raise ValidationError('결제 확인 내용을 입력해 주세요.')
@@ -302,7 +310,7 @@ def submit_report(actor,ids,title,note,key):
     docs=list(PurchaseRequest.objects.select_for_update().filter(pk__in=ids).order_by('pk').select_related('owner'))
     if len(docs)!=len(ids) or any(d.status not in ['ready','hold','reapproval'] or d.status=='hold' and not d.hold_ready or not d.confirmed_at or not finance_assigned(actor,d) for d in docs):
         raise ValidationError('이미 요청했거나 구매 내용 확인이 끝나지 않은 품목이 있습니다. 목록을 새로고침해 주세요.')
-    report=PurchaseReport.objects.create(created_by=actor,representative=p.representative,title=title.strip(),note=note.strip(),request_key=key)
+    report=PurchaseReport.objects.create(created_by=actor,representative=p.representative,title=title.strip(),note=note.strip(),request_key=key,payment_tracking=settings.INTEGRATED_PURCHASES)
     for d in docs:
         snapshot=serialize_request(d)
         if d.status=='reapproval':
@@ -311,10 +319,10 @@ def submit_report(actor,ids,title,note,key):
         elif d.status=='hold':snapshot['hold_followup']=dict(reason=d.decision_reason,note=d.hold_note)
         PurchaseReportItem.objects.create(report=report,request=d,snapshot=snapshot)
         d.status,d.current_report,d.decision_reason='ceo',report,'';d.hold_ready=False;d.revision+=1;d.save()
-        event(actor,'대표 구매요청',request=d,report=report,detail=report.number)
+        event(actor,'대표 결제요청' if report.payment_tracking else '대표 구매요청',request=d,report=report,detail=report.number)
         notify([d.owner],f'{d.product} · 대표님께 구매요청 완료',request=d)
     event(actor,'구매요청 제출',report=report,detail=note)
-    notify([report.representative],f'{report.number} · {len(docs)}개 품목 구매요청',report=report)
+    notify([report.representative],f'{report.title} · '+('결제할 구매 내역이 등록되었습니다.' if report.payment_tracking else f'{len(docs)}개 품목 구매요청'),report=report)
     return report
 
 
@@ -322,6 +330,7 @@ def submit_report(actor,ids,title,note,key):
 def decide_report(pk,actor,decisions,revision,final=False):
     p=lock_policy();actor=actor_now(actor)
     report=PurchaseReport.objects.select_for_update().get(pk=pk)
+    if report.payment_tracking:raise PermissionDenied('대표님은 구매 내역을 조회합니다. 결제 결과는 경리 담당자가 등록합니다.')
     if actor.pk!=report.representative_id or not actor.profile.is_representative or settings.INTEGRATED_PURCHASES and not actor.profile.representative_can_approve:raise PermissionDenied
     if report.status!='pending' or report.revision!=revision:raise ValidationError('이미 처리되었거나 다른 창에서 변경되었습니다. 다시 열어 주세요.')
     items=list(report.items.select_for_update().select_related('request'))
@@ -373,7 +382,9 @@ def amend_amount(pk,actor,quantity,unit_price,reason,revision):
     lock_policy();actor=actor_now(actor)
     d=PurchaseRequest.objects.select_for_update().get(pk=pk)
     if not finance_assigned(actor,d):raise PermissionDenied
-    if d.status!='allowed' or d.received_quantity or d.paid_at or d.revision!=revision:
+    payment_tracking=bool(d.current_report_id and d.current_report.payment_tracking)
+    if payment_tracking and d.current_report.created_by_id!=actor.pk:raise PermissionDenied
+    if (d.status not in ['ceo','hold'] if payment_tracking else d.status!='allowed') or d.received_quantity or d.paid_at or d.revision!=revision:
         raise ValidationError('수령 전의 구매승인 문서만 금액을 변경할 수 있습니다. 문서를 다시 열어 주세요.')
     reason=str(reason or '').strip()
     if not reason or len(reason)>1000:raise ValidationError('금액 변경 사유를 입력해 주세요.')
@@ -386,9 +397,17 @@ def amend_amount(pk,actor,quantity,unit_price,reason,revision):
     d.quantity,d.unit_price=count,price
     if d.total>Decimal('999999999999.99'):raise ValidationError('요청 총액이 입력 가능한 범위를 초과합니다.')
     increased=d.total>old
-    PurchaseAmendment.objects.create(request=d,changed_by=actor,previous_report=d.current_report,before=before,after=serialize_request(d),reason=reason,requires_reapproval=increased)
-    if increased:d.status='reapproval';d.completion_unread=False
+    PurchaseAmendment.objects.create(request=d,changed_by=actor,previous_report=d.current_report,before=before,after=serialize_request(d),reason=reason,requires_reapproval=increased or payment_tracking)
+    if payment_tracking:
+        report=PurchaseReport.objects.select_for_update().get(pk=d.current_report_id)
+        item=report.items.select_for_update().get(request=d)
+        if item.decision not in ['pending','hold']:raise ValidationError('이미 결제·반려 처리된 품목입니다. 다시 확인해 주세요.')
+        item.decision='hold';item.reason=('금액 변경으로 다시 결제 요청: '+reason)[:1000];item.processed_by=actor;item.processed_at=timezone.now();item.save()
+        report.status='pending' if report.items.filter(decision='pending').exists() else 'decided'
+        report.decided_at=None if report.status=='pending' else timezone.now();report.revision+=1;report.save()
+        event(actor,'결제 요청 금액 변경',request=d,report=report,detail=f'{old}원 → {d.total}원 / {reason}')
+    if increased or payment_tracking:d.status='reapproval';d.completion_unread=False
     d.revision+=1;d.save()
-    event(actor,'구매 금액 변경',request=d,detail=f'{old}원 → {d.total}원 / '+('금액 증가: 재승인 필요' if increased else '금액 감소: 기존 승인 유지')+' / '+reason)
+    event(actor,'구매 금액 변경',request=d,detail=f'{old}원 → {d.total}원 / '+('변경 금액으로 다시 결제 요청 필요' if payment_tracking else '금액 증가: 재승인 필요' if increased else '금액 감소: 기존 승인 유지')+' / '+reason)
     notify([d.owner],f'{d.product} · '+('금액 변경으로 구매 진행 중입니다.' if increased else '구매 금액이 변경되었습니다.'),request=d)
     return d

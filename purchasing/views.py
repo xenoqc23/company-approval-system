@@ -167,10 +167,12 @@ def detail(request,pk):
         can_supplement=d.status=='supplement' and d.owner_id==request.user.pk,
         can_request_supplement=checker_assigned(request.user,d) and d.owner_id!=request.user.pk and d.status=='ready' and not d.confirmed_at and not d.current_report_id,
         can_prepare_hold=finance_assigned(request.user,d) and d.status=='hold',
-        can_amend=finance_assigned(request.user,d) and d.status=='allowed' and not d.received_quantity and not d.paid_at,
+        can_amend=finance_assigned(request.user,d) and (d.status=='allowed' or d.status in ['ceo','hold'] and d.current_report_id and d.current_report.payment_tracking and d.current_report.created_by_id==request.user.pk) and not d.received_quantity and not d.paid_at,
         can_collect=finance_assigned(request.user,d) and d.status in ['ready','reapproval'] and bool(d.confirmed_at),
-        can_decide_purchase=d.status=='ceo' and request.user.profile.is_representative and d.current_report_id and d.current_report.representative_id==request.user.pk)
-    has_secondary=any(permissions[key] for key in ['can_cancel','can_reject','can_request_supplement','can_amend']) or d.owner_id==request.user.pk and bool(d.received_quantity)
+        can_finance_reject=finance_assigned(request.user,d) and d.status in ['ready','reapproval','hold'],
+        can_decide_purchase=d.status=='ceo' and request.user.profile.is_representative and d.current_report_id and not d.current_report.payment_tracking and d.current_report.representative_id==request.user.pk,
+        can_record_payment=d.status=='ceo' and finance_assigned(request.user,d) and d.current_report_id and d.current_report.payment_tracking and d.current_report.created_by_id==request.user.pk)
+    has_secondary=any(permissions[key] for key in ['can_cancel','can_reject','can_request_supplement','can_amend','can_finance_reject']) or d.owner_id==request.user.pk and bool(d.received_quantity)
     return page(request,'detail',d.number,doc=d,track=progress(d,simplified=simplified),simplified=simplified,
         visible_events=events_for(d,simplified),approval_cards=approval_track(d),
         purchase_steps=(purchase_progress(d)[:3] if request.user.profile.is_representative else purchase_progress(d)) if not simplified and (d.confirmed_at or d.current_report_id) else [],
@@ -220,20 +222,21 @@ def report_new(request):
         if len(docs)!=len(ids) or any(not finance_assigned(request.user,d) or d.status=='hold' and not d.hold_ready for d in docs):raise ValidationError('이미 요청했거나 현재 요청할 수 없는 품목이 있습니다.')
         if request.POST.get('intent')=='submit':
             report=submit_report(request.user,ids,request.POST.get('title',''),request.POST.get('note',''),request.POST.get('key'))
-            messages.success(request,'대표님에게 품목별 구매승인을 요청했습니다.')
+            messages.success(request,'대표님에게 결제할 구매 내역을 전달했습니다.' if report.payment_tracking else '대표님에게 품목별 구매승인을 요청했습니다.')
             return redirect('purchasing:report_detail',pk=report.pk)
     except ValidationError as exc:
         messages.error(request,' '.join(exc.messages));return redirect('/purchase-lab/requests/?mode=finance')
-    return page(request,'report_new','대표님께 구매요청',documents=docs,total=sum((d.total for d in docs),Decimal('0')),
-                key=uuid4(),report_title=f'{timezone.localdate():%Y.%m.%d} 구매요청')
+    return page(request,'report_new','대표님께 결제 요청',documents=docs,total=sum((d.total for d in docs),Decimal('0')),
+                key=uuid4(),report_title=f'{timezone.localdate():%Y.%m.%d} 결제 요청')
 
 
 @login_required
 def report_list(request):
     if settings.INTEGRATED_PURCHASES and not (is_finance(request.user) or request.user.profile.is_representative):raise PermissionDenied
-    if settings.INTEGRATED_PURCHASES and request.user.profile.is_representative:
-        return redirect(reverse('documents')+'?mode=pending&kind=office')
     tab=request.GET.get('tab','items') if is_finance(request.user) and settings.INTEGRATED_PURCHASES else 'sent'
+    if is_finance(request.user) and settings.INTEGRATED_PURCHASES and 'tab' not in request.GET:
+        ready=finance_requests(request.user).filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).exists()
+        if not ready and reports_for(request.user).filter(payment_tracking=True,status='pending').exists():tab='sent'
     if tab in ['items','hold','completed']:return request_list(request,purchase_tab=tab)
     qs=reports_for(request.user).prefetch_related('items__request__receipts__received_by')
     reports=list(qs[:100])
@@ -242,7 +245,7 @@ def report_list(request):
         report.receipt_label=report_receipt_label(report.fulfillment)
         report.requesters=' · '.join(dict.fromkeys(i.snapshot.get('owner','') for i in items))
         report.vendors=' · '.join(dict.fromkeys(i.snapshot.get('vendor','') for i in items))
-    return page(request,'reports','구매요청함',reports=reports,purchase_tab='sent',inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
+    return page(request,'reports','구매 진행현황' if request.user.profile.is_representative else '구매요청함',reports=reports,purchase_tab='sent',inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
 
 
 @login_required
@@ -251,6 +254,8 @@ def report_detail(request,pk):
     notices_for(request.user).filter(report=report,read=False).update(read=True)
     items=list(report.items.select_related('request').prefetch_related('request__receipts__received_by'))
     for item in items:item.visible_files=visible_attachments(request.user,item.request)
+    if report.payment_tracking:
+        return payment_detail(request,report,items)
     can_decide=report.status=='pending' and report.representative_id==request.user.pk and request.user.profile.is_representative and (not settings.INTEGRATED_PURCHASES or request.user.profile.representative_can_approve)
     if request.method=='POST':
         if not can_decide:raise PermissionDenied
@@ -271,6 +276,31 @@ def report_detail(request,pk):
                 allowed_total=sum((i.total for i in items if i.decision=='allow'),Decimal('0')),
                 denied_total=sum((i.total for i in items if i.decision=='deny'),Decimal('0')),
                 hold_total=sum((i.total for i in items if i.decision=='hold'),Decimal('0')))
+
+
+def payment_detail(request,report,items):
+    from .payments import process_payment
+    can_process=is_finance(request.user) and report.created_by_id==request.user.pk
+    if request.method=='POST':
+        if not can_process:raise PermissionDenied('대표님은 구매 내역을 조회합니다.')
+        try:
+            summary=process_payment(report.pk,request.user,request.POST.getlist('items'),request.POST.get('action',''),request.POST.get('reason',''),int(request.POST.get('revision','-1')),apply=request.POST.get('intent')=='confirm')
+            if request.POST.get('intent')=='confirm':
+                messages.success(request,f'{len(summary["items"])}개 품목을 {summary["action_label"]} 처리했습니다.')
+                return redirect('purchasing:report_detail',pk=report.pk)
+            return page(request,'payment_confirm','선택 품목 확인',**summary)
+        except (ValueError,ValidationError) as exc:
+            messages.error(request,' '.join(exc.messages) if isinstance(exc,ValidationError) else '화면을 다시 열어 주세요.')
+            return redirect('purchasing:report_detail',pk=report.pk)
+    for item in items:
+        item.request.receipt_info=receipt_info(item.request)
+        item.payment_label={'pending':'결제 대기','allow':'결제 완료','deny':'반려','hold':'보류'}[item.decision]
+        item.selectable=can_process and item.decision=='pending'
+        item.undoable=can_process and item.decision=='allow' and item.request.status=='paid' and not item.request.received_quantity and item.request.current_report_id==report.pk
+    return page(request,'payment_detail',report.title,report=report,items=items,can_process=can_process,
+        can_undo=any(i.undoable for i in items),has_pending=any(i.selectable for i in items),
+        total=sum((i.total for i in items),Decimal('0')),pending_total=sum((i.total for i in items if i.decision=='pending'),Decimal('0')),
+        paid_total=sum((i.total for i in items if i.decision=='allow'),Decimal('0')))
 
 
 @login_required
@@ -424,7 +454,7 @@ def amount_change(request,pk):
         try:
             values=form.cleaned_data
             d=amend_amount(pk,request.user,values['quantity'],values['unit_price'],values['reason'],values['revision'])
-            messages.success(request,'금액 증가로 재승인이 필요합니다. 구매요청함에서 다시 요청해 주세요.' if d.status=='reapproval' else '금액 변경 이력을 저장했습니다. 기존 승인은 유지됩니다.')
+            messages.success(request,'변경된 금액으로 구매요청함에서 다시 결제 요청해 주세요.' if d.current_report_id and d.current_report.payment_tracking else '금액 증가로 재승인이 필요합니다. 구매요청함에서 다시 요청해 주세요.' if d.status=='reapproval' else '금액 변경 이력을 저장했습니다. 기존 승인은 유지됩니다.')
             return redirect('purchasing:detail',pk=pk)
         except ValidationError as exc:form.add_error(None,exc)
     return page(request,'amount_change','승인 후 금액 변경',doc=d,form=form)
@@ -462,16 +492,18 @@ def report_export(request,pk):
     from django.utils.http import content_disposition_header
     report=get_object_or_404(reports_for(request.user),pk=pk)
     book=Workbook();sheet=book.active;sheet.title='구매요청'
-    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유','구매승인 결과','사유','수령 상태'])
+    show_receipts=not request.user.profile.is_representative
+    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유','진행상황' if report.payment_tracking else '구매승인 결과','사유']+(['수령 상태'] if show_receipts else []))
     for item in report.items.select_related('request'):
         s=item.snapshot;d=item.request;info=receipt_info(d)
         current=d.current_report_id==report.pk
-        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason',''),item.get_decision_display(),item.reason,info['label'] if current else '변경 후 다시 요청'])
-        for i in [1,2,3,4,5,6,10,11,12,13]:sheet.cell(sheet.max_row,i).data_type='s'
+        label={'pending':'결제 대기','allow':'결제 완료','deny':'반려','hold':'보류'}[item.decision] if report.payment_tracking else item.get_decision_display()
+        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason',''),label,item.reason]+([info['label'] if current else '변경 후 다시 요청'] if show_receipts else []))
+        for i in [1,2,3,4,5,6,10,11,12]+([13] if show_receipts else []):sheet.cell(sheet.max_row,i).data_type='s'
     sheet.freeze_panes='A2';sheet.auto_filter.ref=sheet.dimensions
     from openpyxl.styles import Alignment,Font,PatternFill
     from openpyxl.utils import get_column_letter
-    for col in range(1,14):sheet.column_dimensions[get_column_letter(col)].width=25 if col in [5,6,10,12,13] else 18
+    for col in range(1,sheet.max_column+1):sheet.column_dimensions[get_column_letter(col)].width=25 if col in [5,6,10,12,13] else 18
     for cells in sheet:
         for cell in cells:cell.alignment=Alignment(vertical='top',wrap_text=True)
     for cell in sheet[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='0B4F3D')

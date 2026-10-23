@@ -54,3 +54,12 @@
 .review-forward{margin:.7rem 0}.review-forward>form{padding-top:1rem}.reviewer-picker{max-width:40rem}.optional-purchase-fields{border:1px solid #dbe7df;border-radius:10px;padding:1rem;margin:1rem 0}.optional-purchase-fields>summary{font-weight:650}.rule-list-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}.rule-toggle-form{margin-top:.5rem}.simple-rules-table{min-width:700px}.simple-rules-table small{display:block;color:#668173;margin-top:.3rem}.simple-rules-table th,.simple-rules-table td{padding:1rem;border-bottom:1px solid #dfeae4;text-align:left;vertical-align:top}.workflow-task-guide{background:#edf4ff;border:1px solid #d8e5f8;border-radius:12px;padding:1rem 1.2rem;margin:1rem 0;color:#254e7a}
 @media(max-width:800px){.purchase-item-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.decision-choice{flex:1;justify-content:center}.purchase-content .decision-choice{padding:.7rem}.purchase-item-facts{gap:.8rem}}
+
+/* Reviewer actions remain visible. Payment tables scroll inside their panel. */
+.purchase-content .review-completion{border-top:1px solid #dbe7df;margin-top:22px;padding-top:18px}
+.purchase-content .review-completion h3{font-size:15px}
+.purchase-content .review-completion button{background:#f1f7f4;color:#315e4f;border:1px solid #cddfd5;font-size:14px;padding:10px 16px}
+.purchase-content .secondary-actions{border-top:1px solid #dbe7df;margin-top:22px;padding-top:18px}
+.purchase-content .payment-table{min-width:920px}
+.purchase-content .payment-table small{display:block;margin-top:7px}
+.purchase-content .payment-correction{border-color:#e3d7bb}

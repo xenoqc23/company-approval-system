@@ -21,7 +21,7 @@ class AccountGateMiddleware:
                 representative_action = (profile.representative_can_approve and request.path.startswith('/documents/')
                     and request.path.endswith('/action/') and request.POST.get('action') in ['approve','reject','cancel_approval'])
                 notice_open = request.path.startswith('/notices/') and request.path.endswith('/open/')
-                purchase_action = settings.INTEGRATED_PURCHASES and request.path.startswith('/purchases/') and (profile.representative_can_approve or request.path == '/purchases/switch/' or request.path.startswith('/purchases/notices/') and request.path.endswith('/open/'))
+                purchase_action = settings.INTEGRATED_PURCHASES and request.path.startswith('/purchases/') and (profile.representative_can_approve or request.path == '/purchases/switch/' or request.path.startswith('/purchases/notices/') and request.path.endswith('/open/') or request.path.startswith('/purchases/reports/') and request.path.endswith('/export/'))
                 if ((request.method not in {'GET','HEAD','OPTIONS'} and not (own_account or notice_open or representative_action or purchase_action or request.path.startswith('/notifications/')))
                         or request.path.startswith(('/compose/', '/calendar/absence/', '/regulations/', '/balances/recalculate/'))):
                     return HttpResponseForbidden('회사 대표 계정은 현재 조회 전용입니다.')

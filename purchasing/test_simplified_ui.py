@@ -34,7 +34,7 @@ class SimplifiedInterfaceTests(TestCase):
         self.assertEqual(self.client.get('/notifications/status/').json()['waiting'],1)
         self.assertNotContains(self.client.get('/'),'구매승인 결정')
         self.assertNotContains(self.client.get('/'),'>구매요청함<')
-        self.assertRedirects(self.client.get(reverse('purchasing:reports')),'/documents/?mode=pending&kind=office')
+        self.assertContains(self.client.get(reverse('purchasing:reports')),r.title)
         decide_report(r.pk,self.user('ceo'),self.decisions(r,['allow']),0,final=True)
         self.assertEqual(self.client.get('/notifications/status/').json()['waiting'],0)
         self.assertEqual(self.client.get('/documents/?mode=pending').context['document_count'],0)

@@ -34,7 +34,7 @@ class ReviewerFlowTests(TestCase):
     def test_unprivileged_reviewer_can_only_forward_to_another_eligible_approver(self):
         d=self.create('quality','review');reviewer=self.user('quality_manager')
         self.as_user('quality_manager');page=self.client.get(reverse('purchasing:detail',args=[d.pk]))
-        self.assertContains(page,'승인자에게 전달');self.assertNotContains(page,'value="review_final"')
+        self.assertContains(page,'승인 요청');self.assertNotContains(page,'value="review_final"')
         with self.assertRaises(PermissionDenied):request_action(d.pk,reviewer,'review_final')
         for who in ['quality','quality_manager']:
             with self.assertRaises(ValidationError):request_action(d.pk,reviewer,'forward',new_person=self.user(who))

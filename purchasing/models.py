@@ -102,6 +102,7 @@ class PurchaseRequest(models.Model):
 
 
 class PurchaseReport(models.Model):
+    payment_tracking = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
     representative = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
     title = models.CharField(max_length=180)
@@ -119,6 +120,13 @@ class PurchaseReport(models.Model):
     def number(self):return f'BATCH-{timezone.localtime(self.created_at):%Y%m%d}-{self.pk:04d}'
     @property
     def result_label(self):
+        if self.payment_tracking:
+            states=set(self.items.values_list('decision',flat=True))
+            if self.status!='decided':return '일부 결제 · 결제 대기' if 'allow' in states else '결제 대기'
+            if states=={'allow'}:return '결제 완료'
+            if states=={'deny'}:return '반려'
+            if states=={'hold'}:return '보류'
+            return '처리 완료 · 일부 결제' if 'allow' in states else '처리 완료'
         if settings.INTEGRATED_PURCHASES:
             states=set(self.items.values_list('decision',flat=True))
             if self.status!='decided':return '대표 결재 대기'
@@ -146,6 +154,8 @@ class PurchaseReportItem(models.Model):
     snapshot = models.JSONField()
     decision = models.CharField(max_length=10,choices=DECISIONS,default='pending')
     reason = models.CharField(max_length=1000,blank=True)
+    processed_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    processed_at = models.DateTimeField(null=True,blank=True)
 
     class Meta:
         ordering=['pk']

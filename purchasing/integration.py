@@ -22,7 +22,7 @@ def shell(request):
     data['purchase_work_cards']=data.pop('work_cards',[])
     for card in data['purchase_work_cards']:
         card['url']=card['url'].replace('/purchase-lab/','/purchases/')
-        if card['key']=='finance':card.update(title='구매요청 준비',url=reverse('purchasing:reports'))
+        if card['key']=='finance':card.update(title='구매요청 관리',url=reverse('purchasing:reports'))
         elif card['key']=='pending':card['url']=reverse('documents')+'?mode=pending'
     if request.path=='/staff/' and data['lab_admin']:
         from .forms import PurchaseAssignmentsForm
@@ -87,8 +87,8 @@ def list_reports(user,mode,params):
     """A representative sees each batch once, in the shared inbox/history."""
     qs=reports_for(user).filter(representative=user)
     if not user.profile.is_representative or params.get('kind') not in [None,'','office']:return qs.none()
-    if mode=='pending':qs=qs.filter(status='pending')
-    elif mode=='history':qs=qs.filter(status='decided')
+    if mode=='pending':qs=qs.filter(status='pending',payment_tracking=False)
+    elif mode=='history':qs=qs.filter(status='decided',payment_tracking=False)
     elif mode=='search':
         if not params.get('q','').strip():return qs.none()
     else:return qs.none()

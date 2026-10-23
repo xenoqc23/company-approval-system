@@ -35,11 +35,14 @@ def progress(d,simplified=False):
     label=DISPLAY_LABELS[d.status]
     if d.status in PURCHASING_STATES:label='구매 진행 중' if simplified else label
     if d.status=='ready' and not simplified:label=('구매요청 대기' if settings.INTEGRATED_PURCHASES else '대표 요청 대기') if d.confirmed_at else '구매 내용 확인 대기'
+    payment_tracking=bool(d.current_report_id and d.current_report.payment_tracking)
+    if d.status=='ceo' and payment_tracking:label='결제 대기'
     if d.status in ['allowed','paid','received']:label='결재완료'
     who={'denied':'처리 종료','rejected':'처리 종료','cancelled':'처리 종료','received':'처리 완료','allowed':d.owner.first_name,'paid':d.owner.first_name,'supplement':'기안자 · 보완 필요','reapproval':'구매 담당자','draft':'기안자','review':d.reviewer.first_name if d.reviewer else '검토자','approval':d.approver.first_name if d.approver else '승인자','director':d.director.first_name if d.director else '기존 최종승인자'}.get(d.status,'구매 담당자')
     if simplified and d.status=='reapproval':who='구매 담당자'
     note={'draft':'작성 중인 구매요청입니다.','review':'검토자의 확인을 기다리고 있습니다.','approval':'승인자의 확인을 기다리고 있습니다.','director':'기존 문서의 최종승인을 기다리고 있습니다.','ready':'내부 승인이 완료되어 구매를 진행하고 있습니다.','ceo':'구매를 진행하고 있습니다.','supplement':'보완 요청 내용을 확인하고 자료를 보완해 주세요.','reapproval':'변경된 금액의 구매승인을 다시 진행하고 있습니다.','allowed':'구매승인이 완료되었습니다. 물품을 받으셨다면 받은 수량을 등록해 주세요.','paid':'물품을 받으셨다면 받은 수량을 등록해 주세요.','received':'물품 수령까지 완료했습니다.','denied':'구매요청이 반려되었습니다. 아래 사유를 확인해 주세요.','hold':'구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.','rejected':'내부 결재에서 반려되었습니다. 아래 사유를 확인해 주세요.','cancelled':'구매요청을 취소했습니다.'}[d.status]
     note=note.replace('받은 수량을 등록해 주세요.','모두 받으신 뒤 수령 완료를 눌러 주세요.')
+    if d.status=='ceo' and payment_tracking:note='결제 요청을 전달했습니다. 담당자가 처리 중입니다.'
     receipt='수령 완료' if d.status=='received' else '수령 대기' if d.status in ['allowed','paid'] else '—'
     return dict(label=label,who=who,note=note,receipt=receipt,tone='waiting' if d.status=='ready' and not simplified else status_tone(d.status,simplified),list_label=label,receipt_tone='positive' if d.status=='received' else 'waiting' if d.status in ['allowed','paid'] else 'muted')
 
@@ -48,7 +51,11 @@ def purchase_progress(d):
     index=0 if not d.confirmed_at and not d.current_report_id else 1 if d.status=='ready' else 1 if d.status=='reapproval' else 2 if d.status in ['ceo','denied','hold'] else 3
     stages=[]
     names=[d.purchase_checker.first_name if d.purchase_checker_id else d.confirmed_by.first_name if d.confirmed_by_id else '구매 확인 담당자',' · '.join(d.purchase_route.get('collector_names',[])) or '구매 담당자',d.current_report.representative.first_name if d.current_report_id else '대표',d.owner.first_name]
+    payment_tracking=bool(d.current_report_id and d.current_report.payment_tracking)
+    if payment_tracking:names[2]=d.current_report.created_by.first_name
     for i,label in enumerate(['구매 내용 확인','구매요청 준비' if settings.INTEGRATED_PURCHASES else '모아서 구매요청','대표 구매승인','물품 수령']):
+        if payment_tracking and i==1:label='결제 요청'
+        if payment_tracking and i==2:label='결제 완료 등록'
         done=i<index or i==3 and d.status=='received'
         blocked=i==index and d.status in ['denied','cancelled'];paused=i==index and d.status=='hold'
         legacy=i==0 and not d.confirmed_at and bool(d.current_report_id)
@@ -81,16 +88,17 @@ def pending_columns(d):
 
 def task_for(d,user,permissions):
     if permissions.get('can_forward'):
-        return dict(kind='review',message='내용을 확인하고 승인완료하거나 승인자에게 전달해 주세요.' if permissions.get('can_review_final') else '내용을 확인하고 승인자를 지정해 전달해 주세요.')
+        return dict(kind='review',message='구매 내용을 검토한 뒤 승인자를 지정해 승인 요청해 주세요.')
     if permissions['can_approve']:
         return dict(kind='approve',message='구매 내용을 확인하고 승인자에게 전달해 주세요.' if d.status=='review' else '구매 내용을 확인하고 내부 승인을 완료해 주세요.')
     if permissions['can_confirm']:return dict(kind='confirm',message='구매 내용을 확인하면 구매 담당자에게 전달됩니다.')
     if permissions['can_supplement']:return dict(kind='supplement',message='요청받은 자료를 보완한 뒤 다시 제출해 주세요.')
     if permissions['can_prepare_hold']:
         return dict(kind='collect_hold' if d.hold_ready else 'hold',message='보완이 끝났습니다. 품목을 선택해 다시 구매요청해 주세요.' if d.hold_ready else '보류 사유를 확인하고, 보완한 내용을 기록해 주세요.')
-    if permissions['can_collect']:return dict(kind='collect',message='구매할 품목을 모아 대표님께 구매승인을 요청해 주세요.')
+    if permissions['can_collect']:return dict(kind='collect',message='확인된 품목을 선택해 대표님께 결제 요청해 주세요.')
+    if permissions.get('can_record_payment'):return dict(kind='payment',message='대표님의 실제 결제 사실을 확인한 뒤 결제 요청에서 결제 완료를 등록해 주세요.')
     if permissions['can_decide_purchase']:return dict(kind='decide',message='요청된 품목을 확인하고 승인·반려·보류를 선택해 주세요.')
-    if user.profile.is_representative:return dict(kind='done' if d.status in ['allowed','paid','received','denied'] else 'waiting',message='대표 결재 결과를 확인해 주세요.')
+    if user.profile.is_representative:return dict(kind='done' if d.status in ['allowed','paid','received','denied'] else 'waiting',message='구매 내역과 진행상황을 확인해 주세요. 실제 결제 후 경리 담당자가 결과를 등록합니다.')
     if permissions['can_receive']:return dict(kind='receive',message='요청한 물품을 모두 받으셨다면 수령 완료를 눌러 주세요.')
     if d.status=='received':return dict(kind='done',message='구매승인과 물품 수령이 모두 완료되었습니다.')
     if d.status in ['denied','rejected','cancelled']:return dict(kind='done',message='요청이 종료되었습니다. 처리 사유를 확인해 주세요.')

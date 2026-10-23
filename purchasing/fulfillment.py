@@ -10,7 +10,7 @@ def report_fulfillment(report,items):
     counts=dict(approved=0,denied=0,hold=0,pending=0,eligible=0,done=0,partial=0,waiting=0,changed=0)
     for item in items:
         counts[{'allow':'approved','deny':'denied','hold':'hold','pending':'pending'}[item.decision]]+=1;d=item.request
-        if report.status!='decided' or item.decision!='allow':item.receipt_info=dict(label='구매승인 전' if report.status!='decided' else '수령 대상 아님',tone='muted',eligible=False)
+        if (report.status!='decided' and not report.payment_tracking) or item.decision!='allow':item.receipt_info=dict(label='결제 대기' if report.payment_tracking and item.decision=='pending' else '구매승인 전' if report.status!='decided' else '수령 대상 아님',tone='muted',eligible=False)
         elif d.current_report_id!=report.pk or d.status not in ['allowed','paid','received']:
             item.receipt_info=dict(label='변경 후 다시 요청',tone='waiting',eligible=False);counts['changed']+=1
         else:

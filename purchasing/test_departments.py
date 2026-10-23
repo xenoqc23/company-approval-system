@@ -26,7 +26,7 @@ class DepartmentPurchaseTests(TestCase):
     as_user=helpers.PurchaseFlowTests.as_user
     decisions=helpers.PurchaseFlowTests.decisions
     def create(self,who='quality_manager',method='direct',**overrides):
-        values=dict(product='부서 경로 시험 장치',vendor='가상구매처',quantity=10,unit_price=Decimal('50000'),url='',reason='부서별 구매 경로 검증',private=False,request_method=method)
+        values=dict(product='부서 경로 시험 장치',vendor='가상구매처',quantity=10,unit_price=Decimal('50000'),url='https://example.com/item',reason='부서별 구매 경로 검증',private=False,request_method=method)
         if who in ['dev_manager','dev']:values.update(reviewer=self.user('dev_lead'),approver=self.user('dev_director'))
         elif who=='quality':values.update(reviewer=self.user('quality_manager'),approver=self.user('quality_lead'))
         values.update(overrides);return save_request(self.user(who),values,submit=True,key=uuid4())

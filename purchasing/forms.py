@@ -106,6 +106,8 @@ class RequestForm(forms.ModelForm):
             self.initial['approver']=qs.filter(username='p_dev_director').values_list('pk',flat=True).first()
         if settings.INTEGRATED_PURCHASES:
             self.fields.pop('approver',None);self.fields.pop('approver_department',None)
+            self.fields['url'].label='구매 링크'
+            self.fields['url'].required=not self.is_bound or self.data.get('intent')=='submit'
             self.mode='direct' if method=='direct' else 'review_approval';self.review_mode='review_approval'
             self.fields['reviewer'].required=self.mode=='review_approval' and self.data.get('intent')!='draft'
 
@@ -219,7 +221,7 @@ class PurchaseAssignmentsForm(forms.Form):
     dev_director=PersonChoice(label='개발팀 구매 내용 확인',queryset=get_user_model().objects.none())
     production_director=PersonChoice(label='그 외 부서 구매 내용 확인',queryset=get_user_model().objects.none())
     finance=PersonMultiple(label='구매 담당자 · 품목 선택 및 대표에게 요청',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
-    representative=PersonChoice(label='구매승인 대표',queryset=get_user_model().objects.none())
+    representative=PersonChoice(label='결제 내역 조회 대표',queryset=get_user_model().objects.none())
     revision=forms.IntegerField(widget=forms.HiddenInput)
     reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':2}))
     def __init__(self,*args,**kwargs):
@@ -227,7 +229,7 @@ class PurchaseAssignmentsForm(forms.Form):
         super().__init__(*args,**kwargs);self.instance=policy()
         people=get_user_model().objects.filter(is_active=True,profile__approved=True,profile__department_confirmed=True).select_related('profile')
         for name,dept in [('dev_director','개발팀'),('production_director','생산팀')]:self.fields[name].queryset=people.filter(profile__representative_slot__isnull=True,profile__rank='이사',profile__department=dept)
-        self.fields['representative'].queryset=people.filter(profile__representative_slot=1,profile__representative_can_approve=True)
+        self.fields['representative'].queryset=people.filter(profile__representative_slot=1)
         self.fields['finance'].queryset=people.filter(profile__representative_slot__isnull=True)
         p=self.instance
         if p:self.initial.update(revision=p.version,dev_director=p.dev_director_id,production_director=p.production_director_id,finance=list(p.finance.values_list('pk',flat=True)),representative=p.representative_id)
@@ -242,7 +244,7 @@ class PurchaseAssignmentsForm(forms.Form):
         if removed:
             for d in PurchaseRequest.objects.filter(status__in=['ready','supplement','reapproval','ceo','allowed','paid','hold']).exclude(confirmed_at=None).only('purchase_route'):
                 if removed.intersection(d.purchase_route.get('collector_ids',[])):raise ValidationError('진행·수령 대기 문서가 있는 구매 담당자는 처리가 끝난 뒤 권한을 해제해 주세요.')
-        if p.representative_id!=data['representative'].pk and PurchaseReport.objects.filter(status='pending',representative_id=p.representative_id).exists():raise ValidationError('현재 대표의 구매승인 대기 문서를 먼저 처리해 주세요.')
+        if p.representative_id!=data['representative'].pk and PurchaseReport.objects.filter(status='pending',representative_id=p.representative_id).exists():raise ValidationError('현재 대표에게 올린 결제 요청을 먼저 처리해 주세요.')
         before=f'개발 {p.dev_director_id}, 그 외 {p.production_director_id}, 구매 {list(p.finance.values_list("pk",flat=True))}, 대표 {p.representative_id}'
         for name in ['dev_director','production_director','representative']:setattr(p,name,data[name])
         p.finance.set(data['finance'])

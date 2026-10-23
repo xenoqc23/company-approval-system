@@ -33,7 +33,7 @@ def visible_attachments(user,d):
 
 def can_upload(user,d):
     from .access import active,can_view_purchase
-    return active(user) and (d.owner_id==user.pk and d.status=='draft' or can_view_purchase(user,d))
+    return active(user) and not user.profile.is_representative and (d.owner_id==user.pk and d.status=='draft' or can_view_purchase(user,d))
 
 
 class StoredFiles:

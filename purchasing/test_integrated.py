@@ -26,7 +26,11 @@ class IntegratedTests(TestCase):
     as_user=department_tests.DepartmentPurchaseTests.as_user
     create=department_tests.DepartmentPurchaseTests.create
     confirmed=department_tests.DepartmentPurchaseTests.confirmed
-    report=department_tests.DepartmentPurchaseTests.report
+    def report(self,docs):
+        # Historical representative-approval reports keep their original flow.
+        report=department_tests.DepartmentPurchaseTests.report(self,docs)
+        report.payment_tracking=False;report.save(update_fields=['payment_tracking'])
+        return report
     final=department_tests.DepartmentPurchaseTests.final
     decisions=department_tests.DepartmentPurchaseTests.decisions
 

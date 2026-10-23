@@ -3,9 +3,9 @@ from django.conf import settings
 from .models import DemoAccount,PurchaseRequest,PurchaseReport
 from .access import active,is_admin,is_finance,is_confirmer,requests_for,policy,notices_for,finance_requests,checker_requests
 
-LEGACY_ROLES=[('p_quality','기안자'),('p_quality_manager','검토자'),('p_quality_lead','승인자'),('p_prod_director','구매 확인 담당자 · 생산팀 이사'),('p_finance','구매 담당자'),('p_ceo','대표 · 구매승인'),('p_admin','관리자 · 규정·직원 권한')]
+LEGACY_ROLES=[('p_quality','기안자'),('p_quality_manager','검토자'),('p_quality_lead','승인자'),('p_prod_director','구매 확인 담당자 · 생산팀 이사'),('p_finance','구매 담당자'),('p_ceo','대표 · 구매 진행현황'),('p_admin','관리자 · 규정·직원 권한')]
 
-DEMO_ROLES=[('p_quality','그 외 부서 · 기안자'),('p_quality_manager','그 외 부서 · 과장·검토자'),('p_quality_lead','그 외 부서 · 승인자'),('p_prod_director','생산팀 이사 · 구매 확인'),('p_dev_manager','개발팀 · 과장·기안자'),('p_dev_lead','개발팀 · 검토자'),('p_dev_director','개발팀 이사 · 구매 확인'),('p_finance','구매 담당자'),('p_ceo','대표 · 구매승인'),('p_admin','관리자 · 규정 설정')]
+DEMO_ROLES=[('p_quality','그 외 부서 · 기안자'),('p_quality_manager','그 외 부서 · 과장·검토자'),('p_quality_lead','그 외 부서 · 승인자'),('p_prod_director','생산팀 이사 · 구매 확인'),('p_dev_manager','개발팀 · 과장·기안자'),('p_dev_lead','개발팀 · 검토자'),('p_dev_director','개발팀 이사 · 구매 확인'),('p_finance','구매 담당자'),('p_ceo','대표 · 구매 진행현황'),('p_admin','관리자 · 규정 설정')]
 
 
 def demo_choices():
@@ -27,8 +27,8 @@ def shell(request):
     result=dict(**common,lab_admin=is_admin(u),lab_finance=finance,lab_confirmer=checker,demo_accounts=demo_choices(),lab_policy=policy(),
         counts=dict(own_completed=PurchaseRequest.objects.filter(owner=u,completion_unread=True).count(),hold=finance_requests(u).filter(status='hold').count() if finance else 0,pending=PurchaseRequest.objects.filter(Q(status='review',reviewer=u)|Q(status='approval',approver=u)|Q(status='director',director=u)).count(),
                     completed=checker_requests(u).filter(status__in=['ready','hold'],confirmed_at=None).count() if checker else 0,
-                    finance=finance_requests(u).filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).count() if finance else 0,
-                    representative=PurchaseReport.objects.filter(status='pending',representative=u).count(),notices=notices_for(u).filter(read=False).count()))
+                    finance=finance_requests(u).filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)|Q(status='ceo',current_report__payment_tracking=True,current_report__created_by=u)).filter(confirmed_at__isnull=False).count() if finance else 0,
+                    representative=PurchaseReport.objects.filter(status='pending',representative=u,payment_tracking=False).count(),notices=notices_for(u).filter(read=False).count()))
 
     cards=[]
     if result['counts']['pending'] or u.username in ['p_quality_manager','p_quality_lead','p_dev_lead']:

@@ -26,7 +26,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         PurchasePolicy.objects.filter(pk=1).update(department_routing=False)
         PurchasePermission.objects.filter(user__username='p_dev_director').delete()
         self.users={u.username:u for u in get_user_model().objects.select_related('profile')}
-        v=dict(product='동시 처리 시험품',vendor='가상구매처',quantity=1,unit_price=Decimal('123.45'),url='',reason='동시 처리 검증',private=False,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director'])
+        v=dict(product='동시 처리 시험품',vendor='가상구매처',quantity=1,unit_price=Decimal('123.45'),url='https://example.com/item',reason='동시 처리 검증',private=False,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director'])
         self.doc=save_request(self.users['p_dev'],v,submit=True,key=uuid4())
         self.doc=request_action(self.doc.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']) if settings.INTEGRATED_PURCHASES else request_action(self.doc.pk,self.users['p_dev_lead'],'approve')
         self.doc=request_action(self.doc.pk,self.users['p_dev_director'],'approve')
@@ -43,7 +43,9 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         with ThreadPoolExecutor(max_workers=len(operations)) as executor:
             futures=[executor.submit(work,op) for op in operations]
             return [future.result(timeout=30) for future in futures]
-    def report(self):return submit_report(self.users['p_finance'],[self.doc.pk],'동시 취합','중복 방지 검증',uuid4())
+    def report(self):
+        r=submit_report(self.users['p_finance'],[self.doc.pk],'동시 취합','중복 방지 검증',uuid4())
+        r.payment_tracking=False;r.save(update_fields=['payment_tracking']);return r
     def allowed_report(self):
         r=self.report();decisions={str(r.items.get().pk):dict(decision='allow',reason='')}
         return r,decisions
@@ -100,7 +102,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
     def department_request(self,method='direct'):
         p=PurchasePolicy.objects.get(pk=1);p.department_routing=True;p.save()
         PurchasePermission.objects.update_or_create(user=self.users['p_dev_director'],defaults={'view_completed':True})
-        return save_request(self.users['p_dev_manager'],dict(product='부서별 동시 처리 시험',vendor='가상처',quantity=10,unit_price=Decimal('50000'),reason='동시 처리 검증',private=False,request_method=method,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director']),submit=True,key=uuid4())
+        return save_request(self.users['p_dev_manager'],dict(product='부서별 동시 처리 시험',vendor='가상처',quantity=10,unit_price=Decimal('50000'),url='https://example.com/item',reason='동시 처리 검증',private=False,request_method=method,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director']),submit=True,key=uuid4())
 
     def test_department_combined_final_approval_confirms_only_once(self):
         d=self.department_request('review');request_action(d.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']) if settings.INTEGRATED_PURCHASES else request_action(d.pk,self.users['p_dev_lead'],'approve')
@@ -116,6 +118,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
     def test_department_receipt_without_payment_never_counts_twice(self):
         d=self.department_request();request_action(d.pk,self.users['p_dev_director'],'confirm_items')
         r=submit_report(self.users['p_finance'],[d.pk],'부서별 동시 수령','직접 요청 경로 검증',uuid4())
+        r.payment_tracking=False;r.save(update_fields=['payment_tracking'])
         decide_report(r.pk,self.users['p_ceo'],{str(r.items.get().pk):dict(decision='allow',reason='')},0,final=True)
         key=uuid4();op=lambda:request_action(d.pk,self.users['p_dev_manager'],'receive',quantity=6,receipt_key=key)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
@@ -127,3 +130,19 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         results=self.parallel(lambda:request_action(d.pk,self.users['p_dev_lead'],'review_final'),lambda:request_action(d.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']))
         self.assertCountEqual(results,['ok','refused']);d.refresh_from_db();self.assertIn(d.status,['ready','approval'])
         self.assertEqual(PurchaseEvent.objects.filter(request=d,event__in=['내부 승인완료','검토 완료']).count(),1)
+
+    def test_accounting_payment_and_rejection_cannot_both_commit(self):
+        if not settings.INTEGRATED_PURCHASES:self.skipTest('New integrated payment flow only.')
+        from .payments import process_payment
+        r=submit_report(self.users['p_finance'],[self.doc.pk],'결제 동시 처리','실제 결제 등록 검증',uuid4());item=r.items.get()
+        results=self.parallel(lambda:process_payment(r.pk,self.users['p_finance'],[item.pk],'paid','',0,apply=True),lambda:process_payment(r.pk,self.users['p_finance'],[item.pk],'deny','구매 취소',0,apply=True))
+        self.assertCountEqual(results,['ok','refused']);self.doc.refresh_from_db();self.assertIn(self.doc.status,['paid','denied'])
+        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event__in=['결제 완료 확인','경리 구매반려']).count(),1)
+
+    def test_duplicate_accounting_payment_registers_one_completion(self):
+        if not settings.INTEGRATED_PURCHASES:self.skipTest('New integrated payment flow only.')
+        from .payments import process_payment
+        r=submit_report(self.users['p_finance'],[self.doc.pk],'중복 결제 등록','한 번만 완료',uuid4());item=r.items.get()
+        op=lambda:process_payment(r.pk,self.users['p_finance'],[item.pk],'paid','',0,apply=True)
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event='결제 완료 확인').count(),1)

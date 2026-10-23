@@ -1,3 +1,5 @@
 {% if lab_confirmer or lab_finance %}<div class="nav-label">구매 관리</div>{% endif %}
 {% if lab_confirmer %}<a class="nav-item {% if section == 'purchase_check' %}active{% endif %}" href="{% url 'purchasing:requests' %}?mode=completed"><svg><use href="#i-check"/></svg>구매 확인함<span class="nav-count" data-live-purchase="completed">{{ counts.completed }}</span></a>{% endif %}
 {% if lab_finance %}<a class="nav-item {% if section == 'purchase_inbox' %}active{% endif %}" href="{% url 'purchasing:reports' %}"><svg><use href="#i-cart"/></svg>구매요청함<span class="nav-count" data-live-purchase="{% if lab_finance %}finance{% else %}representative{% endif %}">{% if lab_finance %}{{ counts.finance }}{% else %}{{ counts.representative }}{% endif %}</span></a>{% endif %}
+
+{% if profile.is_representative %}<div class="nav-label">구매 조회</div><a class="nav-item {% if section == 'purchase_inbox' %}active{% endif %}" href="{% url 'purchasing:reports' %}"><svg><use href="#i-cart"/></svg>구매 진행현황</a>{% endif %}
