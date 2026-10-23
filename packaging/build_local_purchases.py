@@ -3,7 +3,7 @@ from pathlib import Path
 from hashlib import sha256
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 ROOT=Path(__file__).resolve().parents[1]
-NAME='xenosys-local-purchase-simple-20261022'
+NAME='xenosys-local-purchase-departments-20261023'
 ARCHIVE=NAME
 
 
@@ -15,8 +15,8 @@ def build(destination=None):
     names.extend(str(p.relative_to(ROOT)) for directory in ['purchasing/templates','purchasing/static'] for p in (ROOT/directory).rglob('*') if p.is_file())
     names.extend(['workflow/static/workflow/'+n for n in ['style.css','xenosys.css','workspace.css','fonts/PretendardVariable.woff2','fonts/OFL.txt','images/xenosys-logo-refined.png']])
     payload={name:(ROOT/name).read_bytes() for name in sorted(set(names))}
-    payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_PURCHASES_20261022.md').read_bytes()
-    examples=ROOT/'docs/purchase-simple-examples'
+    payload['READ_ME_FIRST.txt']=(ROOT/'docs/LOCAL_PURCHASES_20261023.md').read_bytes()
+    examples=ROOT/'docs/purchase-department-examples'
     if examples.is_dir():
         payload.update({f'examples/{p.name}':p.read_bytes() for p in sorted(examples.glob('*.png'))})
     assert not any(any(part in {'var','data','.env','.git','.venv','releases','deploy','__pycache__'} for part in Path(n).parts) for n in payload)
@@ -26,7 +26,7 @@ def build(destination=None):
     out.parent.mkdir(parents=True,exist_ok=True)
     with ZipFile(out,'w') as z:
         for n,v in sorted(payload.items()):
-            info=ZipInfo(f'{NAME}/{n}',date_time=(2026,10,22,0,0,0));info.compress_type=ZIP_DEFLATED;info.external_attr=0o644<<16;z.writestr(info,v)
+            info=ZipInfo(f'{NAME}/{n}',date_time=(2026,10,23,0,0,0));info.compress_type=ZIP_DEFLATED;info.external_attr=0o644<<16;z.writestr(info,v)
     with ZipFile(out) as z:
         assert z.testzip() is None
         for n,v in payload.items():assert z.read(f'{NAME}/{n}')==v

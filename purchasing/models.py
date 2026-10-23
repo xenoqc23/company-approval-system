@@ -21,8 +21,16 @@ def other_modes():
     return {rank:'review_approval' if rank in ['사원','주임','대리'] else 'direct' for rank in RANKS}
 
 
+def direct_request_ranks():return ['과장','팀장','부장','이사']
+
+
 class PurchasePolicy(models.Model):
     enabled = models.BooleanField(default=False)
+    department_routing = models.BooleanField(default=True)
+    direct_ranks = models.JSONField(default=direct_request_ranks)
+    review_mode = models.CharField(max_length=20,default='review_approval')
+    combine_confirmation = models.BooleanField(default=True)
+    director_self_request = models.BooleanField(default=True)
     dev_director = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,related_name='+')
     production_director = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,related_name='+')
     representative = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,related_name='+')
@@ -65,6 +73,8 @@ class PurchaseRequest(models.Model):
     director = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     route = models.JSONField(default=dict,blank=True)
     confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    purchase_checker = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    confirmation_method = models.CharField(max_length=24,blank=True,choices=[('manual','확인완료'),('with_approval','승인 시 함께 확인'),('director_request','담당 이사 직접 요청')])
     confirmed_at = models.DateTimeField(null=True,blank=True)
     purchase_route = models.JSONField(default=dict,blank=True)
     current_report = models.ForeignKey('PurchaseReport',on_delete=models.PROTECT,null=True,blank=True,related_name='+')

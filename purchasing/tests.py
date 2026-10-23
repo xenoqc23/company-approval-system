@@ -28,6 +28,8 @@ class PurchaseFlowTests(TestCase):
         cls.temp=TemporaryDirectory();cls.addClassCleanup(cls.temp.cleanup)
         cls.password=Path(cls.temp.name)/'password';cls.password.write_text('fictional-purchase-test-only')
         call_command('seed_purchase_demo',password_file=cls.password,stdout=StringIO())
+        PurchasePolicy.objects.filter(pk=1).update(department_routing=False)
+        PurchasePermission.objects.filter(user__username='p_dev_director').delete()
         cls.users={u.username:u for u in get_user_model().objects.select_related('profile')}
 
     def user(self,name):return self.users['p_'+name]

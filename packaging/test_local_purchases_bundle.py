@@ -88,12 +88,12 @@ class PurchaseBundleTests(unittest.TestCase):
                 self.assertTrue((data/'prototype.sqlite3').exists())
 
     def test_clean_bundle_has_new_folder_port_and_cookie_identity(self):
-        self.assertEqual(package.NAME,'xenosys-local-purchase-simple-20261022')
-        module=runpy.run_path(str(package.ROOT/'local_purchases.py'));self.assertEqual(module['DEFAULT_PORT'],18113)
+        self.assertEqual(package.NAME,'xenosys-local-purchase-departments-20261023')
+        module=runpy.run_path(str(package.ROOT/'local_purchases.py'));self.assertEqual(module['DEFAULT_PORT'],18115)
         with tempfile.TemporaryDirectory() as folder:
             fn=module['environment'];fn.__globals__['DATA']=Path(folder)/'purchase-test';env=fn()
-            self.assertEqual(env['APPROVAL_PURCHASE_LAB_INSTANCE'],'simple-v1')
-            code="import approval_site.settings as s; assert s.SESSION_COOKIE_NAME=='xenosys_purchase_simple_sessionid'; assert s.CSRF_COOKIE_NAME=='xenosys_purchase_simple_csrftoken'; print('New local cookie identity verified.')"
+            self.assertEqual(env['APPROVAL_PURCHASE_LAB_INSTANCE'],'departments-v1')
+            code="import approval_site.settings as s; assert s.SESSION_COOKIE_NAME=='xenosys_purchase_departments_sessionid'; assert s.CSRF_COOKIE_NAME=='xenosys_purchase_departments_csrftoken'; print('New local cookie identity verified.')"
             result=subprocess.run([sys.executable,'-c',code],cwd=package.ROOT,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
 

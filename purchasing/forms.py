@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from workflow.models import RANKS
 from .models import PurchaseRequest,PurchasePolicy,MODES,dev_modes,other_modes
 from .access import is_admin
-from .services import eligible_people,mode_for,validate_policy_people,event,actor_now,lock_policy
+from .services import eligible_people,mode_for,validate_policy_people,event,actor_now,lock_policy,can_request_direct,department_checker
 from django.db import transaction
 
 
@@ -48,6 +48,7 @@ class AttachmentForm(forms.Form):
 
 
 class RequestForm(forms.ModelForm):
+    request_method=forms.ChoiceField(label='요청 방식',choices=[('review','검토 요청'),('direct','구매담당자에게 요청')],initial='review',widget=forms.RadioSelect)
     files=MultipleFileField(label='첨부파일 · 선택',required=False,widget=MultipleFileInput(attrs={'accept':'.pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.docx,.doc,.hwp,.hwpx,.txt'}))
     unit_price=WonField(label='개당 금액 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'),widget=forms.TextInput(attrs={'inputmode':'decimal','placeholder':'예: 50,000','autocomplete':'off'}))
     key=forms.UUIDField(widget=forms.HiddenInput,initial=uuid4)
@@ -63,7 +64,17 @@ class RequestForm(forms.ModelForm):
     def __init__(self,*args,user,policy,**kwargs):
         super().__init__(*args,**kwargs)
         if not self.instance.pk:self.initial['usage_department']=user.profile.department
-        self.mode=mode_for(policy,user) if policy else 'direct'
+        self.department_routing=bool(policy and policy.department_routing)
+        self.can_direct=can_request_direct(policy,user) if self.department_routing else False
+        self.checker=department_checker(policy,user) if policy else None
+        if self.department_routing and self.checker and self.checker.pk==user.pk and not policy.director_self_request:self.checker=policy.production_director if user.profile.department=='개발팀' else policy.dev_director
+        if not self.department_routing:self.fields.pop('request_method')
+        else:
+            if not self.can_direct:self.fields['request_method'].choices=[('review','검토 요청')]
+            self.initial['request_method']=self.instance.route.get('request_method','review') if self.instance.pk else 'review'
+        method=self.data.get('request_method','review') if self.is_bound else self.initial.get('request_method','review')
+        self.mode='direct' if self.department_routing and method=='direct' else mode_for(policy,user) if policy else 'direct'
+        self.review_mode=mode_for(policy,user) if self.department_routing else self.mode
         director=policy.dev_director if policy and user.profile.department=='개발팀' else policy.production_director if policy else None
         qs=eligible_people(user)
         minimum=RANKS.index(user.profile.rank) if user.profile.rank in RANKS else len(RANKS)
@@ -76,6 +87,9 @@ class RequestForm(forms.ModelForm):
         elif user.username=='p_quality':
             self.initial['reviewer']=qs.filter(username='p_quality_manager').values_list('pk',flat=True).first()
             self.initial['approver']=qs.filter(username='p_quality_lead').values_list('pk',flat=True).first()
+        elif user.username=='p_dev_manager':
+            self.initial['reviewer']=qs.filter(username='p_dev_lead').values_list('pk',flat=True).first()
+            self.initial['approver']=qs.filter(username='p_dev_director').values_list('pk',flat=True).first()
 
     def clean(self):
         data=super().clean()
@@ -87,6 +101,12 @@ class PolicyForm(forms.Form):
     enabled=forms.BooleanField(label='이 구매 규정 사용',required=False)
     representative=PersonChoice(label='품목별 구매승인 대표',queryset=get_user_model().objects.none())
     finance=PersonMultiple(label='구매 담당자',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
+    dev_director=PersonChoice(label='개발팀 구매 확인 담당자',queryset=get_user_model().objects.none(),required=False)
+    production_director=PersonChoice(label='그 외 부서 구매 확인 담당자',queryset=get_user_model().objects.none(),required=False)
+    direct_ranks=forms.MultipleChoiceField(label='구매담당자에게 요청할 수 있는 직급',choices=[(r,r) for r in RANKS[3:]],required=False,widget=forms.CheckboxSelectMultiple)
+    review_mode=forms.ChoiceField(label='검토 요청 경로',choices=[('review_approval','검토자 → 승인자'),('approval','승인자만 지정')])
+    combine_confirmation=forms.BooleanField(label='담당 이사가 최종 승인하면 구매 확인까지 함께 처리',required=False)
+    director_self_request=forms.BooleanField(label='담당 이사의 직접 요청은 구매담당자에게 바로 전달',required=False)
     revision=forms.IntegerField(widget=forms.HiddenInput)
     reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':2}))
     def __init__(self,*args,instance,**kwargs):
@@ -94,9 +114,15 @@ class PolicyForm(forms.Form):
         users=get_user_model().objects.filter(is_active=True,profile__approved=True).select_related('profile').order_by('first_name','pk')
         self.fields['representative'].queryset=users.filter(profile__representative_slot=1)
         self.fields['finance'].queryset=users.filter(profile__representative_slot__isnull=True).exclude(username='admin')
+        self.legacy=bool(instance and not instance.department_routing)
+        for key,department in [('dev_director','개발팀'),('production_director','생산팀')]:
+            self.fields[key].queryset=users.filter(profile__department=department,profile__rank='이사',profile__department_confirmed=True,profile__representative_slot__isnull=True)
+            self.fields[key].required=not self.legacy
+        self.fields['review_mode'].required=not self.legacy
+        if instance:self.initial.update(dev_director=instance.dev_director_id,production_director=instance.production_director_id,direct_ranks=instance.direct_ranks,review_mode=instance.review_mode,combine_confirmation=instance.combine_confirmation,director_self_request=instance.director_self_request)
         from .models import approval_modes
         modes=instance.approval_modes if instance else approval_modes()
-        for i,rank in enumerate(RANKS):
+        for i,rank in enumerate(RANKS if self.legacy else []):
             choices=MODES if i>=RANKS.index('과장') else [(key,label) for key,label in MODES if key!='direct']
             self.fields[f'rank_{i}']=forms.ChoiceField(label=rank,choices=choices,initial=modes.get(rank,'review_approval'))
         if instance:self.initial.update(enabled=instance.enabled,representative=instance.representative_id,finance=list(instance.finance.values_list('pk',flat=True)),revision=instance.version)
@@ -107,10 +133,15 @@ class PolicyForm(forms.Form):
         data=self.cleaned_data
         if data['revision']!=p.version:raise forms.ValidationError('다른 창에서 규정이 바뀌었습니다. 새로고침해 주세요.')
         p.enabled=data['enabled'];p.representative=data['representative']
-        p.approval_modes={rank:data[f'rank_{i}'] for i,rank in enumerate(RANKS)}
+        if p.department_routing:
+            p.dev_director=data['dev_director'];p.production_director=data['production_director'];p.direct_ranks=data['direct_ranks'];p.review_mode=data['review_mode']
+            p.combine_confirmation=data['combine_confirmation'];p.director_self_request=data['director_self_request']
+            from .models import PurchasePermission
+            for person in [p.dev_director,p.production_director]:PurchasePermission.objects.update_or_create(user=person,defaults={'view_completed':True})
+        else:p.approval_modes={rank:data[f'rank_{i}'] for i,rank in enumerate(RANKS)}
         p.version+=1;p.save();p.finance.set(data['finance'])
         if p.enabled:validate_policy_people(p)
-        event(actor,'구매 규정 변경',detail=f'버전 {p.version} / 내부 결재: {p.approval_modes}\n사유: {data["reason"]}')
+        event(actor,'구매 규정 변경',detail=f'버전 {p.version} / 검토 경로: {p.review_mode} / 직접 요청 직급: {p.direct_ranks} / 개발팀 담당 {p.dev_director_id} / 그 외 담당 {p.production_director_id} / 승인 시 함께 확인 {p.combine_confirmation} / 이사 직접 요청 {p.director_self_request}\n사유: {data["reason"]}')
         return p
 
 

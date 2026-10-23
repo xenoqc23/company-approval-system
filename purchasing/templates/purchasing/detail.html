@@ -14,7 +14,7 @@
 </div>
 <aside class="panel action-panel" data-primary-task="{{ task.kind }}"><h2>{% if task.kind == 'waiting' %}처리 기다리는 중{% elif task.kind == 'done' %}{% if doc.status == 'received' %}수령 완료{% else %}요청 종료{% endif %}{% else %}지금 할 일{% endif %}</h2><p>{{ task.message }}</p>
 {% if task.kind == 'draft' %}<a class="button primary full" href="{% url 'purchasing:edit' doc.pk %}">이어서 작성</a>{% endif %}
-{% if can_approve %}<form method="post" action="{% url 'purchasing:action' doc.pk %}">{% csrf_token %}<input type="hidden" name="action" value="approve"><button class="primary full">{% if doc.status == 'review' %}검토 완료 · 승인자에게 전달{% else %}내부 승인 완료{% endif %}</button></form>{% endif %}
+{% if can_approve %}<form method="post" action="{% url 'purchasing:action' doc.pk %}">{% csrf_token %}<input type="hidden" name="action" value="approve"><button class="primary full">{% if approve_combined %}승인하고 구매담당자에게 전달{% elif doc.status == 'review' %}검토 완료 · 승인자에게 전달{% else %}내부 승인 완료{% endif %}</button></form>{% endif %}
 {% if can_confirm %}<form method="post" action="{% url 'purchasing:action' doc.pk %}">{% csrf_token %}<input type="hidden" name="action" value="confirm_items"><button class="primary full" data-confirm="구매 내용을 확인하고 구매 담당자에게 전달할까요?">구매 내용 확인</button></form>{% endif %}
 {% if can_supplement %}<a class="button primary full" href="{% url 'purchasing:supplement' doc.pk %}">보완 내용 작성</a>{% endif %}
 {% if task.kind == 'collect' or task.kind == 'collect_hold' %}<a class="button primary full" href="{% url 'purchasing:requests' %}?mode={% if task.kind == 'collect_hold' %}hold{% else %}finance&amp;stage=collect{% endif %}">구매할 품목 선택</a>{% endif %}

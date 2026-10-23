@@ -13,7 +13,7 @@ from django.core.management import call_command
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import connection,close_old_connections
-from .models import PurchaseRequest,PurchaseReport,PurchaseEvent
+from .models import PurchaseRequest,PurchaseReport,PurchaseEvent,PurchasePolicy,PurchasePermission
 from .services import save_request,request_action,submit_report,decide_report,amend_amount
 
 
@@ -23,6 +23,8 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         with TemporaryDirectory() as temp:
             path=Path(temp)/'password';path.write_text('fake-purchase-concurrency')
             call_command('seed_purchase_demo',password_file=path,stdout=StringIO())
+        PurchasePolicy.objects.filter(pk=1).update(department_routing=False)
+        PurchasePermission.objects.filter(user__username='p_dev_director').delete()
         self.users={u.username:u for u in get_user_model().objects.select_related('profile')}
         v=dict(product='동시 처리 시험품',vendor='가상구매처',quantity=1,unit_price=Decimal('123.45'),url='',reason='동시 처리 검증',private=False,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director'])
         self.doc=save_request(self.users['p_dev'],v,submit=True,key=uuid4())
@@ -94,3 +96,27 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         op=lambda:amend_amount(self.doc.pk,self.users['p_finance'],1,Decimal('100'),'할인 적용',revision)
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         self.assertEqual(self.doc.amendments.count(),1)
+
+    def department_request(self,method='direct'):
+        p=PurchasePolicy.objects.get(pk=1);p.department_routing=True;p.save()
+        PurchasePermission.objects.update_or_create(user=self.users['p_dev_director'],defaults={'view_completed':True})
+        return save_request(self.users['p_dev_manager'],dict(product='부서별 동시 처리 시험',vendor='가상처',quantity=10,unit_price=Decimal('50000'),reason='동시 처리 검증',private=False,request_method=method,reviewer=self.users['p_dev_lead'],approver=self.users['p_dev_director']),submit=True,key=uuid4())
+
+    def test_department_combined_final_approval_confirms_only_once(self):
+        d=self.department_request('review');request_action(d.pk,self.users['p_dev_lead'],'approve')
+        op=lambda:request_action(d.pk,self.users['p_dev_director'],'approve')
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        d.refresh_from_db();self.assertEqual(d.confirmation_method,'with_approval');self.assertEqual(d.events.filter(event='승인 시 구매 내용 함께 확인').count(),1)
+
+    def test_department_manual_confirmation_commits_once(self):
+        d=self.department_request();op=lambda:request_action(d.pk,self.users['p_dev_director'],'confirm_items')
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        d.refresh_from_db();self.assertEqual(d.confirmation_method,'manual');self.assertEqual(d.events.filter(event='구매 품목 확인').count(),1)
+
+    def test_department_receipt_without_payment_never_counts_twice(self):
+        d=self.department_request();request_action(d.pk,self.users['p_dev_director'],'confirm_items')
+        r=submit_report(self.users['p_finance'],[d.pk],'부서별 동시 수령','직접 요청 경로 검증',uuid4())
+        decide_report(r.pk,self.users['p_ceo'],{str(r.items.get().pk):dict(decision='allow',reason='')},0,final=True)
+        key=uuid4();op=lambda:request_action(d.pk,self.users['p_dev_manager'],'receive',quantity=6,receipt_key=key)
+        self.assertCountEqual(self.parallel(op,op),['ok','refused'])
+        d.refresh_from_db();self.assertEqual((d.received_quantity,d.remaining_quantity,d.status),(6,4,'allowed'));self.assertEqual(d.receipts.count(),1)

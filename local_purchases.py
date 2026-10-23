@@ -5,7 +5,7 @@ from datetime import datetime
 ROOT=Path(__file__).resolve().parent
 PYTHON=ROOT/'.venv'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
 DATA=ROOT/'var'/'purchase-test'
-DEFAULT_PORT=18113
+DEFAULT_PORT=18115
 
 
 def environment():
@@ -17,7 +17,7 @@ def environment():
     env=os.environ.copy();env.update(DB_ENGINE='sqlite',APPROVAL_DATA_DIR=str(DATA),APPROVAL_PRODUCTION='0',
         DJANGO_DEBUG='1',DJANGO_SETTINGS_MODULE='approval_site.settings',DJANGO_ALLOWED_HOSTS='localhost,127.0.0.1,testserver',
         DJANGO_SECURE_COOKIES='0',DJANGO_SSL_REDIRECT='0',DJANGO_TRUST_PROXY='0',DJANGO_CSRF_TRUSTED_ORIGINS='',
-        APPROVAL_WEBPUSH_ENABLED='0',APPROVAL_PURCHASE_LAB='1',APPROVAL_PURCHASE_LAB_INSTANCE='simple-v1',DJANGO_SECRET_KEY=key.read_text(),
+        APPROVAL_WEBPUSH_ENABLED='0',APPROVAL_PURCHASE_LAB='1',APPROVAL_PURCHASE_LAB_INSTANCE='departments-v1',DJANGO_SECRET_KEY=key.read_text(),
         PYTHONUTF8='1',PYTHONUNBUFFERED='1')
     return env
 

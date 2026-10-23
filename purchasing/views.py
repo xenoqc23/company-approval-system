@@ -15,10 +15,11 @@ from django.views.decorators.debug import sensitive_post_parameters
 from workflow.models import RANKS
 from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseNotice,PurchasePolicy,DemoAccount,PurchasePermission
 from .forms import RequestForm,PolicyForm,AttachmentForm,SupplementForm,AmountChangeForm
-from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests
+from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests,checker_assigned,checker_requests
 from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount
 from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
+from .fulfillment import receipt_info,report_fulfillment
 from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_notice, events_for, approval_track, purchase_progress, pending_columns, DISPLAY_LABELS, task_for
 
 
@@ -78,7 +79,7 @@ def request_list(request):
     elif mode=='director':qs=qs.filter(director=u).exclude(status='draft')
     elif mode=='completed':
         if not is_confirmer(u):raise PermissionDenied
-        qs=qs.filter(status__in=['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received']).exclude(owner=u)
+        qs=qs.filter(pk__in=checker_requests(u).values('pk'))
     elif mode=='finance':
         require_finance(u);qs=qs.filter(pk__in=finance_requests(u).values('pk'))
     elif mode=='hold':
@@ -89,7 +90,11 @@ def request_list(request):
     queue_counts=dict(approved=qs.count(),confirm=qs.filter(status='ready',confirmed_at=None).count(),collect=qs.filter(status__in=['ready','reapproval'],confirmed_at__isnull=False).count()) if mode in ['completed','finance'] else {}
     stage=request.GET.get('stage','') if mode in ['completed','finance'] else ''
     if stage=='confirm':qs=qs.filter(status='ready',confirmed_at=None)
-    elif stage=='collect':qs=qs.filter(status__in=['ready','reapproval'],confirmed_at__isnull=False)
+    elif stage=='collect':qs=qs.filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False)
+    receipt=request.GET.get('receipt','') if mode in ['finance','hold'] else ''
+    if receipt=='pending':qs=qs.filter(status__in=['allowed','paid'])
+    elif receipt=='partial':qs=qs.filter(status__in=['allowed','paid'],received_quantity__gt=0)
+    elif receipt=='done':qs=qs.filter(status='received')
     selected=request.GET.get('state','')
     states=REQUESTER_STATES if mode=='mine' else list(DISPLAY_LABELS.items())
     if mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
@@ -99,12 +104,12 @@ def request_list(request):
     q=request.GET.get('q','').strip()[:120]
     if q:qs=qs.filter(Q(product__icontains=q)|Q(vendor__icontains=q)|Q(owner__first_name__icontains=q))
     if mode=='inbox':qs=qs.order_by('-urgent',F('needed_by').asc(nulls_last=True),'-created_at','-pk')
-    docs=list(qs[:100])
+    docs=list(qs.select_related('confirmed_by','purchase_checker').prefetch_related('receipts__received_by')[:100])
     for d in docs:
-        d.progress_info=progress(d,simplified=not can_view_purchase(u,d));d.queue_info=pending_columns(d)
+        d.progress_info=progress(d,simplified=not can_view_purchase(u,d));d.queue_info=pending_columns(d);d.receipt_info=receipt_info(d)
         d.can_collect=bool(d.confirmed_at and (d.status in ['ready','reapproval'] or d.status=='hold' and d.hold_ready))
     return page(request,'requests',titles[mode],documents=docs,mode=mode,states=states,
-                selected=selected,total=qs.count(),q=q,queue_counts=queue_counts,stage=stage)
+                selected=selected,total=qs.count(),q=q,queue_counts=queue_counts,stage=stage,receipt=receipt,can_batch=mode in ['finance','hold'] and any(d.can_collect for d in docs))
 
 
 @login_required
@@ -121,7 +126,7 @@ def compose(request,pk=None):
             messages.success(request,'구매요청을 제출했습니다.' if d.status!='draft' else '임시저장했습니다.')
             return redirect('purchasing:detail',pk=d.pk)
         except ValidationError as exc:form.add_error(None,exc)
-    director=None
+    director=form.checker
     return page(request,'compose','구매요청 작성',form=form,director=director,existing_files=visible_attachments(request.user,instance) if instance else [])
 
 
@@ -134,12 +139,12 @@ def detail(request,pk):
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
     simplified=not can_view_purchase(request.user,d)
     permissions=dict(
-        can_confirm=is_confirmer(request.user) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,
+        can_confirm=checker_assigned(request.user,d) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,
         can_approve=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id and not d.confirmed_at,
         can_receive=d.owner_id==request.user.pk and d.status in ['allowed','paid'],
         can_supplement=d.status=='supplement' and d.owner_id==request.user.pk,
-        can_request_supplement=is_confirmer(request.user) and d.owner_id!=request.user.pk and d.status=='ready' and not d.confirmed_at and not d.current_report_id,
+        can_request_supplement=checker_assigned(request.user,d) and d.owner_id!=request.user.pk and d.status=='ready' and not d.confirmed_at and not d.current_report_id,
         can_prepare_hold=finance_assigned(request.user,d) and d.status=='hold',
         can_amend=finance_assigned(request.user,d) and d.status=='allowed' and not d.received_quantity and not d.paid_at,
         can_collect=finance_assigned(request.user,d) and d.status in ['ready','reapproval'] and bool(d.confirmed_at),
@@ -149,6 +154,7 @@ def detail(request,pk):
         visible_events=events_for(d,simplified),approval_cards=approval_track(d),
         purchase_steps=purchase_progress(d) if not simplified and (d.confirmed_at or d.current_report_id) else [],
         task=task_for(d,request.user,permissions),has_secondary=has_secondary,**permissions,
+        approve_combined=permissions['can_approve'] and d.status in ['approval','director'] and d.route.get('combine_confirmation') and d.purchase_checker_id==request.user.pk and d.owner_id!=request.user.pk and checker_assigned(request.user,d),
         supplements=d.supplements.all(),amendments=d.amendments.all(),receipt_key=uuid4(),
         attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),
         can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
@@ -190,15 +196,17 @@ def report_new(request):
 
 @login_required
 def report_list(request):
-    qs=reports_for(request.user).prefetch_related('items')
-    return page(request,'reports','구매요청함',reports=qs[:100])
+    qs=reports_for(request.user).prefetch_related('items__request__receipts__received_by')
+    reports=list(qs[:100])
+    for report in reports:report.fulfillment=report_fulfillment(report,list(report.items.all()))
+    return page(request,'reports','구매요청함',reports=reports)
 
 
 @login_required
 def report_detail(request,pk):
     report=get_object_or_404(reports_for(request.user).select_related('created_by','representative'),pk=pk)
     notices_for(request.user).filter(report=report,read=False).update(read=True)
-    items=list(report.items.select_related('request'))
+    items=list(report.items.select_related('request').prefetch_related('request__receipts__received_by'))
     for item in items:item.visible_files=visible_attachments(request.user,item.request)
     can_decide=report.status=='pending' and report.representative_id==request.user.pk and request.user.profile.is_representative
     if request.method=='POST':
@@ -211,7 +219,8 @@ def report_detail(request,pk):
             return redirect('purchasing:report_detail',pk=pk)
         except (ValueError,ValidationError) as exc:
             messages.error(request,' '.join(exc.messages) if isinstance(exc,ValidationError) else '화면을 다시 열어 주세요.')
-    return page(request,'report_detail',report.number,report=report,items=items,can_decide=can_decide,
+    fulfillment=report_fulfillment(report,items)
+    return page(request,'report_detail',report.number,fulfillment=fulfillment,report=report,items=items,can_decide=can_decide,
                 decisions=PurchaseReportItem.DECISIONS,total=sum((i.total for i in items),Decimal('0')),
                 allowed_total=sum((i.total for i in items if i.decision=='allow'),Decimal('0')),
                 denied_total=sum((i.total for i in items if i.decision=='deny'),Decimal('0')),
@@ -225,8 +234,8 @@ def regulations(request):
     if request.method=='POST' and form.is_valid():
         try:form.save(request.user);messages.success(request,'구매 규정을 저장했습니다. 새 구매요청부터 적용됩니다.');return redirect('purchasing:regulations')
         except ValidationError as exc:form.add_error(None,exc)
-    rows=[dict(rank=rank,mode=form[f'rank_{i}']) for i,rank in enumerate(RANKS)]
-    return page(request,'regulations','구매 규정 설정',form=form,rank_rows=rows)
+    rows=[dict(rank=rank,mode=form[f'rank_{i}']) for i,rank in enumerate(RANKS)] if form.legacy else []
+    return page(request,'regulations','구매 규정 설정',form=form,rank_rows=rows,ranks=RANKS)
 
 
 @login_required
@@ -267,6 +276,8 @@ def staff_permissions(request):
                 user=get_object_or_404(users,pk=target)
                 if request.POST.get('revision')!=str(p.version):raise ValidationError('권한 설정이 바뀌었습니다. 새로고침 후 다시 저장해 주세요.')
                 allowed=request.POST.get('view_completed')=='on'
+                if p.department_routing and p.enabled and not allowed and target in [p.dev_director_id,p.production_director_id]:raise ValidationError('규정관리에서 담당 이사를 먼저 변경해 주세요.')
+                if p.department_routing and not allowed and PurchaseRequest.objects.filter(purchase_checker=user,confirmed_at=None,status__in=['review','approval','director','ready','supplement']).exists():raise ValidationError('이 담당자에게 배정된 진행 문서가 남아 있습니다. 처리 완료 후 권한을 해제해 주세요.')
                 current=PurchasePermission.objects.filter(user=user,view_completed=True).exists()
                 if current and not allowed and p.enabled and not PurchasePermission.objects.exclude(user=user).filter(view_completed=True,user__is_active=True,user__profile__approved=True).exists():raise ValidationError('구매 품목확인자를 한 명 이상 남겨 주세요.')
                 PurchasePermission.objects.update_or_create(user=user,defaults={'view_completed':allowed})

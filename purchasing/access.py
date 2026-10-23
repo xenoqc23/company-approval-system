@@ -24,6 +24,21 @@ def confirmers():
     return get_user_model().objects.filter(is_active=True,profile__approved=True,profile__representative_slot__isnull=True,purchase_permission__view_completed=True).select_related('profile')
 
 
+def checker_assigned(user,d):
+    return is_confirmer(user) and (d.purchase_checker_id is None or d.purchase_checker_id==user.pk)
+
+
+def checker_requests(user):
+    if not is_confirmer(user):return PurchaseRequest.objects.none()
+    return PurchaseRequest.objects.filter(Q(purchase_checker=user)|Q(purchase_checker__isnull=True)).filter(
+        status__in=['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received']).exclude(owner=user)
+
+
+def request_confirmers(d):
+    people=confirmers().exclude(pk=d.owner_id)
+    return people.filter(pk=d.purchase_checker_id) if d.purchase_checker_id else people
+
+
 def finance_assigned(user,d):
     if not is_finance(user):return False
     if d.confirmed_at:return user.pk in d.purchase_route.get('collector_ids',[])
@@ -39,7 +54,7 @@ def finance_requests(user):
 
 def can_view_purchase(user,d):
     if not active(user) or d.owner_id==user.pk:return False
-    if is_confirmer(user) and (not d.confirmed_at or d.confirmed_by_id==user.pk):return d.status not in ['draft','review','approval','director','rejected']
+    if checker_assigned(user,d) and (not d.confirmed_at or d.confirmed_by_id==user.pk):return d.status not in ['draft','review','approval','director','rejected']
     if finance_assigned(user,d):return True
     return bool(user.profile.is_representative and d.current_report_id and d.current_report.representative_id==user.pk)
 
@@ -48,7 +63,7 @@ def requests_for(user):
     if not active(user):return PurchaseRequest.objects.none()
     if is_admin(user):return PurchaseRequest.objects.all()
     roles=Q(owner=user)|Q(reviewer=user)|Q(approver=user)|Q(director=user)
-    if is_confirmer(user):roles|=Q(status__in=['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received'])
+    if is_confirmer(user):roles|=Q(pk__in=checker_requests(user).values('pk'))
     if is_finance(user):
         # JSON membership differs between SQLite and MariaDB: keep the same explicit participant check on both.
         roles|=Q(pk__in=finance_requests(user).values('pk'))

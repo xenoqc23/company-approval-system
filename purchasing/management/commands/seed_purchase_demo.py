@@ -11,6 +11,7 @@ from purchasing.models import DemoAccount,PurchasePolicy,PurchasePermission
 ACCOUNTS=[
  ('p_admin','가상관리자','인사팀','이사','관리자 · 구매 규정 설정'),
  ('p_dev','가상개발직원','개발팀','대리','개발팀 직원 · 요청 작성'),
+ ('p_dev_manager','가상개발과장','개발팀','과장','개발팀 과장 · 요청 방식 선택'),
  ('p_dev_lead','가상개발팀장','개발팀','팀장','개발팀 팀장 · 중간 승인 테스트'),
  ('p_dev_director','가상개발이사','개발팀','이사','개발팀 이사 · 개발팀 최종승인'),
  ('p_quality','가상품질직원','품질팀','사원','품질팀 직원 · 검토·승인 경로'),
@@ -45,7 +46,8 @@ class Command(BaseCommand):
         p,_=PurchasePolicy.objects.get_or_create(pk=1)
         p.enabled=True;p.dev_director=people['p_dev_director'];p.production_director=people['p_prod_director'];p.representative=people['p_ceo'];p.save()
         p.finance.set([people['p_finance']])
-        PurchasePermission.objects.get_or_create(user=people['p_prod_director'],defaults={'view_completed':True})
+        for name in ['p_dev_director','p_prod_director']:PurchasePermission.objects.get_or_create(user=people[name],defaults={'view_completed':True})
         (settings.DATA_DIR/'.purchase-lab').write_text('purchase-lab-v1')
         self.stdout.write('구매 전용 가상 계정을 만들었습니다. 실제 직원·문서·연차는 사용하지 않습니다.')
-        for username,_,_,_,label in ACCOUNTS:self.stdout.write(f'{username}: {label}')
+        from purchasing.context import demo_choices
+        for account in demo_choices():self.stdout.write(f'{account.user.username}: {account.label}')

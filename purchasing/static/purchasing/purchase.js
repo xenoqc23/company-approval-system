@@ -47,6 +47,20 @@
    if(form.dataset.sending){event.preventDefault();return;}
    form.dataset.sending='1';
  }));
+ const requestForm=document.querySelector('[data-request-form]');
+ if(requestForm&&requestForm.querySelector('[name=request_method]')){
+  const syncMethod=()=>{const direct=requestForm.querySelector('[name=request_method]:checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
+   fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&(field.name==='approver'||requestForm.dataset.reviewMode==='review_approval');});
+   requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?'담당 이사 확인 후 구매담당자에게 전달됩니다.':'지정한 검토·승인 담당자를 거쳐 구매를 진행합니다.';
+  };requestForm.querySelectorAll('[name=request_method]').forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
+ }
+ const policyForm=document.querySelector('[data-policy-form]');
+ if(policyForm&&policyForm.querySelector('[data-route-preview]')){
+  const preview=()=>{const rank=policyForm.querySelector('[data-preview-rank]').value,method=policyForm.querySelector('[data-preview-method]').value,dev=policyForm.querySelector('[data-preview-department]').value==='dev';
+   const allowed=[...policyForm.querySelectorAll('[name=direct_ranks]:checked')].map(e=>e.value).includes(rank),who=policyForm.querySelector(dev?'#id_dev_director':'#id_production_director').selectedOptions[0]?.textContent||'담당자 미지정';
+   const text=method==='direct'&&!allowed?'이 직급은 검토 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
+  };policyForm.addEventListener('change',preview);preview();
+ }
  const runtime=document.querySelector('[data-purchase-status]');
  if(runtime){let busy=false,stopped=false;const poll=async()=>{if(busy||stopped||document.hidden)return;busy=true;try{const r=await fetch(runtime.dataset.purchaseStatus,{cache:'no-store'});if(r.redirected||!r.ok)return;const data=await r.json();if(String(data.user)!==runtime.dataset.currentUser){stopped=true;return;}document.querySelectorAll('[data-live]').forEach(node=>node.textContent=data.counts[node.dataset.live]||0);}catch{}finally{busy=false;}};setInterval(poll,15000);window.addEventListener('focus',poll);}
 })();

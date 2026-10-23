@@ -17,34 +17,38 @@ def status_tone(status,simplified=False):
 def approval_track(d):
     mode=d.route.get('mode','review_approval')
     finished=d.status in ['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received']
+    direct=d.route.get('workflow')=='department-v3' and d.route.get('request_method')=='direct'
     person=lambda u:u.first_name if u else '미지정'
     cards=[dict(label='기안',person=person(d.owner),done=d.submitted_at is not None,current=d.status=='draft',time=d.submitted_at),
            dict(label='검토' if mode=='review_approval' else '검토 생략',person=person(d.reviewer) if d.reviewer_id else '생략',done=bool(d.reviewed_at or finished or d.status in ['approval','director']),current=d.status=='review',time=d.reviewed_at),
            dict(label='승인' if mode!='direct' else '본인 전결',person=person(d.approver) if d.approver_id else person(d.owner) if mode=='direct' else '검토 후 결정',done=bool(d.intermediate_at or finished),current=d.status=='approval',time=d.intermediate_at or (d.submitted_at if mode=='direct' else None))]
     if d.route.get('workflow')!='separated-v2' and d.director_id:
         cards.append(dict(label='기존 문서 최종승인',person=person(d.director),done=bool(d.director_at or finished),current=d.status=='director',time=d.director_at))
+    if direct:cards[2].update(label='승인 생략',person='직접 요청',done=d.submitted_at is not None,time=None)
     return cards
 
 
 def progress(d,simplified=False):
     label=DISPLAY_LABELS[d.status]
     if d.status in PURCHASING_STATES:label='구매 진행 중' if simplified else label
+    if d.status=='ready' and not simplified:label='대표 요청 대기' if d.confirmed_at else '구매 내용 확인 대기'
     if d.status in ['allowed','paid']:label='구매 승인완료'
     who={'denied':'처리 종료','rejected':'처리 종료','cancelled':'처리 종료','received':'처리 완료','allowed':d.owner.first_name,'paid':d.owner.first_name,'supplement':'기안자 · 보완 필요','reapproval':'구매 담당자','draft':'기안자','review':d.reviewer.first_name if d.reviewer else '검토자','approval':d.approver.first_name if d.approver else '승인자','director':d.director.first_name if d.director else '기존 최종승인자'}.get(d.status,'구매 담당자')
     if simplified and d.status=='reapproval':who='구매 담당자'
     note={'draft':'작성 중인 구매요청입니다.','review':'검토자의 확인을 기다리고 있습니다.','approval':'승인자의 확인을 기다리고 있습니다.','director':'기존 문서의 최종승인을 기다리고 있습니다.','ready':'내부 승인이 완료되어 구매를 진행하고 있습니다.','ceo':'구매를 진행하고 있습니다.','supplement':'보완 요청 내용을 확인하고 자료를 보완해 주세요.','reapproval':'변경된 금액의 구매승인을 다시 진행하고 있습니다.','allowed':'구매승인이 완료되었습니다. 물품을 받으셨다면 받은 수량을 등록해 주세요.','paid':'물품을 받으셨다면 받은 수량을 등록해 주세요.','received':'물품 수령까지 완료했습니다.','denied':'구매요청이 반려되었습니다. 아래 사유를 확인해 주세요.','hold':'구매요청이 보류되었습니다. 아래 사유를 확인해 주세요.','rejected':'내부 결재에서 반려되었습니다. 아래 사유를 확인해 주세요.','cancelled':'구매요청을 취소했습니다.'}[d.status]
     receipt='수령 완료' if d.status=='received' else f'일부 수령 {d.received_quantity}/{d.quantity}개' if d.received_quantity else '수령 대기' if d.status in ['allowed','paid'] else '—'
-    return dict(label=label,who=who,note=note,receipt=receipt,tone=status_tone(d.status,simplified),list_label='구매 승인완료' if d.status=='received' else label,receipt_tone='positive' if d.status=='received' else 'active' if d.received_quantity else 'waiting' if d.status in ['allowed','paid'] else 'muted')
+    return dict(label=label,who=who,note=note,receipt=receipt,tone='waiting' if d.status=='ready' and not simplified else status_tone(d.status,simplified),list_label='구매 승인완료' if d.status=='received' else label,receipt_tone='positive' if d.status=='received' else 'active' if d.received_quantity else 'waiting' if d.status in ['allowed','paid'] else 'muted')
 
 
 def purchase_progress(d):
     index=0 if not d.confirmed_at and not d.current_report_id else 1 if d.status=='ready' else 1 if d.status=='reapproval' else 2 if d.status in ['ceo','denied','hold'] else 3
     stages=[]
-    names=[d.confirmed_by.first_name if d.confirmed_by_id else '구매 확인 담당자',' · '.join(d.purchase_route.get('collector_names',[])) or '구매 담당자',d.current_report.representative.first_name if d.current_report_id else '대표',d.owner.first_name]
+    names=[d.purchase_checker.first_name if d.purchase_checker_id else d.confirmed_by.first_name if d.confirmed_by_id else '구매 확인 담당자',' · '.join(d.purchase_route.get('collector_names',[])) or '구매 담당자',d.current_report.representative.first_name if d.current_report_id else '대표',d.owner.first_name]
     for i,label in enumerate(['구매 내용 확인','모아서 구매요청','대표 구매승인','물품 수령']):
         done=i<index or i==3 and d.status=='received'
         blocked=i==index and d.status in ['denied','cancelled'];paused=i==index and d.status=='hold'
         legacy=i==0 and not d.confirmed_at and bool(d.current_report_id)
+        if i==0 and d.confirmed_at:label=d.get_confirmation_method_display() or '확인완료'
         if legacy:done=False;label='구매 내용 확인 · 이전 기록 없음'
         stages.append(dict(label=label,person=names[i],legacy=legacy,done=done,current=i==index and not done and not blocked,blocked=blocked,paused=paused))
     return stages
@@ -59,14 +63,15 @@ def visible_notice(n,user):
 
 def events_for(d,simplified):
     if not simplified:return d.events.all()
-    return d.events.exclude(event__startswith='대표').exclude(event__in=['결제 완료 확인','구매 품목 확인','구매 증빙 첨부','보류 품목 재보고 준비'])
+    return d.events.exclude(event__startswith='대표').exclude(event__in=['결제 완료 확인','구매 품목 확인','구매 증빙 첨부','보류 품목 재보고 준비','승인 시 구매 내용 함께 확인'])
 
 
 def pending_columns(d):
     approved=d.status in ['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received']
     confirm='보완 대기' if d.status=='supplement' else '구매 내용 확인 대기' if approved and not d.confirmed_at and not d.current_report_id else '확인완료' if d.confirmed_at else '이전 진행 문서' if d.current_report_id else '—'
     collect='구매요청 작성 대기' if d.status in ['ready','reapproval'] and d.confirmed_at else '다시 요청할 품목' if d.status=='hold' and d.confirmed_at else '요청 완료' if d.current_report_id else '—'
-    return dict(confirm_done=bool(d.confirmed_at),collect_done=bool(d.current_report_id and d.status not in ['hold','reapproval']),approval='내부 승인완료' if approved else d.get_status_display(),confirm=confirm,collect=collect)
+    if d.confirmed_at:confirm=d.get_confirmation_method_display() or '확인완료'
+    return dict(confirm_who=d.confirmed_by.first_name if d.confirmed_by_id else d.owner.first_name if d.confirmation_method=='director_request' else '',confirm_done=bool(d.confirmed_at),collect_done=bool(d.current_report_id and d.status not in ['hold','reapproval']),approval='직접 요청' if d.route.get('workflow')=='department-v3' and d.route.get('request_method')=='direct' else '내부 승인완료' if approved else d.get_status_display(),confirm=confirm,collect=collect)
 
 
 def task_for(d,user,permissions):
