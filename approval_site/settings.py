@@ -94,17 +94,25 @@ WEBPUSH_CONTACT = os.environ.get('WEBPUSH_CONTACT', 'https://localhost')
 WEBPUSH_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_WEBPUSH_ENABLED', '0') == '1'
 
 # Purchase-only PC laboratory. Never activates on NAS and never opens the normal data folder.
-PURCHASE_LAB_ENABLED = not PRODUCTION and os.environ.get('APPROVAL_PURCHASE_LAB', '0') == '1'
+INTEGRATED_PURCHASES = not PRODUCTION and os.environ.get('APPROVAL_INTEGRATED_PURCHASES', '0') == '1'
+PURCHASE_LAB_ENABLED = not PRODUCTION and (os.environ.get('APPROVAL_PURCHASE_LAB', '0') == '1' or INTEGRATED_PURCHASES)
 if PURCHASE_LAB_ENABLED:
     if DATA_DIR.name != 'purchase-test':
         raise ImproperlyConfigured('구매 테스트는 별도 purchase-test 데이터 폴더에서만 실행할 수 있습니다.')
     if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
         DATABASES['default']['OPTIONS']['transaction_mode'] = 'IMMEDIATE'
     INSTALLED_APPS.append('purchasing')
-    MIDDLEWARE[-1] = 'purchasing.middleware.PurchaseLabGateMiddleware'
-    TEMPLATES[0]['OPTIONS']['context_processors'][-1] = 'purchasing.context.shell'
+    if not INTEGRATED_PURCHASES:
+        MIDDLEWARE[-1] = 'purchasing.middleware.PurchaseLabGateMiddleware'
+        TEMPLATES[0]['OPTIONS']['context_processors'][-1] = 'purchasing.context.shell'
+    else:
+        TEMPLATES[0]['OPTIONS']['context_processors'].append('purchasing.integration.shell')
     _purchase_cookie_prefix = {'terms-v1':'xenosys_purchase_terms','features-v1':'xenosys_purchase_features','complete-v1':'xenosys_purchase_complete','simple-v1':'xenosys_purchase_simple','departments-v1':'xenosys_purchase_departments'}.get(os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE'),'xenosys_purchase_lab')
     SESSION_COOKIE_NAME = _purchase_cookie_prefix + '_sessionid'
     CSRF_COOKIE_NAME = _purchase_cookie_prefix + '_csrftoken'
     LOGIN_URL = '/purchase-lab/login/'
     WEBPUSH_ENABLED = False
+    if INTEGRATED_PURCHASES:
+        SESSION_COOKIE_NAME = 'xenosys_integrated_local_sessionid'
+        CSRF_COOKIE_NAME = 'xenosys_integrated_local_csrftoken'
+        LOGIN_URL = '/login/'

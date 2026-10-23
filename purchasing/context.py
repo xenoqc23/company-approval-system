@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.conf import settings
 from .models import DemoAccount,PurchaseRequest,PurchaseReport
 from .access import active,is_admin,is_finance,is_confirmer,requests_for,policy,notices_for,finance_requests,checker_requests
 
@@ -18,7 +19,7 @@ def demo_choices():
 
 
 def shell(request):
-    common=dict(lab=True,shell_styles=['workflow/style.css','workflow/xenosys.css','workflow/workspace.css'])
+    common=dict(purchase_base_template='purchasing/standalone_base.html',lab=True,shell_styles=['workflow/style.css','workflow/xenosys.css','workflow/workspace.css'])
     if not request.user.is_authenticated or not active(request.user):return common
     u=request.user;finance=is_finance(u);checker=is_confirmer(u)
     result=dict(**common,lab_admin=is_admin(u),lab_finance=finance,lab_confirmer=checker,demo_accounts=demo_choices(),lab_policy=policy(),

@@ -3,7 +3,7 @@
  menu?.addEventListener('click',()=>{const open=document.body.classList.toggle('purchase-menu-open');menu.setAttribute('aria-expanded',String(open));});
  // Compute cents as integers, without floating point money arithmetic.
  const formatCents=cents=>{const whole=cents/100n,frac=String(cents%100n).padStart(2,'0').replace(/0+$/,'');return whole.toLocaleString('ko-KR')+(frac?'.'+frac:'')+'원';};
- document.querySelectorAll('[data-confirm]').forEach(button=>button.addEventListener('click',event=>{if(!confirm(button.dataset.confirm))event.preventDefault();}));
+ document.querySelectorAll('button[data-confirm]').forEach(button=>button.addEventListener('click',event=>{if(!confirm(button.dataset.confirm))event.preventDefault();}));
  const select=document.querySelector('[data-batch-select]');
  if(select){const boxes=[...select.querySelectorAll('[data-select-item]')],all=select.querySelector('[data-select-all]');
   const update=()=>{const n=boxes.filter(b=>b.checked).length;select.querySelector('[data-selected-count]').textContent=`${n}건 선택`;select.querySelector('[data-batch-button]').disabled=n===0;all.checked=boxes.length>0 && n===boxes.length;all.indeterminate=n>0 && n<boxes.length;};
@@ -42,7 +42,7 @@
   const after=remaining-quantity;
   if(!confirm(`이번에 받은 수량 ${quantity}개를 등록할까요?\n${after===0?'모든 수량을 받아 수령 완료로 표시됩니다.':`등록 후 남은 수량은 ${after}개입니다.`}`))event.preventDefault();
  }));
- document.querySelectorAll('form').forEach(form=>form.addEventListener('submit',event=>{
+ document.querySelectorAll('.purchase-content form, body.purchase-workspace form').forEach(form=>form.addEventListener('submit',event=>{
    if(event.defaultPrevented)return;
    if(form.dataset.sending){event.preventDefault();return;}
    form.dataset.sending='1';
@@ -57,7 +57,7 @@
  const policyForm=document.querySelector('[data-policy-form]');
  if(policyForm&&policyForm.querySelector('[data-route-preview]')){
   const preview=()=>{const rank=policyForm.querySelector('[data-preview-rank]').value,method=policyForm.querySelector('[data-preview-method]').value,dev=policyForm.querySelector('[data-preview-department]').value==='dev';
-   const allowed=[...policyForm.querySelectorAll('[name=direct_ranks]:checked')].map(e=>e.value).includes(rank),who=policyForm.querySelector(dev?'#id_dev_director':'#id_production_director').selectedOptions[0]?.textContent||'담당자 미지정';
+   const allowed=[...policyForm.querySelectorAll('[name=direct_ranks]:checked')].map(e=>e.value).includes(rank),who=policyForm.querySelector(dev?'#id_dev_director':'#id_production_director')?.selectedOptions[0]?.textContent||policyForm.querySelector(dev?'[data-preview-checker-dev]':'[data-preview-checker-other]')?.textContent||'담당자 미지정';
    const text=method==='direct'&&!allowed?'이 직급은 검토 요청만 사용할 수 있습니다.':'기안자 → '+(method==='review'?(policyForm.querySelector('[name=review_mode]').value==='review_approval'?'검토자 → 승인자 → ':'승인자 → '):'')+who+' 구매 확인 → 구매담당자 → 대표님 구매승인';policyForm.querySelector('[data-route-preview]').textContent=text;
   };policyForm.addEventListener('change',preview);preview();
  }

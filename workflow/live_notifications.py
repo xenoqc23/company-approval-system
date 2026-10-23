@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.conf import settings
 from django.urls import reverse
 from .models import Document, NotificationPreference
 from .notifications import visible_notices
@@ -9,7 +10,7 @@ def waiting_documents(user):
                                    Q(status='executive',representative=user))
 
 
-def live_summary(user,after=None):
+def live_summary(user,after=None,after_purchase=None):
     from .accounting import accounting_tabs
     from .completion import owner_completed
     from .services import visible_documents
@@ -23,8 +24,15 @@ def live_summary(user,after=None):
                        if n.document_id in accessible else reverse('notices')) for n in rows[:20]]
     tabs=accounting_tabs(user) if user.profile.view_accounting else []
     pref=NotificationPreference.objects.filter(user=user).first()
-    return dict(user=user.pk,unread=notices.filter(read=False).count(),waiting=waiting_documents(user).count(),
+    result=dict(user=user.pk,unread=notices.filter(read=False).count(),waiting=waiting_documents(user).count(),
                 completed_unread=owner_completed(user).filter(completion_seen=False).count(),
                 accounting_unread=tabs[0]['unread_count'] if tabs else 0,tabs=tabs,latest=latest,
                 cursor=incoming[-1]['id'] if incoming else latest,events=incoming,
                 preferences=dict(popup=pref.popup if pref else True,sound=pref.sound if pref else False))
+
+    if settings.INTEGRATED_PURCHASES:
+        from purchasing.integration import purchase_summary
+        p=purchase_summary(user,after_purchase)
+        result['unread']+=p['unread'];result['waiting']+=p['waiting'];result['completed_unread']+=p['completed']
+        result.update(purchase_latest=p['latest'],purchase_cursor=p['cursor'],purchase_events=p['events'],purchase_counts=p['counts'])
+    return result

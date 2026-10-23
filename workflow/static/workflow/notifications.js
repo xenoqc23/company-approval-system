@@ -3,6 +3,7 @@
   const seedNode = document.getElementById('notification-seed');
   if (!runtime || !seedNode) return;
   const initial = JSON.parse(seedNode.textContent);
+  let purchaseCursor = initial.purchase_latest || 0;
   let cursor = initial.latest, checking = false, settings = initial.preferences, registration = null;
   let failures=0;
   let stopped = false, audio = null;
@@ -11,11 +12,16 @@
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* Private browsing. */ } },
     remove(key) { try { localStorage.removeItem(key); } catch { /* Private browsing. */ } }
   };
-  const cursorKey=`xenosys-notice-cursor-${initial.user}`;
+  const scope=initial.storage_scope?`${initial.storage_scope}-${location.port}-`:'';
+  const cursorKey=`xenosys-notice-cursor-${scope}${initial.user}`;
   const savedCursor=Number(storage.get(cursorKey));
   if(storage.get(cursorKey)!==null && Number.isSafeInteger(savedCursor) && savedCursor>=0 && savedCursor<=initial.latest)cursor=savedCursor;
   else storage.set(cursorKey,String(cursor));
-  const reminderKey=`xenosys-work-reminder-${initial.user}`;
+  const purchaseCursorKey=`xenosys-purchase-cursor-${location.port}-${initial.user}`;
+  const savedPurchase=Number(storage.get(purchaseCursorKey));
+  if(storage.get(purchaseCursorKey)!==null&&Number.isSafeInteger(savedPurchase)&&savedPurchase>=0&&savedPurchase<=purchaseCursor)purchaseCursor=savedPurchase;
+  else storage.set(purchaseCursorKey,String(purchaseCursor));
+  const reminderKey=`xenosys-work-reminder-${scope}${initial.user}`;
   const ownerKey = 'xenosys-push-owner';
   const bounded = (promise,ms=15000) => {
     let timer;
@@ -60,6 +66,7 @@
   }
   function update(summary) {
     settings=summary.preferences;
+    if(summary.purchase_counts)document.querySelectorAll('[data-live-purchase]').forEach(node=>{const n=summary.purchase_counts[node.dataset.livePurchase]||0;node.textContent=n;});
     ['unread','waiting','accounting_unread','completed_unread'].forEach(key => document.querySelectorAll(`[data-live-count="${key}"]`).forEach(node => {
       node.textContent=summary[key];node.hidden=!summary[key] && !node.hasAttribute('data-keep-zero');
       node.setAttribute('aria-label',`${['accounting_unread','completed_unread'].includes(key)?'미확인':key==='waiting'?'미결':'안 읽은 알림'} ${summary[key]}건`);
@@ -86,7 +93,7 @@
     let previous=null;try{previous=sessionStorage.getItem(reminderKey);}catch{}
     if(previous===counts)return;
     try{sessionStorage.setItem(reminderKey,counts);}catch{}
-    if(initial.completed_unread)toast(`내 기안 중 결재완료 미확인 문서가 ${initial.completed_unread}건 있습니다.`, '/documents/?mode=completed&unread=1');
+    if(initial.completed_unread)toast(`내 기안 중 ${initial.storage_scope?'승인완료':'결재완료'} 미확인 문서가 ${initial.completed_unread}건 있습니다.`, '/documents/?mode=completed&unread=1');
     if(initial.waiting)toast(`내가 처리할 미결 문서가 ${initial.waiting}건 있습니다.`, '/documents/?mode=pending');
     if(initial.accounting_unread)toast(`아직 확인하지 않은 최종 승인 문서가 ${initial.accounting_unread}건 있습니다.`, '/documents/?mode=accounting');
   }
@@ -94,7 +101,7 @@
     if(stopped || checking || document.hidden)return;
     checking=true;
     try {
-      const response=await request(`${runtime.dataset.status}?after=${cursor}`,{cache:'no-store'});
+      const response=await request(`${runtime.dataset.status}?after=${cursor}&after_purchase=${purchaseCursor}`,{cache:'no-store'});
       if(response.redirected || response.status===401 || response.status===403){stopped=true;connection('로그인 상태가 바뀌어 알림 갱신이 중지되었습니다.','/login/');return;}
       if(!response.ok || !response.headers.get('content-type')?.includes('application/json'))throw new Error('status');
       const summary=await response.json();if(summary.user!==initial.user){stopped=true;connection('다른 계정으로 로그인되어 이 화면의 알림 갱신이 중지되었습니다. 현재 계정으로 새로고침해 주세요.',location.pathname+location.search);return;}
@@ -102,8 +109,9 @@
       // A visible window on another monitor must not consume the focused window's popup.
       if(!document.hasFocus())return;
       cursor=summary.cursor;storage.set(cursorKey,String(cursor));
-      for(const event of summary.events){
-        const key=`xenosys-event-${initial.user}-${event.id}`;
+      purchaseCursor=summary.purchase_cursor??purchaseCursor;storage.set(purchaseCursorKey,String(purchaseCursor));
+      for(const event of [...summary.events,...(summary.purchase_events||[])]){
+        const key=`xenosys-event-${scope}${initial.user}-${event.id}`;
         const show=()=>{if(storage.get(key))return;storage.set(key,'1');if(settings.popup)toast(event.text,event.url);sound();};
         if(navigator.locks)await navigator.locks.request('xenosys-notice',show);else show();
       }

@@ -1,4 +1,5 @@
 from datetime import date
+from django.conf import settings
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from urllib.parse import urlencode
@@ -146,7 +147,14 @@ def dashboard(request):
     from .completion import owner_completed
     mine = mine.annotate(has_owner_unseen=Exists(owner_completed(request.user).filter(pk=OuterRef('pk'),completion_seen=False)))
     recent = mine if home_kind == 'all' else mine.filter(kind=home_kind)
-    return page(request, 'dashboard', '홈', documents=recent.select_related('owner')[:4],
+    shown=recent.select_related('owner')[:4]
+    if settings.INTEGRATED_PURCHASES:
+        from purchasing.integration import list_requests,merge_rows
+        purchases=list_requests(request.user,'mine',{})
+        for category in home_categories:
+            if category['key'] in ['all','office']:category['count']+=purchases.count()
+        shown=merge_rows(shown,purchases[:4] if home_kind in ['all','office'] else [],request.user,4)
+    return page(request, 'dashboard', '홈', documents=shown,
                 home_kind=home_kind, home_categories=home_categories,
                 progress_doc=progress_doc, progress_steps=steps, progress_count=len(pending_documents),
                 progress_groups=[('진행 중', pending_documents)], notices=visible_notices(request.user)[:3],
@@ -161,6 +169,7 @@ def documents(request):
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
               'completed': '내 기안 결재완료', 'deleted': '삭제 문서 보관함', 'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
               'stock': '생산 재고 요청함', 'all': '전체 문서', 'search': '문서 검색'}
+    if settings.INTEGRATED_PURCHASES and mode=='completed':titles['completed']='내 기안 승인완료'
     if mode == 'mine':
         qs = qs.filter(owner=request.user).exclude(status='draft')
     elif mode == 'completed':
@@ -236,7 +245,10 @@ def documents(request):
         if key == 'kind' and mode == 'accounting':
             continue
         if request.GET.get(key):
-            qs = qs.filter(**{key: request.GET[key]})
+            value=request.GET[key]
+            if settings.INTEGRATED_PURCHASES and key=='status' and value=='review':qs=qs.filter(status__in=['review','approve','executive'])
+            elif settings.INTEGRATED_PURCHASES and key=='status' and value in ['purchasing','hold']:qs=qs.none()
+            else:qs=qs.filter(**{key:value})
     for key, lookup in [('from', 'created_at__date__gte'), ('to', 'created_at__date__lte')]:
         try:
             if request.GET.get(key):
@@ -248,8 +260,14 @@ def documents(request):
     qs=qs.annotate(has_new_notice=Exists(visible_notices(request.user).filter(document_id=OuterRef('pk'),read=False)))
     qs = rank_order(qs, 'owner__')
     stock_final_routes = mode == 'stock' and qs.filter(route_snapshot__stock_final_approval=True).exists()
-    return page(request, 'documents', titles[mode], mode, documents=qs[:100], document_count=qs.count(),
-                mode=mode, states=[(k, ('결재완료' if stock_final_routes else '검토완료') if k == 'approved' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES,
+    if settings.INTEGRATED_PURCHASES:qs=qs.order_by('-created_at','-pk')
+    shown=qs[:100];count=qs.count()
+    if settings.INTEGRATED_PURCHASES:
+        from purchasing.integration import list_requests,merge_rows
+        purchases=list_requests(request.user,mode,request.GET)
+        count+=purchases.count();shown=merge_rows(shown,purchases[:100],request.user)
+    return page(request, 'documents', titles[mode], mode, documents=shown, document_count=count,
+                mode=mode, states=([(k,v) for k,v in [('draft','작성 중'),('review','검토·승인 중'),('purchasing','구매 진행 중'),('approved','승인완료'),('hold','보류'),('rejected','반려'),('cancelled','취소')]] if settings.INTEGRATED_PURCHASES and mode not in ['stock','accounting'] else [(k, ('결재완료' if stock_final_routes else '검토완료') if k == 'approved' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES),
                 kinds=Document.KINDS, departments=DEPARTMENTS,
                 accounting_categories=accounting_categories, selected_kind=selected_kind,
                 can_export_purchases=mode == 'accounting' and selected_kind == 'office',
@@ -287,6 +305,10 @@ def export_purchases(request):
 
 @login_required
 def compose(request, pk=None):
+    if settings.INTEGRATED_PURCHASES and not pk and (request.POST.get('kind',request.POST.get('home_kind'))=='office' or request.method=='GET' and request.GET.get('kind')=='office'):
+        if request.method=='POST':
+            messages.info(request,'새 구매요청 작성 화면에서 제출해 주세요.');return redirect('purchasing:new')
+        return redirect('purchasing:new')
     instance = get_object_or_404(Document, pk=pk, owner=request.user, status='draft') if pk else Document(owner=request.user)
     initial = {'kind': request.GET.get('kind', 'leave'), 'recipient': request.user.pk, 'quantity': 1, 'urgency': 'normal',
                'start_date': timezone.localdate(), 'end_date': timezone.localdate()}
@@ -303,6 +325,7 @@ def compose(request, pk=None):
         data['kind'] = kind
     form = DocumentForm(data, instance=instance, initial=initial if not pk else {},
                         submit=request.POST.get('intent') == 'submit')
+    if settings.INTEGRATED_PURCHASES and not pk:form.fields['kind'].choices=[(key,label) for key,label in Document.KINDS if key!='office']
     if request.method == 'POST' and form.is_valid():
         doc = form.save(commit=False)
         doc.owner = request.user
@@ -413,6 +436,9 @@ def action(request, pk):
 @require_POST
 def copy_document(request, pk):
     old = get_object_or_404(Document, pk=pk, owner=request.user, status__in=['rejected', 'cancelled'])
+    if settings.INTEGRATED_PURCHASES and old.kind=='office':
+        messages.info(request,'새 구매요청 양식으로 내용을 가져왔습니다. 구매처와 결재선을 확인해 주세요.')
+        return redirect(reverse('purchasing:new')+'?source='+str(old.pk))
     fields = ['purchase_private', 'kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'quantity', 'unit_price',
               'product', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
     new = Document(owner=request.user, **{field: getattr(old, field) for field in fields})
@@ -691,9 +717,19 @@ def policy(request):
 def notices(request):
     if request.method == 'POST':
         visible_notices(request.user).filter(read=False).update(read=True)
+        if settings.INTEGRATED_PURCHASES:
+            from purchasing.access import notices_for
+            notices_for(request.user).filter(read=False).update(read=True)
         return redirect('notices')
     ids = set(visible_documents(request.user).values_list('pk', flat=True))
     rows = [{'notice': n, 'accessible': n.document_id in ids} for n in visible_notices(request.user)]
+    if settings.INTEGRATED_PURCHASES:
+        from purchasing.access import notices_for
+        from purchasing.progress import visible_notice
+        for n in notices_for(request.user)[:100]:
+            n.display_text=visible_notice(n,request.user)
+            rows.append(dict(notice=n,accessible=True,purchase_notice=True,url=reverse('purchasing:open_notice',args=[n.pk])))
+        rows.sort(key=lambda r:(r['notice'].created_at,r['notice'].pk),reverse=True)
     return page(request, 'notices', '알림함', 'notices', notice_rows=rows)
 
 @login_required
@@ -724,6 +760,13 @@ def staff(request):
         target = get_object_or_404(User, pk=request.POST.get('user'))
         intent = request.POST.get('intent')
         if intent in ['representative_set', 'representative_remove']:
+            if settings.INTEGRATED_PURCHASES:
+                from purchasing.models import PurchasePolicy,PurchaseReport
+                p=PurchasePolicy.objects.filter(pk=1).first()
+                if p and (target.pk in [p.dev_director_id,p.production_director_id] or p.finance.filter(pk=target.pk).exists()):
+                    messages.error(request,'구매 업무 담당자를 먼저 다른 직원으로 변경한 뒤 대표를 지정해 주세요.');return redirect('staff')
+                if p and PurchaseReport.objects.filter(representative_id=p.representative_id,status='pending').exists():
+                    messages.error(request,'대표의 구매승인 대기 문서를 먼저 처리한 뒤 대표 설정을 변경해 주세요.');return redirect('staff')
             if not can_manage_representative(request.user):
                 raise PermissionDenied
             try:
@@ -775,6 +818,11 @@ def staff(request):
                 messages.success(request, f'{target.first_name}님의 임시 비밀번호: {password} — 본인에게 전달해 주세요.')
             else:
                 department, rank = request.POST.get('department'), request.POST.get('rank')
+                if settings.INTEGRATED_PURCHASES:
+                    from purchasing.integration import validate_staff_change
+                    try:validate_staff_change(target,request.POST)
+                    except ValidationError as exc:
+                        messages.error(request,' '.join(exc.messages));return redirect('staff')
                 flags = ['approved', 'manage_leave', 'view_accounting', 'procure', 'manage_system']
                 before = f'{target.first_name} / {target.profile.department} / {target.profile.rank} / 부서 확인 {target.profile.department_confirmed} / 활성화 {target.is_active} / ' + ', '.join(f'{f}={getattr(target.profile, f)}' for f in flags)
                 target.profile.department, target.profile.rank = department, rank

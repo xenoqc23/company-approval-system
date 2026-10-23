@@ -78,7 +78,7 @@ def reports_for(user):
 
 
 def require_finance(user):
-    if not is_finance(user):raise PermissionDenied('취합·보고 담당자만 처리할 수 있습니다.')
+    if not is_finance(user):raise PermissionDenied('구매 담당자만 처리할 수 있습니다.')
 
 
 def notices_for(user):

@@ -111,6 +111,9 @@ def make_title(document):
 
 @transaction.atomic
 def save_document(document, actor, submit=False):
+    from django.conf import settings
+    if settings.INTEGRATED_PURCHASES and document.kind=='office' and not document.pk:
+        raise ValidationError('새 구매요청 작성 화면을 이용해 주세요. 기존 구매문서는 보존됩니다.')
     from .models import RegulationLock
     RegulationLock.objects.select_for_update().get_or_create(pk=1)
     # Serializes submissions by one employee, including overlap checks.

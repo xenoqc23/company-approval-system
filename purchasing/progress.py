@@ -1,4 +1,5 @@
 from .models import PurchaseRequest
+from django.conf import settings
 
 PURCHASING_STATES=('ready','ceo','reapproval')
 DISPLAY_LABELS=dict(PurchaseRequest.STATES,ready='내부 승인완료',ceo='구매 승인 대기',allowed='구매 승인완료',paid='구매 승인완료',reapproval='변경 금액 승인 필요')
@@ -31,7 +32,7 @@ def approval_track(d):
 def progress(d,simplified=False):
     label=DISPLAY_LABELS[d.status]
     if d.status in PURCHASING_STATES:label='구매 진행 중' if simplified else label
-    if d.status=='ready' and not simplified:label='대표 요청 대기' if d.confirmed_at else '구매 내용 확인 대기'
+    if d.status=='ready' and not simplified:label=('구매요청 대기' if settings.INTEGRATED_PURCHASES else '대표 요청 대기') if d.confirmed_at else '구매 내용 확인 대기'
     if d.status in ['allowed','paid']:label='구매 승인완료'
     who={'denied':'처리 종료','rejected':'처리 종료','cancelled':'처리 종료','received':'처리 완료','allowed':d.owner.first_name,'paid':d.owner.first_name,'supplement':'기안자 · 보완 필요','reapproval':'구매 담당자','draft':'기안자','review':d.reviewer.first_name if d.reviewer else '검토자','approval':d.approver.first_name if d.approver else '승인자','director':d.director.first_name if d.director else '기존 최종승인자'}.get(d.status,'구매 담당자')
     if simplified and d.status=='reapproval':who='구매 담당자'
@@ -44,7 +45,7 @@ def purchase_progress(d):
     index=0 if not d.confirmed_at and not d.current_report_id else 1 if d.status=='ready' else 1 if d.status=='reapproval' else 2 if d.status in ['ceo','denied','hold'] else 3
     stages=[]
     names=[d.purchase_checker.first_name if d.purchase_checker_id else d.confirmed_by.first_name if d.confirmed_by_id else '구매 확인 담당자',' · '.join(d.purchase_route.get('collector_names',[])) or '구매 담당자',d.current_report.representative.first_name if d.current_report_id else '대표',d.owner.first_name]
-    for i,label in enumerate(['구매 내용 확인','모아서 구매요청','대표 구매승인','물품 수령']):
+    for i,label in enumerate(['구매 내용 확인','구매요청 준비' if settings.INTEGRATED_PURCHASES else '모아서 구매요청','대표 구매승인','물품 수령']):
         done=i<index or i==3 and d.status=='received'
         blocked=i==index and d.status in ['denied','cancelled'];paused=i==index and d.status=='hold'
         legacy=i==0 and not d.confirmed_at and bool(d.current_report_id)

@@ -2,8 +2,8 @@
 {% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/birthdays.css' %}"><link rel="stylesheet" href="{% static 'workflow/representatives.css' %}"><script src="{% static 'workflow/birthdays.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">PEOPLE & ACCESS</div><h1>직원·권한 관리</h1><p>미분류 계정을 확인하고, 부서별로 직원 정보와 권한을 관리하세요.</p></div><span class="date-chip"><svg><use href="#i-users"/></svg>전체 {{ staff_total }}명</span></div>
-<div class="inline-info staff-info"><svg><use href="#i-shield"/></svg><span>부서·직급과 업무 권한은 별도로 관리합니다. 담당 업무에 따라 연차 관리·승인 문서 조회·구매 및 발주 권한을 설정해 주세요.</span></div>
-<nav class="staff-tabs" aria-label="직원 부서 선택">
+<div class="inline-info staff-info"><svg><use href="#i-shield"/></svg><span>{% if integrated_purchases %}새 구매요청 담당자는 ‘구매 업무 담당자·권한’에서 지정합니다. 직원 카드에서는 연차·생산 재고·기존 문서 권한을 관리합니다.{% else %}부서·직급과 업무 권한은 별도로 관리합니다. 담당 업무에 따라 연차 관리·승인 문서 조회·구매 및 발주 권한을 설정해 주세요.{% endif %}</span></div>
+{% if integrated_purchases and purchase_assignments_form %}{% include 'purchasing/assignment_panel.html' with form=purchase_assignments_form %}{% endif %}<nav class="staff-tabs" aria-label="직원 부서 선택">
 {% for group in staff_groups %}<a class="{% if selected_group == group.key %}selected{% endif %}" {% if selected_group == group.key %}aria-current="page"{% endif %} href="?department={{ group.key|urlencode }}">{{ group.label }} <b>{{ group.members|length }}</b></a>{% endfor %}
 </nav>
 <div class="staff-section-heading"><h2>{{ selected_label }} <span class="count-sub">{{ staff|length }}명</span></h2><p>{% if selected_group == 'unclassified' %}처음 가입한 계정입니다. 신청 부서를 확인하고 직원 정보·권한을 저장하면 부서별 목록으로 이동합니다.{% else %}선택한 부서의 직원만 표시됩니다.{% endif %}</p></div>

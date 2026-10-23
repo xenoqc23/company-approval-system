@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from django.conf import settings
 from uuid import UUID,uuid4
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied,ValidationError
@@ -90,8 +91,9 @@ def validate_policy_people(p):
         if p.review_mode not in ['approval','review_approval']:raise ValidationError('검토 요청 경로를 확인해 주세요.')
     if not confirmers().exists():raise ValidationError('직원 권한관리에서 구매요청승인완료함 담당자를 지정해 주세요.')
     if not p.representative or not active(p.representative) or not p.representative.profile.is_representative:
-        raise ValidationError('대표 계정을 규정에서 지정해 주세요.')
-    if not finance_users(p):raise ValidationError('취합·보고 담당자를 지정해 주세요.')
+        raise ValidationError('직원 권한관리에서 구매승인 대표를 지정해 주세요.')
+    if settings.INTEGRATED_PURCHASES and not p.representative.profile.representative_can_approve:raise ValidationError('직원 권한관리에서 대표의 결재 권한을 켜 주세요.')
+    if not finance_users(p):raise ValidationError('구매 담당자를 지정해 주세요.')
 
 
 def serialize_request(d):
@@ -182,9 +184,9 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         elif d.status=='review':
             d.reviewed_at=now;d.status='approval';label='검토 완료'
         elif d.status=='approval':
-            d.intermediate_at=now;d.status='ready' if d.route.get('workflow') in ['separated-v2','department-v3'] else 'director';label='최종 승인완료' if d.status=='ready' else '중간 승인 완료'
+            d.intermediate_at=now;d.status='ready' if d.route.get('workflow') in ['separated-v2','department-v3'] else 'director';label=('내부 승인완료' if settings.INTEGRATED_PURCHASES else '최종 승인완료') if d.status=='ready' else '중간 승인 완료'
         else:
-            d.director_at=now;d.status='ready';label='최종 승인완료'
+            d.director_at=now;d.status='ready';label='내부 승인완료' if settings.INTEGRATED_PURCHASES else '최종 승인완료'
         event(actor,label,request=d,detail=reason)
         if d.status=='ready' and d.route.get('combine_confirmation') and actor.pk==d.purchase_checker_id and actor.pk!=d.owner_id and checker_assigned(actor,d):
             confirm_purchase(d,actor,p,'with_approval')
@@ -248,14 +250,14 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
 @transaction.atomic
 def submit_report(actor,ids,title,note,key):
     p=lock_policy();actor=actor_now(actor);require_finance(actor);validate_policy_people(p)
-    if not title.strip() or len(title)>180 or not note.strip() or len(note)>1000:raise ValidationError('취합 제목과 보고 내용을 입력해 주세요.')
+    if not title.strip() or len(title)>180 or not note.strip() or len(note)>1000:raise ValidationError('구매요청 제목과 내용을 입력해 주세요.')
     try:key=UUID(str(key));ids=[int(x) for x in ids]
     except (ValueError,TypeError,AttributeError):raise ValidationError('선택 품목을 다시 확인해 주세요.')
     if not ids or len(ids)>100 or len(set(ids))!=len(ids) or any(x<1 or x>9223372036854775807 for x in ids):raise ValidationError('중복 없이 1~100개 품목을 선택해 주세요.')
     if PurchaseReport.objects.filter(request_key=key).exists():raise ValidationError('이미 제출한 구매요청입니다.')
     docs=list(PurchaseRequest.objects.select_for_update().filter(pk__in=ids).order_by('pk').select_related('owner'))
     if len(docs)!=len(ids) or any(d.status not in ['ready','hold','reapproval'] or d.status=='hold' and not d.hold_ready or not d.confirmed_at or not finance_assigned(actor,d) for d in docs):
-        raise ValidationError('이미 취합되었거나 구매 품목 확인이 끝나지 않은 품목이 있습니다. 목록을 새로고침해 주세요.')
+        raise ValidationError('이미 요청했거나 구매 내용 확인이 끝나지 않은 품목이 있습니다. 목록을 새로고침해 주세요.')
     report=PurchaseReport.objects.create(created_by=actor,representative=p.representative,title=title.strip(),note=note.strip(),request_key=key)
     for d in docs:
         snapshot=serialize_request(d)
@@ -266,7 +268,7 @@ def submit_report(actor,ids,title,note,key):
         PurchaseReportItem.objects.create(report=report,request=d,snapshot=snapshot)
         d.status,d.current_report,d.decision_reason='ceo',report,'';d.hold_ready=False;d.revision+=1;d.save()
         event(actor,'대표 구매요청',request=d,report=report,detail=report.number)
-        notify([d.owner],f'{d.product} · 취합·보고 완료, 대표님 구매요청',request=d)
+        notify([d.owner],f'{d.product} · 대표님께 구매요청 완료',request=d)
     event(actor,'구매요청 제출',report=report,detail=note)
     notify([report.representative],f'{report.number} · {len(docs)}개 품목 구매요청',report=report)
     return report
@@ -276,7 +278,7 @@ def submit_report(actor,ids,title,note,key):
 def decide_report(pk,actor,decisions,revision,final=False):
     p=lock_policy();actor=actor_now(actor)
     report=PurchaseReport.objects.select_for_update().get(pk=pk)
-    if actor.pk!=report.representative_id or not actor.profile.is_representative:raise PermissionDenied
+    if actor.pk!=report.representative_id or not actor.profile.is_representative or settings.INTEGRATED_PURCHASES and not actor.profile.representative_can_approve:raise PermissionDenied
     if report.status!='pending' or report.revision!=revision:raise ValidationError('이미 처리되었거나 다른 창에서 변경되었습니다. 다시 열어 주세요.')
     items=list(report.items.select_for_update().select_related('request'))
     if set(decisions)!= {str(item.pk) for item in items}:raise ValidationError('모든 품목의 결정 정보를 다시 확인해 주세요.')
@@ -291,7 +293,7 @@ def decide_report(pk,actor,decisions,revision,final=False):
         docs={d.pk:d for d in PurchaseRequest.objects.select_for_update().filter(pk__in=[item.request_id for item in items]).order_by('pk')}
         for item in items:
             d=docs[item.request_id]
-            if d.status!='ceo' or d.current_report_id!=report.pk:raise ValidationError('취합 품목의 진행 상태가 바뀌었습니다. 다시 확인해 주세요.')
+            if d.status!='ceo' or d.current_report_id!=report.pk:raise ValidationError('요청 품목의 진행 상태가 바뀌었습니다. 다시 확인해 주세요.')
             d.status={'allow':'allowed','deny':'denied','hold':'hold'}[item.decision]
             d.decision_reason=item.reason;d.permitted_at=now;d.completion_unread=item.decision=='allow';d.hold_ready=False;d.hold_note='';d.revision+=1;d.save()
             event(actor,'대표 '+item.get_decision_display(),request=d,report=report,detail=item.reason)

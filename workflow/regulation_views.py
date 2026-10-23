@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from django.conf import settings
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib import messages
@@ -77,6 +78,9 @@ def preview_route(request):
 
 @login_required
 def regulations(request, pk=None):
+    if settings.INTEGRATED_PURCHASES and (pk or request.GET.get('tab') not in ['annual','benefits','awards']):
+        from purchasing.integrated_rules import regulations as integrated_rules
+        return integrated_rules(request,pk)
     if not manager(request.user):
         raise PermissionDenied
     tab = request.GET.get('tab', 'delegation')

@@ -1,4 +1,6 @@
 from uuid import uuid4
+from django.conf import settings
+from django.urls import reverse
 from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth import authenticate,login,logout,get_user_model
@@ -24,7 +26,8 @@ from .progress import progress, PURCHASING_STATES, REQUESTER_STATES, visible_not
 
 
 def page(request,template,title,**context):
-    response=render(request,f'purchasing/{template}.html',dict(title=title,page_name=template,**context))
+    section='purchase_check' if context.get('mode')=='completed' else 'regulations' if template=='regulations' else 'staff' if template=='staff' else 'compose' if template=='compose' else 'purchase_inbox'
+    response=render(request,f'purchasing/{template}.html',dict(title=title,page_name=template,section=section,**context))
     add_never_cache_headers(response);return response
 
 
@@ -53,11 +56,12 @@ def switch(request):
     account=get_object_or_404(DemoAccount.objects.filter(user__username__in=[name for name,label in DEMO_ROLES]),user_id=request.POST.get('user') if str(request.POST.get('user','')).isdigit() else None)
     if not active(account.user):raise PermissionDenied
     login(request,account.user,backend='django.contrib.auth.backends.ModelBackend')
-    return redirect('purchasing:home')
+    return redirect('dashboard' if settings.INTEGRATED_PURCHASES else 'purchasing:home')
 
 
 @login_required
 def home(request):
+    if settings.INTEGRATED_PURCHASES:return redirect('dashboard')
     qs=PurchaseRequest.objects.filter(owner=request.user)
     recent=list(qs.select_related('reviewer','approver','director')[:8])
     for d in recent:d.progress_info=progress(d, simplified=True)
@@ -70,8 +74,8 @@ def home(request):
 
 
 @login_required
-def request_list(request):
-    mode=request.GET.get('mode','mine');u=request.user
+def request_list(request, purchase_tab=None):
+    mode=('hold' if purchase_tab=='hold' else 'finance') if purchase_tab else request.GET.get('mode','mine');u=request.user
     qs=requests_for(u).select_related('owner','reviewer','approver','director')
     titles=dict(mine='내 구매요청',inbox='내가 처리할 구매요청',director='이사 최종승인 목록',completed='구매 확인함',finance='구매 모아보기',hold='구매보류함',all='구매요청 전체')
     if mode=='mine':qs=qs.filter(owner=u)
@@ -95,9 +99,16 @@ def request_list(request):
     if receipt=='pending':qs=qs.filter(status__in=['allowed','paid'])
     elif receipt=='partial':qs=qs.filter(status__in=['allowed','paid'],received_quantity__gt=0)
     elif receipt=='done':qs=qs.filter(status='received')
+    if settings.INTEGRATED_PURCHASES and purchase_tab=='items':
+        qs=qs.filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False)
     selected=request.GET.get('state','')
     states=REQUESTER_STATES if mode=='mine' else list(DISPLAY_LABELS.items())
-    if mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
+    if settings.INTEGRATED_PURCHASES:
+        from .integration import filter_states
+        states,groups=filter_states(mode)
+        if selected in groups:qs=qs.filter(**groups[selected])
+        elif selected:qs=qs.none()
+    elif mode=='mine' and selected=='purchasing':qs=qs.filter(status__in=PURCHASING_STATES)
     elif mode=='mine' and selected=='purchase_approved':qs=qs.filter(status__in=['allowed','paid','received'])
     elif selected in dict(PurchaseRequest.STATES):qs=qs.filter(status=selected)
     if mode=='mine' and request.GET.get('unread')=='1':qs=qs.filter(completion_unread=True)
@@ -108,7 +119,8 @@ def request_list(request):
     for d in docs:
         d.progress_info=progress(d,simplified=not can_view_purchase(u,d));d.queue_info=pending_columns(d);d.receipt_info=receipt_info(d)
         d.can_collect=bool(d.confirmed_at and (d.status in ['ready','reapproval'] or d.status=='hold' and d.hold_ready))
-    return page(request,'requests',titles[mode],documents=docs,mode=mode,states=states,
+    return page(request,'requests','구매요청함' if purchase_tab else titles[mode],documents=docs,mode=mode,states=states,purchase_tab=purchase_tab,show_states=not purchase_tab,
+                inbox_counts=inbox_counts(u) if settings.INTEGRATED_PURCHASES and is_finance(u) else {},
                 selected=selected,total=qs.count(),q=q,queue_counts=queue_counts,stage=stage,receipt=receipt,can_batch=mode in ['finance','hold'] and any(d.can_collect for d in docs))
 
 
@@ -116,7 +128,12 @@ def request_list(request):
 def compose(request,pk=None):
     if request.user.profile.is_representative:raise PermissionDenied
     instance=get_object_or_404(PurchaseRequest,pk=pk,owner=request.user,status='draft') if pk else None
-    p=policy();form=RequestForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,instance=instance,user=request.user,policy=p)
+    initial={}
+    if settings.INTEGRATED_PURCHASES and request.method=='GET' and not pk and request.GET.get('source'):
+        from workflow.models import Document
+        source=get_object_or_404(Document,pk=request.GET['source'] if request.GET['source'].isascii() and request.GET['source'].isdigit() and len(request.GET['source'])<=18 else None,owner=request.user,kind='office',status__in=['rejected','cancelled'])
+        initial=dict(product=source.product,quantity=source.quantity,unit_price=source.unit_price,url=source.url,reason=source.reason,private=source.purchase_private,needed_by=source.needed_date)
+    p=policy();form=RequestForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,instance=instance,user=request.user,policy=p,initial=initial)
     if request.method=='POST' and form.is_valid():
         try:
             # Files and metadata form one request: failed uploads must not leave a submitted document.
@@ -183,7 +200,7 @@ def report_new(request):
     try:
         ids=selected_ids(request.POST.getlist('requests'))
         docs=list(requests_for(request.user).filter(pk__in=ids,status__in=['ready','hold','reapproval'],confirmed_at__isnull=False).select_related('owner').order_by('department','pk'))
-        if len(docs)!=len(ids) or any(not finance_assigned(request.user,d) or d.status=='hold' and not d.hold_ready for d in docs):raise ValidationError('이미 취합되었거나 취합할 수 없는 품목이 있습니다.')
+        if len(docs)!=len(ids) or any(not finance_assigned(request.user,d) or d.status=='hold' and not d.hold_ready for d in docs):raise ValidationError('이미 요청했거나 현재 요청할 수 없는 품목이 있습니다.')
         if request.POST.get('intent')=='submit':
             report=submit_report(request.user,ids,request.POST.get('title',''),request.POST.get('note',''),request.POST.get('key'))
             messages.success(request,'대표님에게 품목별 구매승인을 요청했습니다.')
@@ -196,10 +213,13 @@ def report_new(request):
 
 @login_required
 def report_list(request):
+    if settings.INTEGRATED_PURCHASES and not (is_finance(request.user) or request.user.profile.is_representative):raise PermissionDenied
+    tab=request.GET.get('tab','items') if is_finance(request.user) and settings.INTEGRATED_PURCHASES else 'sent'
+    if tab in ['items','hold']:return request_list(request,purchase_tab=tab)
     qs=reports_for(request.user).prefetch_related('items__request__receipts__received_by')
     reports=list(qs[:100])
     for report in reports:report.fulfillment=report_fulfillment(report,list(report.items.all()))
-    return page(request,'reports','구매요청함',reports=reports)
+    return page(request,'reports','구매요청함',reports=reports,purchase_tab='sent',inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
 
 
 @login_required
@@ -208,7 +228,7 @@ def report_detail(request,pk):
     notices_for(request.user).filter(report=report,read=False).update(read=True)
     items=list(report.items.select_related('request').prefetch_related('request__receipts__received_by'))
     for item in items:item.visible_files=visible_attachments(request.user,item.request)
-    can_decide=report.status=='pending' and report.representative_id==request.user.pk and request.user.profile.is_representative
+    can_decide=report.status=='pending' and report.representative_id==request.user.pk and request.user.profile.is_representative and (not settings.INTEGRATED_PURCHASES or request.user.profile.representative_can_approve)
     if request.method=='POST':
         if not can_decide:raise PermissionDenied
         try:
@@ -230,12 +250,15 @@ def report_detail(request,pk):
 @login_required
 def regulations(request):
     if not is_admin(request.user):raise PermissionDenied
-    p=policy();form=PolicyForm(request.POST if request.method=='POST' else None,instance=p)
+    p=policy()
+    from .forms import IntegratedPolicyForm
+    form_class=IntegratedPolicyForm if settings.INTEGRATED_PURCHASES else PolicyForm
+    form=form_class(request.POST if request.method=='POST' else None,instance=p)
     if request.method=='POST' and form.is_valid():
         try:form.save(request.user);messages.success(request,'구매 규정을 저장했습니다. 새 구매요청부터 적용됩니다.');return redirect('purchasing:regulations')
         except ValidationError as exc:form.add_error(None,exc)
     rows=[dict(rank=rank,mode=form[f'rank_{i}']) for i,rank in enumerate(RANKS)] if form.legacy else []
-    return page(request,'regulations','구매 규정 설정',form=form,rank_rows=rows,ranks=RANKS)
+    return page(request,'regulations','구매 규정 설정',form=form,rank_rows=rows,ranks=RANKS,assigned_policy=p)
 
 
 @login_required
@@ -257,13 +280,23 @@ def hints(request):
     if len(q)>=2:
         rows=PurchaseRequest.objects.exclude(status__in=['draft','rejected','cancelled','denied']).filter(private=False).annotate(
             normalized=Lower(Replace(Replace('product',Value(' '),Value('')),Value('-'),Value('')))).filter(normalized__contains=q).order_by('-created_at')
-    response=JsonResponse(dict(count=rows.count(),results=[dict(product=d.product,department=d.department,quantity=d.quantity,
-        received=d.received_quantity,usage_department=d.usage_department,location=d.storage_location if d.received_quantity else '',requested=d.created_at.date().isoformat(),status=progress(d,simplified=True)['label']) for d in rows[:8]]))
+    results=[dict(product=d.product,department=d.department,quantity=d.quantity,
+        received=d.received_quantity,usage_department=d.usage_department,location=d.storage_location if d.received_quantity else '',requested=d.created_at.date().isoformat(),status=progress(d,simplified=True)['label']) for d in rows[:8]]
+    count=rows.count()
+    if settings.INTEGRATED_PURCHASES and len(q)>=2:
+        from workflow.models import Document
+        old=Document.objects.filter(kind__in=['office','stock'],purchase_private=False,status__in=['review','approve','executive','approved']).annotate(
+            normalized=Lower(Replace(Replace('product',Value(' '),Value('')),Value('-'),Value('')))).filter(normalized__contains=q).select_related('owner__profile').order_by('-created_at')
+        count+=old.count()
+        results.extend(dict(product=d.product,department=d.owner.profile.department,quantity=d.quantity,received=d.quantity if d.shipment=='received' else 0,usage_department='',location='',requested=d.created_at.date().isoformat(),status='기존 문서 · '+(d.shipment_label if d.status=='approved' else d.get_status_display())) for d in old[:8])
+        results=sorted(results,key=lambda d:d['requested'],reverse=True)[:8]
+    response=JsonResponse(dict(count=count,results=results))
     add_never_cache_headers(response);return response
 
 
 @login_required
 def staff_permissions(request):
+    if settings.INTEGRATED_PURCHASES:return redirect('staff')
     if not is_admin(request.user):raise PermissionDenied
     from .services import lock_policy,actor_now
     users=get_user_model().objects.filter(is_active=True,profile__approved=True,profile__representative_slot__isnull=True).select_related('profile').order_by('first_name','pk')
@@ -365,7 +398,59 @@ def amount_change(request,pk):
         try:
             values=form.cleaned_data
             d=amend_amount(pk,request.user,values['quantity'],values['unit_price'],values['reason'],values['revision'])
-            messages.success(request,'금액 증가로 재승인이 필요합니다. 취합·보고에서 다시 구매요청해 주세요.' if d.status=='reapproval' else '금액 변경 이력을 저장했습니다. 기존 승인은 유지됩니다.')
+            messages.success(request,'금액 증가로 재승인이 필요합니다. 구매요청함에서 다시 요청해 주세요.' if d.status=='reapproval' else '금액 변경 이력을 저장했습니다. 기존 승인은 유지됩니다.')
             return redirect('purchasing:detail',pk=pk)
         except ValidationError as exc:form.add_error(None,exc)
     return page(request,'amount_change','승인 후 금액 변경',doc=d,form=form)
+
+@login_required
+@require_POST
+def open_notice(request,pk):
+    n=get_object_or_404(notices_for(request.user),pk=pk)
+    n.read=True;n.save(update_fields=['read'])
+    return redirect('purchasing:detail',pk=n.request_id) if n.request_id else redirect('purchasing:report_detail',pk=n.report_id)
+
+
+def inbox_counts(user):
+    qs=finance_requests(user)
+    return dict(items=qs.filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).count(),sent=reports_for(user).count(),hold=qs.filter(status='hold').count())
+
+
+@login_required
+@require_POST
+def assignments(request):
+    if not settings.INTEGRATED_PURCHASES or not is_admin(request.user):raise PermissionDenied
+    from .forms import PurchaseAssignmentsForm
+    form=PurchaseAssignmentsForm(request.POST)
+    if form.is_valid():
+        try:form.save(request.user);messages.success(request,'구매 업무 담당자와 권한을 저장했습니다. 새 요청부터 적용됩니다.');return redirect('staff')
+        except ValidationError as exc:form.add_error(None,exc)
+    return page(request,'assignments','구매 업무 담당자·권한',form=form)
+
+
+@login_required
+@require_POST
+def report_export(request,pk):
+    from io import BytesIO
+    from openpyxl import Workbook
+    from django.utils.http import content_disposition_header
+    report=get_object_or_404(reports_for(request.user),pk=pk)
+    book=Workbook();sheet=book.active;sheet.title='구매요청'
+    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유','구매승인 결과','사유','현재 받은 수량','현재 수령 현황'])
+    for item in report.items.select_related('request'):
+        s=item.snapshot;d=item.request;info=receipt_info(d)
+        current=d.current_report_id==report.pk
+        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason',''),item.get_decision_display(),item.reason,d.received_quantity if current and info['eligible'] else '',info['label'] if current else '변경 후 다시 요청'])
+        for i in [1,2,3,4,5,6,10,11,12,14]:sheet.cell(sheet.max_row,i).data_type='s'
+    sheet.freeze_panes='A2';sheet.auto_filter.ref=sheet.dimensions
+    from openpyxl.styles import Alignment,Font,PatternFill
+    from openpyxl.utils import get_column_letter
+    for col in range(1,15):sheet.column_dimensions[get_column_letter(col)].width=25 if col in [5,6,10,12,14] else 18
+    for cells in sheet:
+        for cell in cells:cell.alignment=Alignment(vertical='top',wrap_text=True)
+    for cell in sheet[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='0B4F3D')
+    output=BytesIO();book.save(output)
+    response=HttpResponse(output.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition']=content_disposition_header(True,report.number+'.xlsx');add_never_cache_headers(response)
+    event(request.user,'구매요청 엑셀 다운로드',report=report)
+    return response

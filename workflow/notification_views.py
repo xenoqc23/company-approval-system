@@ -28,7 +28,10 @@ def status(request):
     after=request.GET.get('after')
     try:after=min(2**63-1,max(0,int(after))) if after is not None else None
     except ValueError:return JsonResponse({'error':'잘못된 알림 번호입니다.'},status=400)
-    return JsonResponse(live_summary(request.user,after))
+    raw=request.GET.get('after_purchase')
+    try:purchase_after=min(2**63-1,max(0,int(raw))) if raw is not None else None
+    except ValueError:return JsonResponse({'error':'잘못된 구매 알림 번호입니다.'},status=400)
+    return JsonResponse(live_summary(request.user,after,purchase_after))
 
 
 @login_required

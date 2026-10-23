@@ -158,3 +158,53 @@ class AmountChangeForm(forms.Form):
     quantity=forms.IntegerField(label='변경 수량',min_value=1,max_value=999999)
     unit_price=WonField(label='변경 단가 · 부가세 포함',max_digits=14,decimal_places=2,min_value=Decimal('0.01'),max_value=Decimal('999999999.99'))
     reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':3}))
+
+
+class IntegratedPolicyForm(PolicyForm):
+    """Routes only; personnel are exclusively managed on the shared staff page."""
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        for name in ['dev_director','production_director','finance','representative']:self.fields.pop(name)
+    def clean(self):
+        data=super().clean()
+        p=self.instance
+        data.update(dev_director=p.dev_director,production_director=p.production_director,finance=list(p.finance.all()),representative=p.representative)
+        return data
+
+
+class PurchaseAssignmentsForm(forms.Form):
+    dev_director=PersonChoice(label='개발팀 구매 내용 확인',queryset=get_user_model().objects.none())
+    production_director=PersonChoice(label='그 외 부서 구매 내용 확인',queryset=get_user_model().objects.none())
+    finance=PersonMultiple(label='구매 담당자 · 품목 선택 및 대표에게 요청',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
+    representative=PersonChoice(label='구매승인 대표',queryset=get_user_model().objects.none())
+    revision=forms.IntegerField(widget=forms.HiddenInput)
+    reason=forms.CharField(label='변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':2}))
+    def __init__(self,*args,**kwargs):
+        from .access import policy
+        super().__init__(*args,**kwargs);self.instance=policy()
+        people=get_user_model().objects.filter(is_active=True,profile__approved=True,profile__department_confirmed=True).select_related('profile')
+        for name,dept in [('dev_director','개발팀'),('production_director','생산팀')]:self.fields[name].queryset=people.filter(profile__representative_slot__isnull=True,profile__rank='이사',profile__department=dept)
+        self.fields['representative'].queryset=people.filter(profile__representative_slot=1,profile__representative_can_approve=True)
+        self.fields['finance'].queryset=people.filter(profile__representative_slot__isnull=True)
+        p=self.instance
+        if p:self.initial.update(revision=p.version,dev_director=p.dev_director_id,production_director=p.production_director_id,finance=list(p.finance.values_list('pk',flat=True)),representative=p.representative_id)
+    @transaction.atomic
+    def save(self,actor):
+        from .models import PurchasePermission,PurchaseReport
+        p=lock_policy();actor=actor_now(actor)
+        if not is_admin(actor):raise ValidationError('직원 권한관리 권한이 필요합니다.')
+        data=self.cleaned_data
+        if data['revision']!=p.version:raise ValidationError('설정이 변경됐습니다. 새로고침 후 다시 저장해 주세요.')
+        selected={u.pk for u in data['finance']};removed=set(p.finance.values_list('pk',flat=True))-selected
+        if removed:
+            for d in PurchaseRequest.objects.filter(status__in=['ready','supplement','reapproval','ceo','allowed','paid','hold']).exclude(confirmed_at=None).only('purchase_route'):
+                if removed.intersection(d.purchase_route.get('collector_ids',[])):raise ValidationError('진행·수령 대기 문서가 있는 구매 담당자는 처리가 끝난 뒤 권한을 해제해 주세요.')
+        if p.representative_id!=data['representative'].pk and PurchaseReport.objects.filter(status='pending',representative_id=p.representative_id).exists():raise ValidationError('현재 대표의 구매승인 대기 문서를 먼저 처리해 주세요.')
+        before=f'개발 {p.dev_director_id}, 그 외 {p.production_director_id}, 구매 {list(p.finance.values_list("pk",flat=True))}, 대표 {p.representative_id}'
+        for name in ['dev_director','production_director','representative']:setattr(p,name,data[name])
+        p.finance.set(data['finance'])
+        for u in [p.dev_director,p.production_director]:PurchasePermission.objects.update_or_create(user=u,defaults={'view_completed':True})
+        if p.enabled:validate_policy_people(p)
+        p.version+=1;p.save()
+        event(actor,'구매 업무 담당자·권한 변경',detail=f'이전 {before}\n변경 사유: {data["reason"]}')
+        return p
