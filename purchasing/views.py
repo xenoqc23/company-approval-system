@@ -127,15 +127,21 @@ def request_list(request, purchase_tab=None):
 
 
 @login_required
-def compose(request,pk=None):
+def compose(request,pk=None,unified=False):
     if request.user.profile.is_representative:raise PermissionDenied
+    if settings.INTEGRATED_PURCHASES and not pk and request.method=='GET' and not unified:
+        from urllib.parse import urlencode
+        params={'kind':'office'}
+        if request.GET.get('source'):params['source']=request.GET['source']
+        return redirect(reverse('compose')+'?'+urlencode(params))
+    unified=unified or bool(settings.INTEGRATED_PURCHASES and pk and (request.method=='GET' or 'purchase-key' in request.POST))
     instance=get_object_or_404(PurchaseRequest,pk=pk,owner=request.user,status='draft') if pk else None
     initial={}
     if settings.INTEGRATED_PURCHASES and request.method=='GET' and not pk and request.GET.get('source'):
         from workflow.models import Document
         source=get_object_or_404(Document,pk=request.GET['source'] if request.GET['source'].isascii() and request.GET['source'].isdigit() and len(request.GET['source'])<=18 else None,owner=request.user,kind='office',status__in=['rejected','cancelled'])
         initial=dict(product=source.product,quantity=source.quantity,unit_price=source.unit_price,url=source.url,reason=source.reason,private=source.purchase_private,needed_by=source.needed_date)
-    p=policy();form=RequestForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,instance=instance,user=request.user,policy=p,initial=initial)
+    p=policy();form=RequestForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,instance=instance,user=request.user,policy=p,initial=initial,prefix='purchase' if unified else None)
     if request.method=='POST' and form.is_valid():
         try:
             # Files and metadata form one request: failed uploads must not leave a submitted document.
@@ -145,6 +151,10 @@ def compose(request,pk=None):
             messages.success(request,'구매요청을 제출했습니다.' if d.status!='draft' else '임시저장했습니다.')
             return redirect('purchasing:detail',pk=d.pk)
         except ValidationError as exc:form.add_error(None,exc)
+    if unified:
+        from .composition import render_compose
+        return render_compose(request,purchase_form=form,kind='office',purchase_pk=pk,
+            existing_files=visible_attachments(request.user,instance) if instance else [])
     director=form.checker
     return page(request,'compose','구매요청 작성',form=form,director=director,purchase_configured=bool(p and p.enabled and p.dev_director_id and p.production_director_id and p.representative_id and p.finance.exists()),existing_files=visible_attachments(request.user,instance) if instance else [])
 
@@ -539,7 +549,7 @@ def assignments(request):
     from .forms import PurchaseAssignmentsForm
     form=PurchaseAssignmentsForm(request.POST)
     if form.is_valid():
-        try:form.save(request.user);messages.success(request,'구매 업무 담당자와 권한을 저장했습니다. 새 요청부터 적용됩니다.');return redirect('staff')
+        try:form.save(request.user);messages.success(request,'구매 업무 담당자와 권한을 저장했습니다. 새 요청부터 적용됩니다.');return redirect(reverse('staff')+'#purchase-assignments')
         except ValidationError as exc:form.add_error(None,exc)
     return page(request,'assignments','구매 업무 담당자·권한',form=form)
 

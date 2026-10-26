@@ -27,8 +27,8 @@ class ReviewerFlowTests(TestCase):
     def test_new_request_ignores_prefilled_or_forged_approver_and_form_has_only_reviewer(self):
         d=self.create('quality','review',approver=self.user('prod_director'))
         self.assertEqual(d.status,'review');self.assertIsNone(d.approver_id);self.assertTrue(d.route['reviewer_decides'])
-        self.as_user('quality');r=self.client.get(reverse('purchasing:new'))
-        self.assertContains(r,'검토자 지정');self.assertNotContains(r,'name="approver"')
+        self.as_user('quality');r=self.client.get(reverse('purchasing:new'),follow=True)
+        self.assertContains(r,'검토자 지정');self.assertNotContains(r,'name="purchase-approver"')
         self.assertContains(r,'추가 정보');self.assertContains(r,'구매 사유')
 
     def test_unprivileged_reviewer_can_only_forward_to_another_eligible_approver(self):

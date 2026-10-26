@@ -106,7 +106,7 @@ class SimplifiedInterfaceTests(TestCase):
         self.assertNotContains(r,'name="allow_self_approval"');self.assertNotContains(r,'name="approver_is_author"')
         self.assertNotContains(r,'name="allow_skip_review"')
         self.assertContains(self.client.get(reverse('purchasing:regulations')),'purchase_settings=1#purchase-assignments')
-        self.assertContains(self.client.get('/staff/?purchase_settings=1'),'담당자·권한 설정 열기')
+        self.assertContains(self.client.get('/staff/?purchase_settings=1'),'개발팀 요청 구매확인 담당자')
 
     def test_all_senior_leave_ranks_have_only_review_and_ceo_and_cannot_forge_self(self):
         rule=ApprovalRule.objects.create(name='예전 본인 전결 규정',kind='leave',enabled=True,reviewer_ranks=RANKS[1:],approver_ranks=RANKS[1:],allow_self_approval=True,allow_skip_review=True)

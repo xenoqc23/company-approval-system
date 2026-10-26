@@ -1,0 +1,25 @@
+[data-compose-pane][hidden]{display:none!important}
+[data-unified-compose]>.form-panel{margin-bottom:1.1875rem}
+[data-unified-compose] .kind-choices label{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+[data-unified-compose] .kind-choices input[type=radio]{width:1rem;height:1rem;min-height:0;margin:0;padding:0}
+.compose-instruction{margin:.25rem 0 1rem;color:#637b72;font-size:.875rem}
+.purchase-compose .form-content{padding-bottom:1.25rem}
+.purchase-compose .form-content>p{margin:.75rem 0;line-height:1.8}
+.purchase-compose .purchase-check{display:flex;align-items:center;gap:.625rem;margin:.75rem 0;cursor:pointer}
+.purchase-compose .purchase-check input[type=checkbox]{flex:none;width:1.125rem;height:1.125rem;min-height:0;margin:0;padding:0}
+.purchase-compose .optional-purchase-fields{border:1px solid #dfeae4;border-radius:.625rem;padding:1rem;margin-bottom:1rem}
+.purchase-compose .optional-purchase-fields summary{cursor:pointer;font-weight:600;margin-bottom:.75rem}
+.purchase-compose .request-methods>div{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem}
+.purchase-compose .request-methods label{display:flex;gap:.625rem;align-items:center;padding:.875rem 1rem;border:1px solid #dfeae4;border-radius:.625rem;margin:0;cursor:pointer}
+.purchase-compose .request-methods label:has(input:checked){background:#edf8f2;border-color:#14835f}
+.purchase-compose .request-methods input[type=radio]{flex:none;width:1rem;height:1rem;min-height:0;margin:0;padding:0}
+.purchase-compose .request-methods+p{margin-bottom:1rem}
+.purchase-compose [data-direct-note][hidden]{display:none!important}
+.purchase-compose [data-review-fields][hidden]{display:none!important}
+.purchase-compose [data-urgent-reason][hidden]{display:none!important}
+.purchase-compose .purchase-hints{padding:1rem;background:#f3f8f5;border-radius:.5rem}
+.purchase-compose .purchase-hints[hidden]{display:none!important}
+#purchase-assignments .field-grid{align-items:start}
+#purchase-assignments .people-checks label{display:flex;align-items:center;gap:.5rem;margin:.5rem 0}
+#purchase-assignments .people-checks input{flex:none;width:1.125rem;height:1.125rem;min-height:0;margin:0}
+@media(max-width:700px){[data-unified-compose] .kind-choices{gap:.5rem;padding:1rem}[data-unified-compose] .kind-choices label{padding:1rem .625rem}[data-unified-compose] .kind-choices strong{font-size:.8125rem}[data-unified-compose] .kind-choices small{font-size:.6875rem}.purchase-compose .compose-actions{align-items:stretch}.purchase-compose .request-methods>div{flex-direction:column}}

@@ -22,10 +22,13 @@
   reportForm.addEventListener('change',refresh);refresh();
   reportForm.querySelector('[data-final-decisions]')?.addEventListener('click',event=>{const pending=items.find(item=>decisionFor(item)==='pending');if(pending){event.preventDefault();pending.tabIndex=-1;pending.focus();pending.querySelector('[data-decision-needed]').hidden=false;reportForm.querySelector('[data-decision-summary]').textContent='선택이 필요한 품목이 있습니다. 각 품목의 승인·반려·보류를 선택해 주세요.';return;}if(!confirm(summary()+'\n이 결과를 확정할까요? 승인된 품목은 기안자에게 결재완료로 전달됩니다.'))event.preventDefault();});
  }
- const urgent=document.querySelector('[name=urgent]'),urgentReason=document.querySelector('[name=urgent_reason]');if(urgent&&urgentReason){const sync=()=>{urgentReason.required=urgent.checked;const box=document.querySelector('[data-urgent-reason]');if(box)box.hidden=!urgent.checked;};urgent.addEventListener('change',sync);sync();}
+ const requestName=(form,name)=>(form.dataset.fieldPrefix||'')+name;
+ const requestSelector=(form,name)=>'[name="'+requestName(form,name)+'"]';
+ const purchaseForm=document.querySelector('[data-request-form]');
+ const urgent=purchaseForm?.querySelector(requestSelector(purchaseForm,'urgent')),urgentReason=purchaseForm?.querySelector(requestSelector(purchaseForm,'urgent_reason'));if(urgent&&urgentReason){const sync=()=>{urgentReason.required=urgent.checked;const box=document.querySelector('[data-urgent-reason]');if(box)box.hidden=!urgent.checked;};urgent.addEventListener('change',sync);sync();}
  const form=document.querySelector('[data-request-form]');
- if(form){const qty=form.querySelector('[name=quantity]'),price=form.querySelector('[name=unit_price]');const sum=()=>{let amount=price.value.trim();const valid=/^\d+(?:\.\d{0,2})?$/.test(amount)||/^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(amount);const parts=amount.replaceAll(',','').split('.');const cents=valid?(BigInt(parts[0])*100n+BigInt((parts[1]||'').padEnd(2,'0'))):0n;const count=/^\d{1,6}$/.test(qty.value)?BigInt(qty.value):0n;form.querySelector('[data-price]').textContent=formatCents(cents*count);};qty.addEventListener('input',sum);price.addEventListener('input',sum);sum();
-  const field=form.querySelector('[name=product]'),box=form.querySelector('[data-hints-results]');let timer,controller,cursor=0;
+ if(form){const qty=form.querySelector(requestSelector(form,'quantity')),price=form.querySelector(requestSelector(form,'unit_price'));const sum=()=>{let amount=price.value.trim();const valid=/^\d+(?:\.\d{0,2})?$/.test(amount)||/^\d{1,3}(?:,\d{3})+(?:\.\d{0,2})?$/.test(amount);const parts=amount.replaceAll(',','').split('.');const cents=valid?(BigInt(parts[0])*100n+BigInt((parts[1]||'').padEnd(2,'0'))):0n;const count=/^\d{1,6}$/.test(qty.value)?BigInt(qty.value):0n;form.querySelector('[data-price]').textContent=formatCents(cents*count);};qty.addEventListener('input',sum);price.addEventListener('input',sum);sum();
+  const field=form.querySelector(requestSelector(form,'product')),box=form.querySelector('[data-hints-results]');let timer,controller,cursor=0;
   field.addEventListener('input',()=>{clearTimeout(timer);controller?.abort();box.hidden=true;const version=++cursor;
    if(field.value.trim().length<2)return;
    timer=setTimeout(async()=>{controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),10000);try{
@@ -44,17 +47,17 @@
   const after=remaining-quantity;
   if(!confirm(`이번에 받은 수량 ${quantity}개를 등록할까요?\n${after===0?'모든 수량을 받아 수령 완료로 표시됩니다.':`등록 후 남은 수량은 ${after}개입니다.`}`))event.preventDefault();
  }));
- document.querySelectorAll('.purchase-content form, body.purchase-workspace form').forEach(form=>form.addEventListener('submit',event=>{
+ document.querySelectorAll('.purchase-content form, body.purchase-workspace form, form[data-request-form]').forEach(form=>form.addEventListener('submit',event=>{
    if(event.defaultPrevented)return;
    if(form.dataset.sending){event.preventDefault();return;}
    form.dataset.sending='1';
  }));
  const requestForm=document.querySelector('[data-request-form]');
- if(requestForm&&requestForm.querySelector('[name=request_method]')){
-  const syncMethod=()=>{const direct=requestForm.querySelector('[name=request_method]:checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
-   fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&((field.name==='approver')||(field.name==='reviewer'&&requestForm.dataset.reviewMode==='review_approval'));});
+ if(requestForm&&requestForm.querySelector(requestSelector(requestForm,'request_method'))){
+  const syncMethod=()=>{const direct=requestForm.querySelector(requestSelector(requestForm,'request_method')+':checked')?.value==='direct';const fields=requestForm.querySelector('[data-review-fields]');if(!fields)return;fields.hidden=direct;
+   fields.querySelectorAll('select').forEach(field=>{field.disabled=direct;field.required=!direct&&((field.name===requestName(requestForm,'approver'))||(field.name===requestName(requestForm,'reviewer')&&requestForm.dataset.reviewMode==='review_approval'));});
    requestForm.querySelector('[data-direct-note]').hidden=!direct;requestForm.querySelector('[data-submit-label]').textContent=direct?'구매담당자에게 요청':'검토 요청';requestForm.querySelector('[data-method-summary]').textContent=direct?requestForm.querySelector('[data-direct-note]').textContent.trim():'검토자가 다음 승인자를 지정해 승인 요청합니다.';
-  };requestForm.querySelectorAll('[name=request_method]').forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
+  };requestForm.querySelectorAll(requestSelector(requestForm,'request_method')).forEach(input=>input.addEventListener('change',syncMethod));syncMethod();
  }
  const policyForm=document.querySelector('[data-policy-form]');
  if(policyForm&&policyForm.querySelector('[data-route-preview]')){

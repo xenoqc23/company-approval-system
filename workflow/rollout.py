@@ -11,7 +11,7 @@ from django.db.models import F, Q
 from django.db.migrations.loader import MigrationLoader
 from .models import Profile, Document
 
-RELEASE = 'nas-purchase-20261026-v1'
+RELEASE = 'nas-compose-20261026-v2'
 ROLES = ('development_checker', 'other_checker', 'purchaser', 'representative')
 PROFILE_FIELDS = ('user_id', 'department', 'rank', 'approved', 'department_confirmed', 'representative_slot', 'manage_system')
 
@@ -70,16 +70,15 @@ def match(selector):
 
 def validate(ids, operator_id):
     people = {role: account(ids[role]) for role in ROLES}
-    if len(set(ids.values())) != 4:
-        raise CommandError('구매 업무의 네 담당자는 서로 다른 기존 계정이어야 합니다.')
+    if ids['development_checker'] == ids['other_checker']:
+        raise CommandError('본인 요청의 대체 확인을 위해 두 구매확인 담당자는 서로 다른 직원이어야 합니다.')
     for role, person in people.items():
         u, p = person['user'], person['profile']
-        if not u['is_active'] or not p['approved'] or not p['department_confirmed']:
+        if not u['is_active'] or not p['approved'] or (role not in ('development_checker','other_checker') and not p['department_confirmed']):
             raise CommandError('구매 담당자의 활성·가입 승인·부서 확인이 필요합니다.')
         if role in ('development_checker','other_checker'):
-            department = '개발팀' if role == 'development_checker' else '생산팀'
-            if p['department'] != department or p['rank'] != '이사' or p['representative_slot']:
-                raise CommandError('구매확인 담당자는 해당 부서의 이사 계정이어야 합니다. 부서·직급을 자동 변경하지 않습니다.')
+            if p['representative_slot']:
+                raise CommandError('구매확인 담당자는 활성·가입 승인된 직원 계정으로 지정해 주세요.')
         elif role == 'representative':
             if p['representative_slot'] != 1:
                 raise CommandError('지정한 계정이 현재 회사 대표로 등록되어 있지 않습니다. 직원 권한관리에서 확인해 주세요.')
@@ -147,7 +146,7 @@ def prepare(options):
         if not all(selected):
             raise CommandError('네 역할을 모두 지정해 주세요. 일부 역할을 추측하지 않습니다.')
         ids = {role: match(options[role]) for role in ROLES}
-    elif before and before['dev_director_id'] and before['production_director_id'] and before['representative_id'] and len(before['finance']) == 1:
+    elif before and before['dev_director_id'] and before['production_director_id'] and before['representative_id'] and len(before['finance']) >= 1:
         ids = dict(development_checker=before['dev_director_id'],other_checker=before['production_director_id'],
                    purchaser=before['finance'][0],representative=before['representative_id'])
     else:
@@ -156,7 +155,7 @@ def prepare(options):
     people, operator = validate(ids, operator_id)
     check_handover(ids, before)
     return dict(release=RELEASE, ids=ids, operator_id=operator_id, people=people, operator=operator,
-                policy=before, applied=False)
+                policy=before, applied=False, apply_roles=any(selected))
 
 
 def check_unchanged(plan, *, migrated=False):
@@ -244,6 +243,8 @@ def verify_baseline(plan):
 def apply_plan(plan):
     check_unchanged(plan, migrated=True)
     verify_baseline(plan)
+    if not plan.get('apply_roles',True):
+        return False
     from purchasing.forms import PurchaseAssignmentsForm
     from purchasing.models import PurchasePolicy
     from purchasing.services import event, validate_policy_people
@@ -261,3 +262,4 @@ def apply_plan(plan):
     validate_policy_people(policy)
     policy.save()
     event(actor, 'NAS 구매 규정 적용', detail='기존 계정 연결·동일 담당자 승인 시 구매확인 통합. 기존 문서·연차·암호 보존.')
+    return True

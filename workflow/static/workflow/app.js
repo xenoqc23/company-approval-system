@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   const form = document.querySelector('#compose-form');
   if (!form) return;
-  const id = name => document.querySelector('#id_' + name);
+  const id = name => form.querySelector('#id_' + name);
   const show = (selector, enabled) => {
     const group = document.querySelector(selector);
     group.hidden = !enabled;
@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selfComplete = false;
     const skipReview = finalApproval && (selfComplete || directRepresentative || form.dataset.skipReview === 'true');
     const annual = id('leave_type').value === 'annual';
-    document.querySelectorAll('[data-kind]').forEach(card => {
+    if (form.dataset.unified !== 'true') document.querySelectorAll('[data-kind]').forEach(card => {
       const selected = card.dataset.kind === kind;
       card.classList.toggle('selected', selected);
       card.querySelector('input').checked = selected;
@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const price = numeric(id('quantity').value) * numeric(id('unit_price').value);
     document.querySelector('#price-preview').textContent = new Intl.NumberFormat('ko-KR', {maximumFractionDigits: 2}).format(price);
   };
-  document.querySelectorAll('[data-kind] input').forEach(input => input.addEventListener('change', () => {
+  if (form.dataset.unified !== 'true') document.querySelectorAll('[data-kind] input').forEach(input => input.addEventListener('change', () => {
     id('kind').value = input.value;
     if (id('approval_mode')) id('approval_mode').value = 'base';
     update();

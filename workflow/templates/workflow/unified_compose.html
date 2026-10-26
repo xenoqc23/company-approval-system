@@ -1,0 +1,21 @@
+{% extends 'workflow/base.html' %}{% load static %}
+{% block extra_scripts %}<link rel="stylesheet" href="{% static 'workflow/simplified-approval.css' %}"><link rel="stylesheet" href="{% static 'workflow/unified-compose.css' %}"><script src="{% static 'workflow/unified-compose.js' %}" defer></script>{% endblock %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">NEW DOCUMENT</div><h1>{{ title }}</h1><p>문서 종류를 선택하고 신청 내용을 작성해 주세요.</p></div><a class="text-link" href="{% url 'documents' %}">내 기안으로 돌아가기</a></div>
+<div data-unified-compose data-selected-kind="{{ compose_kind }}" data-kind-locked="{{ kind_locked|yesno:'true,false' }}">
+<section class="panel form-panel"><div class="panel-heading"><h2><span class="step-number">01</span>문서 종류</h2><span class="muted">{% if kind_locked %}임시저장 문서는 문서 종류를 유지합니다{% else %}한 기안에 하나의 신청{% endif %}</span></div>
+<div class="kind-choices" role="group" aria-label="문서 종류">
+<label data-kind="leave" {% if compose_kind == 'leave' %}class="selected"{% endif %}><input type="radio" name="document-kind" value="leave" {% if compose_kind == 'leave' %}checked{% endif %} {% if kind_locked %}disabled{% endif %}><span class="quick-icon green"><svg><use href="#i-calendar"/></svg></span><strong>휴가원</strong><small>연차 · 반차 · 외출</small></label>
+<label data-kind="office" {% if compose_kind == 'office' %}class="selected"{% endif %}><input type="radio" name="document-kind" value="office" {% if compose_kind == 'office' %}checked{% endif %} {% if kind_locked %}disabled{% endif %}><span class="quick-icon blue"><svg><use href="#i-cart"/></svg></span><strong>구매요청서</strong><small>사내 물품 구매요청</small></label>
+<label data-kind="stock" {% if compose_kind == 'stock' %}class="selected"{% endif %}><input type="radio" name="document-kind" value="stock" {% if compose_kind == 'stock' %}checked{% endif %} {% if kind_locked %}disabled{% endif %}><span class="quick-icon purple"><svg><use href="#i-box"/></svg></span><strong>생산 재고 요청</strong><small>부족한 재고 발주 요청</small></label>
+</div></section>
+<div data-compose-pane="workflow" {% if compose_kind == 'office' %}hidden{% endif %}>
+<p class="compose-instruction" id="compose-intro">신청 내용을 작성하고 검토자를 선택해 주세요.</p>
+{% include 'workflow/compose_workflow_form.html' %}
+</div>
+<div data-compose-pane="office" {% if compose_kind != 'office' %}hidden{% endif %}>
+<p class="compose-instruction">구매할 품목과 구매처, 금액, 구매 사유를 작성해 주세요.</p>
+{% include 'purchasing/compose_form.html' with form=purchase_form %}
+</div>
+</div>
+{% endblock %}

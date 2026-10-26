@@ -41,9 +41,9 @@ class IntegratedTests(TestCase):
     def test_original_home_and_purchase_compose_share_original_shell(self):
         self.as_user('quality');home=self.client.get('/')
         self.assertContains(home,'나의 연차 현황');self.assertContains(home,'생산 재고');self.assertContains(home,'integrated-role')
-        response=self.client.get(reverse('purchasing:new'));self.assertContains(response,'id="workspace-navigation"');self.assertNotContains(response,'id="purchase-navigation"')
-        self.assertRedirects(self.client.get('/compose/?kind=office'),reverse('purchasing:new'))
-        self.assertNotContains(self.client.get('/compose/?kind=leave'),'data-kind="office"')
+        response=self.client.get(reverse('purchasing:new'),follow=True);self.assertContains(response,'id="workspace-navigation"');self.assertNotContains(response,'id="purchase-navigation"')
+        self.assertEqual(self.client.get('/compose/?kind=office').context['compose_kind'],'office')
+        self.assertContains(self.client.get('/compose/?kind=leave'),'data-kind="office"')
 
     def test_common_inbox_contains_new_purchase_with_correct_url(self):
         d=self.create('quality','review');self.as_user('quality_manager')
@@ -59,7 +59,7 @@ class IntegratedTests(TestCase):
 
     def test_original_purchase_post_cannot_bypass_new_route(self):
         self.as_user('quality');before=Document.objects.count()
-        self.assertRedirects(self.client.post('/compose/',dict(kind='office',intent='submit')),reverse('purchasing:new'))
+        self.assertRedirects(self.client.post('/compose/',dict(kind='office',intent='submit')),'/compose/?kind=office')
         self.assertEqual(Document.objects.count(),before)
 
     def test_finance_has_one_purchase_menu_and_no_duplicate_total_card(self):
@@ -164,7 +164,7 @@ class IntegratedTests(TestCase):
 
     def test_cancelled_legacy_purchase_copy_opens_new_form_without_changing_source(self):
         old=self.old(status='cancelled');self.as_user('quality_manager')
-        response=self.client.post(reverse('copy',args=[old.pk]));self.assertRedirects(response,reverse('purchasing:new')+'?source='+str(old.pk))
-        response=self.client.get(response.url);self.assertEqual(response.context['form'].initial['product'],old.product)
+        response=self.client.post(reverse('copy',args=[old.pk]));self.assertRedirects(response,reverse('compose')+'?kind=office&source='+str(old.pk))
+        response=self.client.get(response.url);self.assertEqual(response.context['purchase_form'].initial['product'],old.product)
         self.assertNotIn('vendor',response.context['form'].initial);old.refresh_from_db();self.assertEqual(old.status,'cancelled');self.assertEqual(Document.objects.count(),1)
-        self.as_user('quality');self.assertEqual(self.client.get(reverse('purchasing:new')+'?source='+str(old.pk)).status_code,404)
+        self.as_user('quality');self.assertEqual(self.client.get(reverse('compose')+'?kind=office&source='+str(old.pk),follow=True).status_code,404)

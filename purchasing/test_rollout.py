@@ -74,6 +74,17 @@ class RolloutTests(TestCase):
             self.run_step('check',**{**self.options,'purchaser':'username:p_quality_manager'})
         self.assertFalse(self.path.exists())
 
+    def test_patch_keeps_changed_roles_disabled_policy_and_version(self):
+        p=PurchasePolicy.objects.get(pk=1);p.enabled=False;p.direct_ranks=['부장'];p.save();p.finance.add(self.user('quality_manager'))
+        self.run_step('check',operator='p_admin');self.run_step('capture');self.run_step('apply')
+        p.refresh_from_db();self.assertFalse(p.enabled);self.assertEqual(p.direct_ranks,['부장']);self.assertEqual(p.version,1)
+        self.assertEqual(set(p.finance.values_list('pk',flat=True)),{self.user('finance').pk,self.user('quality_manager').pk})
+
+    def test_preflight_allows_manager_selected_checker_from_any_department_and_rank(self):
+        self.run_step('check',**{**self.options,'development_checker':'username:p_quality','other_checker':'username:p_dev'})
+        self.run_step('capture');self.run_step('apply')
+        p=PurchasePolicy.objects.get(pk=1);self.assertEqual(p.dev_director,self.user('quality'));self.assertEqual(p.production_director,self.user('dev'))
+
     def test_policy_change_stops_and_current_roles_can_be_retained(self):
         self.prepare();PurchasePolicy.objects.filter(pk=1).update(version=8)
         with self.assertRaisesMessage(CommandError,'규정이 변경'):self.run_step('apply')

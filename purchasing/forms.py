@@ -76,7 +76,7 @@ class RequestForm(forms.ModelForm):
         else:
             if not self.can_direct:self.fields['request_method'].choices=[('review','검토 요청')]
             self.initial['request_method']=self.instance.route.get('request_method','review') if self.instance.pk else 'review'
-        method=self.data.get('request_method','review') if self.is_bound else self.initial.get('request_method','review')
+        method=self.data.get(self.add_prefix('request_method'),'review') if self.is_bound else self.initial.get('request_method','review')
         self.mode='direct' if self.department_routing and method=='direct' else mode_for(policy,user) if policy else 'direct'
         self.review_mode=mode_for(policy,user) if self.department_routing else self.mode
         director=policy.dev_director if policy and user.profile.department=='개발팀' else policy.production_director if policy else None
@@ -89,8 +89,9 @@ class RequestForm(forms.ModelForm):
             for key in ['reviewer','approver']:
                 self.fields[key].widget=DepartmentEmployeeSelect()
                 self.fields[key].widget.choices=self.fields[key].choices
+                self.fields[key+'_department'].widget.attrs['data-person-field']=self[key].auto_id
                 self.initial[key+'_department']=user.profile.department
-                person_id=self.data.get(key) if self.is_bound else self.initial.get(key) or getattr(self.instance,key+'_id',None)
+                person_id=self.data.get(self.add_prefix(key)) if self.is_bound else self.initial.get(key) or getattr(self.instance,key+'_id',None)
                 person=qs.filter(pk=person_id).first() if str(person_id or '').isascii() and str(person_id or '').isdigit() and len(str(person_id))<=18 else None
                 if person:self.initial[key+'_department']=person.profile.department
         else:
@@ -219,8 +220,8 @@ class PurchaseForwardForm(forms.Form):
 
 
 class PurchaseAssignmentsForm(forms.Form):
-    dev_director=PersonChoice(label='개발팀 구매 내용 확인',queryset=get_user_model().objects.none())
-    production_director=PersonChoice(label='그 외 부서 구매 내용 확인',queryset=get_user_model().objects.none())
+    dev_director=PersonChoice(label='개발팀 요청 구매확인 담당자',queryset=get_user_model().objects.none())
+    production_director=PersonChoice(label='그 외 부서 요청 구매확인 담당자',queryset=get_user_model().objects.none())
     finance=PersonMultiple(label='구매 담당자 · 품목 선택 및 대표에게 요청',queryset=get_user_model().objects.none(),widget=forms.CheckboxSelectMultiple)
     representative=PersonChoice(label='결제 내역 조회 대표',queryset=get_user_model().objects.none())
     revision=forms.IntegerField(widget=forms.HiddenInput)
@@ -228,12 +229,18 @@ class PurchaseAssignmentsForm(forms.Form):
     def __init__(self,*args,**kwargs):
         from .access import policy
         super().__init__(*args,**kwargs);self.instance=policy()
-        people=get_user_model().objects.filter(is_active=True,profile__approved=True,profile__department_confirmed=True).select_related('profile')
-        for name,dept in [('dev_director','개발팀'),('production_director','생산팀')]:self.fields[name].queryset=people.filter(profile__representative_slot__isnull=True,profile__rank='이사',profile__department=dept)
-        self.fields['representative'].queryset=people.filter(profile__representative_slot=1)
-        self.fields['finance'].queryset=people.filter(profile__representative_slot__isnull=True)
+        people=get_user_model().objects.filter(is_active=True,profile__approved=True).select_related('profile').order_by('profile__department','first_name','username')
+        for name in ['dev_director','production_director']:
+            self.fields[name].queryset=people.filter(profile__representative_slot__isnull=True)
+        self.fields['representative'].queryset=people.filter(profile__representative_slot=1,profile__department_confirmed=True)
+        self.fields['finance'].queryset=people.filter(profile__representative_slot__isnull=True,profile__department_confirmed=True)
         p=self.instance
         if p:self.initial.update(revision=p.version,dev_director=p.dev_director_id,production_director=p.production_director_id,finance=list(p.finance.values_list('pk',flat=True)),representative=p.representative_id)
+    def clean(self):
+        data=super().clean()
+        if data.get('dev_director') and data.get('production_director') and data['dev_director']==data['production_director']:
+            self.add_error('production_director','본인 요청을 대신 확인할 수 있도록 두 구매확인 담당자는 서로 다른 직원을 지정해 주세요.')
+        return data
     @transaction.atomic
     def save(self,actor):
         from .models import PurchasePermission,PurchaseReport

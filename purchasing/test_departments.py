@@ -128,7 +128,7 @@ class DepartmentPurchaseTests(TestCase):
         self.assertEqual(response.status_code,200);self.assertTrue(PurchasePermission.objects.get(user=self.user('prod_director')).view_completed)
 
     def test_changed_policy_is_rechecked_for_already_open_form(self):
-        self.as_user('dev_manager');self.client.get(reverse('purchasing:new'))
+        self.as_user('dev_manager');self.client.get(reverse('purchasing:new'),follow=True)
         PurchasePolicy.objects.filter(pk=1).update(direct_ranks=[])
         payload=dict(key=uuid4(),product='새 요청',vendor='가상처',quantity=1,unit_price='50000',reason='검증',request_method='direct',intent='submit')
         response=self.client.post(reverse('purchasing:new'),payload);self.assertEqual(response.status_code,200);self.assertFalse(PurchaseRequest.objects.exists())

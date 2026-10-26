@@ -37,9 +37,9 @@ class Command(BaseCommand):
                 rollout.verify_baseline(plan)
                 self.stdout.write('기존 계정·암호·연차·규정·문서·첨부 보존 비교 통과.')
             else:
-                rollout.apply_plan(plan)
+                roles_applied=rollout.apply_plan(plan)
                 plan['applied'] = True
                 rollout.write_private(path, plan)
-                self.stdout.write('기존 계정에 구매 업무 담당자를 연결했습니다. 기존 문서의 담당자·이력은 유지합니다.')
+                self.stdout.write('기존 계정에 구매 업무 담당자를 연결했습니다. 기존 문서의 담당자·이력은 유지합니다.' if roles_applied else '기존 구매 담당자·권한·규정을 유지했습니다.')
         except ValidationError as exc:
             raise CommandError(' '.join(exc.messages)) from exc

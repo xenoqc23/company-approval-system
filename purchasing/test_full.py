@@ -22,10 +22,10 @@ class FullApplicationTests(TestCase):
     as_user=fixtures.DepartmentPurchaseTests.as_user
     create=fixtures.DepartmentPurchaseTests.create
     def test_original_departments_and_selectors_are_available_without_conflicting_notes(self):
-        self.as_user('quality');r=self.client.get(reverse('purchasing:new'))
+        self.as_user('quality');r=self.client.get(reverse('purchasing:new'),follow=True)
         for label in ['검토자 부서','결재선 지정']:self.assertContains(r,label)
         self.assertNotContains(r,'이 직급은 규정에 따라 본인 전결로 내부 결재를 완료합니다.')
-        self.assertContains(r,'data-department-picker');self.assertNotContains(r,'name="approver"')
+        self.assertContains(r,'data-department-picker');self.assertNotContains(r,'name="purchase-approver"')
     def test_cross_department_internal_approval_keeps_author_department_checker(self):
         d=self.create('quality','review',reviewer=self.user('dev_lead'),approver=self.user('prod_director'))
         self.assertEqual(d.purchase_checker,self.user('prod_director'))

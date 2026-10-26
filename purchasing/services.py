@@ -62,6 +62,12 @@ def valid_director(user,department):
                 user.profile.department==department and user.profile.rank=='이사' and user.profile.department_confirmed)
 
 
+def valid_checker(user,department):
+    if settings.INTEGRATED_PURCHASES:
+        return bool(user and active(user) and not user.profile.is_representative)
+    return valid_director(user,department)
+
+
 def can_request_direct(p,user):
     return bool(p and user.profile.rank in ['과장','팀장','부장','이사'] and user.profile.rank in p.direct_ranks)
 
@@ -94,16 +100,16 @@ def confirm_purchase(d,actor,p,method='manual',reason=''):
     d.confirmed_by=None if method=='director_request' else actor
     d.purchase_route=dict(confirmer_id=d.purchase_checker_id or actor.pk,confirmer_name=d.purchase_checker.first_name if d.purchase_checker_id else actor.first_name,
         forwarded_by_id=actor.pk,forwarded_by_name=actor.first_name,method=method,collector_ids=[u.pk for u in people],collector_names=[u.first_name for u in people],representative_id=p.representative_id)
-    label={'manual':'구매 품목 확인','with_approval':'승인 시 구매 내용 함께 확인','director_request':'담당 이사 직접 요청 · 확인 생략'}[method]
+    label={'manual':'구매 품목 확인','with_approval':'승인 시 구매 내용 함께 확인','director_request':('담당자 직접 요청 · 확인 생략' if settings.INTEGRATED_PURCHASES else '담당 이사 직접 요청 · 확인 생략')}[method]
     event(actor,label,request=d,detail=reason)
-    notify(people,f'{d.product} · '+('담당 이사 직접 요청' if method=='director_request' else '구매 내용 확인 완료')+' · 구매요청 작성 대기',request=d)
+    notify(people,f'{d.product} · '+(('담당자 직접 요청' if settings.INTEGRATED_PURCHASES else '담당 이사 직접 요청') if method=='director_request' else '구매 내용 확인 완료')+' · 구매요청 작성 대기',request=d)
 
 
 def validate_policy_people(p):
     if not p.enabled:raise ValidationError('구매 규정이 사용 중이 아닙니다.')
     if p.department_routing:
         for person,department in [(p.dev_director,'개발팀'),(p.production_director,'생산팀')]:
-            if not valid_director(person,department) or not is_confirmer(person):raise ValidationError(f'{department}의 구매 확인 담당 이사와 권한을 지정해 주세요.')
+            if not valid_checker(person,department) or not is_confirmer(person):raise ValidationError(f'{department} 요청의 구매확인 담당자와 권한을 지정해 주세요.')
         if p.review_mode not in ['approval','review_approval']:raise ValidationError('검토 요청 경로를 확인해 주세요.')
     if not confirmers().exists():raise ValidationError('직원 권한관리에서 구매요청승인완료함 담당자를 지정해 주세요.')
     if not p.representative or not active(p.representative) or not p.representative.profile.is_representative:
@@ -168,7 +174,7 @@ def save_request(actor,values,submit=False,pk=None,key=None):
             self_request=checker.pk==actor.pk and method=='direct' and p.director_self_request
             delegated=checker.pk==actor.pk and not self_request
             if delegated:checker=p.production_director if actor.profile.department=='개발팀' else p.dev_director
-            if not checker or checker.pk==actor.pk and not self_request or not is_confirmer(checker):raise ValidationError('본인 요청을 대신 확인할 담당 이사를 지정해 주세요.')
+            if not checker or checker.pk==actor.pk and not self_request or not is_confirmer(checker):raise ValidationError('본인 요청을 대신 확인할 구매확인 담당자를 지정해 주세요.')
             d.purchase_checker=checker
             d.route.update(workflow='department-v3',request_method=method,checker_id=checker.pk,checker_name=checker.first_name,
                 combine_confirmation=p.combine_confirmation,self_request=self_request,delegated=delegated)

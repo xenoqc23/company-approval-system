@@ -59,7 +59,7 @@ def purchase_progress(d):
         done=i<index or i==3 and d.status=='received'
         blocked=i==index and d.status in ['denied','cancelled'];paused=i==index and d.status=='hold'
         legacy=i==0 and not d.confirmed_at and bool(d.current_report_id)
-        if i==0 and d.confirmed_at:label=d.get_confirmation_method_display() or '확인완료'
+        if i==0 and d.confirmed_at:label=('담당자 직접 요청' if settings.INTEGRATED_PURCHASES and d.confirmation_method=='director_request' else d.get_confirmation_method_display()) or '확인완료'
         if legacy:done=False;label='구매 내용 확인 · 이전 기록 없음'
         stages.append(dict(label=label,person=names[i],legacy=legacy,done=done,current=i==index and not done and not blocked,blocked=blocked,paused=paused))
     return stages
@@ -82,7 +82,7 @@ def pending_columns(d):
     approved=d.status in ['ready','supplement','reapproval','ceo','allowed','denied','hold','paid','received']
     confirm='보완 대기' if d.status=='supplement' else '구매 내용 확인 대기' if approved and not d.confirmed_at and not d.current_report_id else '확인완료' if d.confirmed_at else '이전 진행 문서' if d.current_report_id else '—'
     collect='구매요청 작성 대기' if d.status in ['ready','reapproval'] and d.confirmed_at else '다시 요청할 품목' if d.status=='hold' and d.confirmed_at else '요청 완료' if d.current_report_id else '—'
-    if d.confirmed_at:confirm=d.get_confirmation_method_display() or '확인완료'
+    if d.confirmed_at:confirm=('담당자 직접 요청' if settings.INTEGRATED_PURCHASES and d.confirmation_method=='director_request' else d.get_confirmation_method_display()) or '확인완료'
     return dict(confirm_who=d.confirmed_by.first_name if d.confirmed_by_id else d.owner.first_name if d.confirmation_method=='director_request' else '',confirm_done=bool(d.confirmed_at),collect_done=bool(d.current_report_id and d.status not in ['hold','reapproval']),approval='직접 요청' if d.route.get('workflow')=='department-v3' and d.route.get('request_method')=='direct' else '승인완료' if approved else d.get_status_display(),confirm=confirm,collect=collect)
 
 

@@ -331,10 +331,14 @@ def export_purchases(request):
 
 @login_required
 def compose(request, pk=None):
-    if settings.INTEGRATED_PURCHASES and not pk and (request.POST.get('kind',request.POST.get('home_kind'))=='office' or request.method=='GET' and request.GET.get('kind')=='office'):
-        if request.method=='POST':
-            messages.info(request,'새 구매요청 작성 화면에서 제출해 주세요.');return redirect('purchasing:new')
-        return redirect('purchasing:new')
+    if settings.INTEGRATED_PURCHASES and not pk:
+        kind=request.POST.get('kind',request.POST.get('home_kind')) if request.method=='POST' else request.GET.get('kind','leave')
+        if kind=='office':
+            if request.method=='POST' and 'purchase-key' not in request.POST:
+                messages.info(request,'구매요청 내용을 작성해 주세요.')
+                return redirect(reverse('compose')+'?kind=office')
+            from purchasing.views import compose as purchase_compose
+            return purchase_compose(request,unified=True)
     instance = get_object_or_404(Document, pk=pk, owner=request.user, status='draft') if pk else Document(owner=request.user)
     initial = {'kind': request.GET.get('kind', 'leave'), 'recipient': request.user.pk, 'quantity': 1, 'urgency': 'normal',
                'start_date': timezone.localdate(), 'end_date': timezone.localdate()}
@@ -361,6 +365,9 @@ def compose(request, pk=None):
             return redirect('detail', pk=doc.pk)
         except ValidationError as exc:
             form.add_error(None, exc)
+    if settings.INTEGRATED_PURCHASES and not pk:
+        from purchasing.composition import render_compose
+        return render_compose(request,document_form=form,kind=form['kind'].value() if form['kind'].value() in ['leave','stock'] else 'leave')
     return page(request, 'compose', '기안 작성' if not pk else '임시저장 이어쓰기', 'compose', form=form)
 
 @login_required
@@ -473,7 +480,7 @@ def copy_document(request, pk):
     old = get_object_or_404(Document, pk=pk, owner=request.user, status__in=['rejected', 'cancelled'])
     if settings.INTEGRATED_PURCHASES and old.kind=='office':
         messages.info(request,'새 구매요청 양식으로 내용을 가져왔습니다. 구매처와 결재선을 확인해 주세요.')
-        return redirect(reverse('purchasing:new')+'?source='+str(old.pk))
+        return redirect(reverse('compose')+'?kind=office&source='+str(old.pk))
     fields = ['purchase_private', 'kind', 'leave_type', 'start_date', 'end_date', 'start_time', 'end_time', 'reason', 'quantity', 'unit_price',
               'product', 'url', 'urgency', 'needed_date', 'reviewer', 'approver', 'recipient']
     new = Document(owner=request.user, **{field: getattr(old, field) for field in fields})
