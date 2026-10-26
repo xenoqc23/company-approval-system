@@ -63,3 +63,31 @@
 .purchase-content .payment-table{min-width:920px}
 .purchase-content .payment-table small{display:block;margin-top:7px}
 .purchase-content .payment-correction{border-color:#e3d7bb}
+
+.purchase-content .summary-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.purchase-content .summary-periods{display:flex;gap:8px;margin:12px 0 20px;flex-wrap:wrap}
+.purchase-content .summary-periods button,.purchase-content .summary-employee-heading button{padding:7px 13px;font-size:13px}
+.purchase-content .summary-employee-heading,.purchase-content .summary-detail-heading{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.purchase-content .summary-employees{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:9px;max-height:180px;overflow:auto;padding:8px 0}
+.purchase-content .summary-person{display:flex;gap:9px;align-items:center;margin:0;padding:10px;border:1px solid #dbe7df;border-radius:8px;min-width:0;overflow-wrap:anywhere}
+.purchase-content .summary-person:has(input:checked){background:#e9f7ef;border-color:#75b394}
+.purchase-content .summary-person input{flex:none;width:18px;height:18px}
+.purchase-content .summary-person small{display:block;font-weight:400;color:#607a6e}
+.purchase-content .summary-totals,.purchase-content .summary-breakdowns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.purchase-content .summary-totals strong{display:block;margin-top:8px;font-size:28px;overflow-wrap:anywhere}
+.purchase-content .summary-detail-table{min-width:760px}
+.purchase-content .summary-detail-table small{display:block;margin-top:5px}
+@media(max-width:700px){.purchase-content .summary-filter-grid,.purchase-content .summary-breakdowns{grid-template-columns:1fr}.purchase-content .summary-totals{gap:10px}.purchase-content .summary-totals strong{font-size:22px}}
+
+@media(max-width:700px){
+ .purchase-content .summary-breakdowns table{min-width:0;width:100%;table-layout:fixed}
+ .purchase-content .summary-breakdowns th,.purchase-content .summary-breakdowns td{padding:11px 7px;overflow-wrap:anywhere}
+ .purchase-content .summary-detail-table{min-width:0;display:block;width:100%}
+ .purchase-content .summary-detail-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .purchase-content .summary-detail-table tbody{display:block}
+ .purchase-content .summary-detail-table tbody tr{display:block;border:1px solid #dbe7df;border-radius:10px;margin:12px 0;padding:5px 10px}
+ .purchase-content .summary-detail-table td[data-label]{display:grid;grid-template-columns:85px minmax(0,1fr);gap:10px;padding:10px 0;border:0;font-size:13px}
+ .purchase-content .summary-detail-table td[data-label]::before{content:attr(data-label);font-size:12px;color:#607a6e}
+ .purchase-content .summary-detail-table td[data-label] div{min-width:0;overflow-wrap:anywhere}
+ .purchase-content .summary-detail-table td.empty{display:block;padding:20px 5px}
+}

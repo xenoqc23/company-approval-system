@@ -479,6 +479,47 @@ def inbox_counts(user):
 
 
 @login_required
+@require_GET
+def purchase_summary(request):
+    from django.core.paginator import Paginator
+    from django.http import QueryDict
+    from .statistics import SummaryFilterForm,aggregate,workbook
+    require_finance(request.user)
+    today=timezone.localdate()
+    scope=finance_requests(request.user).filter(status__in=['paid','received'],paid_at__isnull=False).select_related('owner')
+    data=request.GET.copy()
+    data.setdefault('start',today.replace(day=1).isoformat());data.setdefault('end',today.isoformat())
+    form=SummaryFilterForm(data,scope=scope)
+    result=dict(documents=[],total=Decimal('0'),count=0,teams=[],people=[])
+    export_url=pagination_base=''
+    valid=form.is_valid()
+    if valid:
+        result=aggregate(scope,form.cleaned_data)
+        query=QueryDict(mutable=True)
+        for field in ['start','end']:query[field]=form.cleaned_data[field].isoformat()
+        query['department']=form.cleaned_data['department']
+        query.setlist('employees',sorted(set(form.cleaned_data['employees'])))
+        pagination_base=reverse('purchasing:summary')+'?'+query.urlencode()+'&page='
+        export_url=reverse('purchasing:summary')+'?'+query.urlencode()+'&download=1'
+        if request.GET.get('download')=='1':
+            from io import BytesIO
+            from django.utils.http import content_disposition_header
+            names=[person['name'] for person in form.people if person['id'] in form.cleaned_data['employees']]
+            output=BytesIO();workbook(result,form.cleaned_data,names).save(output)
+            response=HttpResponse(output.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            filename=f'구매집계_{form.cleaned_data["start"]:%Y%m%d}_{form.cleaned_data["end"]:%Y%m%d}.xlsx'
+            response['Content-Disposition']=content_disposition_header(True,filename);add_never_cache_headers(response)
+            event(request.user,'구매집계 엑셀 다운로드',detail=f'{form.cleaned_data["start"]} ~ {form.cleaned_data["end"]} / {result["count"]}건 / {result["total"]}원')
+            return response
+    page_obj=Paginator(result['documents'],25).get_page(request.GET.get('page'))
+    response=page(request,'summary','구매 집계',form=form,result=result,page_obj=page_obj,pagination_base=pagination_base,export_url=export_url,
+        today=today.isoformat(),month_start=today.replace(day=1).isoformat(),year_start=today.replace(month=1,day=1).isoformat(),
+        purchase_tab='summary',inbox_counts=inbox_counts(request.user),filters_valid=valid)
+    if not valid and request.GET.get('download')=='1':response.status_code=400
+    return response
+
+
+@login_required
 @require_POST
 def assignments(request):
     if not settings.INTEGRATED_PURCHASES or not is_admin(request.user):raise PermissionDenied

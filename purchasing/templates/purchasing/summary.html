@@ -1,0 +1,21 @@
+{% extends 'purchasing/base.html' %}{% load ui %}{% block content %}
+<div class="heading"><div><h1>구매 집계</h1><p>기간·팀·직원을 선택하면 구매금액과 내역을 함께 확인합니다.</p></div></div>
+{% include 'purchasing/inbox_tabs.html' %}
+<section class="panel"><form method="get" data-purchase-summary>
+{% if form.errors %}<div class="errors" role="alert">{{ form.errors }}</div>{% endif %}
+<div class="summary-filter-grid"><div><label for="id_start">시작일</label>{{ form.start }}</div><div><label for="id_end">종료일</label>{{ form.end }}</div><div><label for="id_department">팀</label>{{ form.department }}</div></div>
+<div class="summary-periods"><button type="button" data-summary-period data-start="{{ month_start }}" data-end="{{ today }}">이번 달</button><button type="button" data-summary-period data-start="{{ year_start }}" data-end="{{ today }}">올해</button></div>
+<div class="summary-employee-heading"><strong>집계할 직원</strong><button type="button" data-summary-all>전체 직원</button></div><p class="hint">직원은 여러 명 선택할 수 있습니다. 선택하지 않으면 해당 팀의 전체 직원을 집계합니다.</p>
+<div class="summary-employees">{% for person in form.people %}<label class="summary-person" data-summary-person data-departments="{{ person.departments_json }}"><input type="checkbox" name="employees" value="{{ person.id }}" {% if person.selected %}checked{% endif %}><span>{{ person.name }}<small>{{ person.department_label }}</small></span></label>{% empty %}<p class="hint">아직 결제 완료로 등록된 구매내역이 없습니다.</p>{% endfor %}</div>
+<div class="actions"><a class="button" href="{% url 'purchasing:summary' %}">조건 초기화</a><button class="primary">집계 보기</button></div>
+<p class="hint">결제 완료 등록일 기준 · 수령 여부와 관계없이 결제 완료된 품목만 포함합니다. 팀은 기안 당시 부서입니다.</p>
+</form></section>
+{% if filters_valid %}<div class="summary-totals"><section class="panel"><small>총 구매금액</small><strong data-summary-total>{{ result.total|money }}원</strong></section><section class="panel"><small>구매내역</small><strong data-summary-count>{{ result.count }}건</strong></section></div>
+{% if result.teams|length > 1 or result.people|length > 1 %}<div class="summary-breakdowns">
+{% if result.teams|length > 1 %}<section class="panel"><h2>팀별 합계</h2><div class="table-wrap"><table><thead><tr><th>팀</th><th>구매내역</th><th>금액</th></tr></thead><tbody>{% for team in result.teams %}<tr><td>{{ team.name }}</td><td>{{ team.count }}건</td><td>{{ team.total|money }}원</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+{% if result.people|length > 1 %}<section class="panel"><h2>직원별 합계</h2><div class="table-wrap"><table><thead><tr><th>직원</th><th>팀</th><th>금액</th></tr></thead><tbody>{% for person in result.people %}<tr><td>{{ person.name }}</td><td>{{ person.department_label }}</td><td>{{ person.total|money }}원</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+</div>{% endif %}
+<section class="panel"><div class="summary-detail-heading"><h2>구매내역</h2><a class="button" href="{{ export_url }}">현재 조건으로 엑셀 다운로드</a></div><div class="table-wrap"><table class="summary-detail-table"><thead><tr><th>결제완료일</th><th>팀·기안자</th><th>품목·구매처</th><th>수량</th><th>금액</th><th>용도</th></tr></thead><tbody>{% for doc in page_obj %}<tr><td data-label="결제완료일"><div>{{ doc.summary_date|date:'Y.m.d' }}</div></td><td data-label="팀·기안자"><div>{{ doc.department }}<small>{{ doc.owner.first_name|default:doc.owner.username }}</small></div></td><td data-label="품목·구매처"><div><a href="{% url 'purchasing:detail' doc.pk %}">{{ doc.product }}</a><small>{{ doc.vendor }}</small></div></td><td data-label="수량"><div>{{ doc.quantity }}개</div></td><td data-label="금액"><div><strong>{{ doc.total|money }}원</strong><small>개당 {{ doc.unit_price|money }}원</small></div></td><td data-label="용도"><div class="preline">{{ doc.reason }}</div></td></tr>{% empty %}<tr><td colspan="6" class="empty">선택한 조건에 해당하는 구매내역이 없습니다.</td></tr>{% endfor %}</tbody></table></div>
+{% if page_obj.paginator.num_pages > 1 %}<nav class="actions" aria-label="구매내역 페이지">{% if page_obj.has_previous %}<a class="button" href="{{ pagination_base }}{{ page_obj.previous_page_number }}">이전</a>{% endif %}<span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a class="button" href="{{ pagination_base }}{{ page_obj.next_page_number }}">다음</a>{% endif %}</nav><p class="hint">합계와 엑셀은 모든 페이지의 내역을 포함합니다.</p>{% endif %}
+</section>{% endif %}
+{% endblock %}

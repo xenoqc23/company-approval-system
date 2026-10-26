@@ -4,8 +4,8 @@ from pathlib import Path
 from datetime import datetime
 ROOT=Path(__file__).resolve().parent
 PYTHON=ROOT/'.venv'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
-DATA=ROOT/'var'/'full-nas-test-v5'/'purchase-test'
-DEFAULT_PORT=18161
+DATA=ROOT/'var'/'full-nas-test-v6'/'purchase-test'
+DEFAULT_PORT=18171
 
 
 def environment():
@@ -17,7 +17,7 @@ def environment():
     env=os.environ.copy();env.update(DB_ENGINE='sqlite',APPROVAL_DATA_DIR=str(DATA),APPROVAL_PRODUCTION='0',APPROVAL_BACKUP_DIR=str(DATA/'backups'),
         DJANGO_DEBUG='1',DJANGO_SETTINGS_MODULE='approval_site.settings',DJANGO_ALLOWED_HOSTS='localhost,127.0.0.1,testserver',
         DJANGO_SECURE_COOKIES='0',DJANGO_SSL_REDIRECT='0',DJANGO_TRUST_PROXY='0',DJANGO_CSRF_TRUSTED_ORIGINS='',
-        APPROVAL_WEBPUSH_ENABLED='0',APPROVAL_PURCHASE_LAB='1',APPROVAL_INTEGRATED_PURCHASES='1',APPROVAL_PURCHASES_ENABLED='1',APPROVAL_LOCAL_DEMO='1',APPROVAL_PURCHASE_LAB_INSTANCE='newrequests-full-v5',DJANGO_SECRET_KEY=key.read_text(),
+        APPROVAL_WEBPUSH_ENABLED='0',APPROVAL_PURCHASE_LAB='1',APPROVAL_INTEGRATED_PURCHASES='1',APPROVAL_PURCHASES_ENABLED='1',APPROVAL_LOCAL_DEMO='1',APPROVAL_PURCHASE_LAB_INSTANCE='summary-full-v6',DJANGO_SECRET_KEY=key.read_text(),
         PYTHONUTF8='1',PYTHONUNBUFFERED='1')
     return env
 
@@ -41,7 +41,7 @@ def setup():
 
 def reset():
     # Only the fixed, isolated fictional database belonging to this extracted bundle.
-    if DATA.resolve()!=ROOT.resolve()/'var'/'full-nas-test-v5'/'purchase-test' or DATA.is_symlink():raise RuntimeError('테스트 데이터 경로를 확인해 주세요.')
+    if DATA.resolve()!=ROOT.resolve()/'var'/'full-nas-test-v6'/'purchase-test' or DATA.is_symlink():raise RuntimeError('테스트 데이터 경로를 확인해 주세요.')
     running=DATA/'running.json'
     if running.exists():
         try:port=int(json.loads(running.read_text())['port'])

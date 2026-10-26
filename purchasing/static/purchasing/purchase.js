@@ -67,4 +67,14 @@
  if(simpleRule){const update=()=>{const option=simpleRule.querySelector('[name=allow_representative_direct]');simpleRule.querySelector('[data-rule-ceo-preview]').hidden=!option?.checked;};simpleRule.addEventListener('change',update);update();}
  const runtime=document.querySelector('[data-purchase-status]');
  if(runtime){let busy=false,stopped=false;const poll=async()=>{if(busy||stopped||document.hidden)return;busy=true;try{const r=await fetch(runtime.dataset.purchaseStatus,{cache:'no-store'});if(r.redirected||!r.ok)return;const data=await r.json();if(String(data.user)!==runtime.dataset.currentUser){stopped=true;return;}document.querySelectorAll('[data-live]').forEach(node=>node.textContent=data.counts[node.dataset.live]||0);}catch{}finally{busy=false;}};setInterval(poll,15000);window.addEventListener('focus',poll);}
+
+ const summaryForm=document.querySelector('[data-purchase-summary]');
+ if(summaryForm){
+  const team=summaryForm.querySelector('[name=department]');
+  const people=[...summaryForm.querySelectorAll('[data-summary-person]')];
+  const filterPeople=()=>people.forEach(person=>{const input=person.querySelector('input');const visible=!team.value||JSON.parse(person.dataset.departments).includes(team.value);person.hidden=!visible;input.disabled=!visible;if(!visible)input.checked=false;});
+  team.addEventListener('change',filterPeople);filterPeople();
+  summaryForm.querySelector('[data-summary-all]').addEventListener('click',()=>people.forEach(person=>{person.querySelector('input').checked=false;}));
+  summaryForm.querySelectorAll('[data-summary-period]').forEach(button=>button.addEventListener('click',()=>{summaryForm.querySelector('[name=start]').value=button.dataset.start;summaryForm.querySelector('[name=end]').value=button.dataset.end;}));
+ }
 })();

@@ -24,13 +24,13 @@ class FullBundleTests(unittest.TestCase):
             for name in ['SETUP_LOCAL_FULL.bat','RUN_LOCAL_FULL.bat','RESET_LOCAL_FULL.bat']:self.assertIn(b'\r\n',z.read(root+name))
             self.assertIn(b'COPY purchasing ./purchasing',z.read(root+'deploy/nas/Dockerfile'));self.assertIn(b'!purchasing/**',z.read(root+'.dockerignore'))
     def test_launcher_isolated_and_same_app_as_nas(self):
-        module=runpy.run_path(str(package.ROOT/'local_full.py'));self.assertEqual(module['DEFAULT_PORT'],18161)
+        module=runpy.run_path(str(package.ROOT/'local_full.py'));self.assertEqual(module['DEFAULT_PORT'],18171)
         fn=module['environment']
         with tempfile.TemporaryDirectory() as folder:
             fn.__globals__['DATA']=Path(folder)/'purchase-test'
             with patch.dict(os.environ,dict(DB_ENGINE='mariadb',APPROVAL_PRODUCTION='1',APPROVAL_DATA_DIR='real-nas',APPROVAL_BACKUP_DIR='real-backups')):env=fn()
             self.assertEqual(env['DB_ENGINE'],'sqlite');self.assertEqual(env['APPROVAL_PRODUCTION'],'0');self.assertEqual(env['APPROVAL_LOCAL_DEMO'],'1');self.assertEqual(env['APPROVAL_BACKUP_DIR'],str(Path(folder)/'purchase-test/backups'))
-            code="import approval_site.settings as s; assert s.INTEGRATED_PURCHASES; assert s.LOCAL_DEMO_ENABLED; assert s.MIDDLEWARE[-1]=='workflow.middleware.AccountGateMiddleware'; assert s.SESSION_COOKIE_NAME=='xenosys_newrequests_full_local_sessionid'"
+            code="import approval_site.settings as s; assert s.INTEGRATED_PURCHASES; assert s.LOCAL_DEMO_ENABLED; assert s.MIDDLEWARE[-1]=='workflow.middleware.AccountGateMiddleware'; assert s.SESSION_COOKIE_NAME=='xenosys_summary_full_local_sessionid'"
             result=subprocess.run([sys.executable,'-c',code],cwd=package.ROOT,env=env,capture_output=True,text=True);self.assertEqual(result.returncode,0,result.stderr)
     def test_nas_mode_keeps_full_features_and_disables_demo(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -41,7 +41,7 @@ class FullBundleTests(unittest.TestCase):
         for valid in [True,False]:
             module=runpy.run_path(str(package.ROOT/'local_full.py'));fn=module['reset'];scope=fn.__globals__
             with tempfile.TemporaryDirectory() as folder:
-                root=Path(folder);data=root/'var/full-nas-test-v5/purchase-test';data.mkdir(parents=True);(data/'.purchase-lab').write_text('fake')
+                root=Path(folder);data=root/'var/full-nas-test-v6/purchase-test';data.mkdir(parents=True);(data/'.purchase-lab').write_text('fake')
                 if valid:(data/'.full-local').write_text('full-local-fictional-v1')
                 with sqlite3.connect(data/'prototype.sqlite3') as c:c.executescript('CREATE TABLE auth_user(id integer);INSERT INTO auth_user VALUES(1);CREATE TABLE purchasing_demoaccount(user_id integer);INSERT INTO purchasing_demoaccount VALUES(1);CREATE TABLE workflow_document(id integer,owner_id integer);CREATE TABLE workflow_annualbalance(id integer,user_id integer);INSERT INTO workflow_annualbalance VALUES(1,1);')
                 scope.update(ROOT=root,DATA=data)
