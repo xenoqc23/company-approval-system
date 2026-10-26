@@ -27,7 +27,7 @@
 <main class="main">
 {% else %}<main class="auth-main">{% endif %}
 {% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}" {% if 'approval-feedback' in message.tags %}data-approval-feedback{% endif %}>{{ message }}</div>{% endfor %}</div>{% endif %}
-{% if integrated_purchases %}{% include 'purchasing/test_tools.html' %}{% endif %}{% if purchase_page %}<div class="purchase-content">{% endif %}{% block content %}{% endblock %}{% if purchase_page %}</div>{% endif %}
+{% if integrated_purchases and purchase_demo_enabled %}{% include 'purchasing/test_tools.html' %}{% endif %}{% if purchase_page %}<div class="purchase-content">{% endif %}{% block content %}{% endblock %}{% if purchase_page %}</div>{% endif %}
 </main>{% if user.is_authenticated and not auth_layout %}</div>{% endif %}
 {% if user.is_authenticated and not auth_layout %}
 {{ notification_seed|json_script:"notification-seed" }}

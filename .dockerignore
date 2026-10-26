@@ -14,3 +14,8 @@
 **/__pycache__
 **/*.pyc
 **/.env
+**/test*.py
+**/tests/**
+**/management/commands/seed*_demo.py
+workflow/management/commands/seed_demo.py
+workflow/management/commands/notification_demo_permissions.py

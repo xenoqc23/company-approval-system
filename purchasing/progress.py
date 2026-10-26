@@ -98,7 +98,7 @@ def task_for(d,user,permissions):
     if permissions['can_collect']:return dict(kind='collect',message='확인된 품목을 선택해 대표님께 결제 요청해 주세요.')
     if permissions.get('can_record_payment'):return dict(kind='payment',message='대표님의 실제 결제 사실을 확인한 뒤 결제 요청에서 결제 완료를 등록해 주세요.')
     if permissions['can_decide_purchase']:return dict(kind='decide',message='요청된 품목을 확인하고 승인·반려·보류를 선택해 주세요.')
-    if user.profile.is_representative:return dict(kind='done' if d.status in ['allowed','paid','received','denied'] else 'waiting',message='구매 내역과 진행상황을 확인해 주세요. 실제 결제 후 경리 담당자가 결과를 등록합니다.')
+    if user.profile.is_representative:return dict(kind='done' if d.status in ['allowed','paid','received','denied'] else 'waiting',message='구매 내역과 진행상황을 확인해 주세요. 실제 결제 후 구매 담당자가 결과를 등록합니다.')
     if permissions['can_receive']:return dict(kind='receive',message='요청한 물품을 모두 받으셨다면 수령 완료를 눌러 주세요.')
     if d.status=='received':return dict(kind='done',message='구매승인과 물품 수령이 모두 완료되었습니다.')
     if d.status in ['denied','rejected','cancelled']:return dict(kind='done',message='요청이 종료되었습니다. 처리 사유를 확인해 주세요.')

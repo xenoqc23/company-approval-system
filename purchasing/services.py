@@ -188,6 +188,13 @@ def save_request(actor,values,submit=False,pk=None,key=None):
     return d
 
 
+def combines_confirmation(document, actor):
+    """Production always combines the assigned director's internal approval."""
+    return bool((settings.INTEGRATED_PURCHASES or document.route.get('combine_confirmation'))
+                and actor.pk == document.purchase_checker_id
+                and actor.pk != document.owner_id and checker_assigned(actor, document))
+
+
 @transaction.atomic
 def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,storage_location=None,new_person=None):
     p=lock_policy();actor=actor_now(actor);d=PurchaseRequest.objects.select_for_update().select_related('owner','reviewer','approver','director').get(pk=pk)
@@ -210,7 +217,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
             d.approver=actor;d.reviewed_at=d.intermediate_at=now;d.status='ready'
             d.route={**d.route,'reviewer_final':True,'approver_id':actor.pk,'review_final_policy_version':p.version}
             event(actor,'내부 승인완료',request=d,detail=reason or '지정 검토자의 승인완료')
-            if d.route.get('combine_confirmation') and actor.pk==d.purchase_checker_id and checker_assigned(actor,d):confirm_purchase(d,actor,p,'with_approval')
+            if combines_confirmation(d,actor):confirm_purchase(d,actor,p,'with_approval')
             elif not d.confirmed_at:notify(list(request_confirmers(d)),f'{d.product} · 구매 내용 확인 요청',request=d)
             notify([d.owner],f'{d.product} · {actor.first_name}님이 검토·승인을 완료했습니다.',request=d,owner_update=True)
     elif action in ['approve','reject']:
@@ -227,7 +234,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         else:
             d.director_at=now;d.status='ready';label='내부 승인완료' if settings.INTEGRATED_PURCHASES else '최종 승인완료'
         event(actor,label,request=d,detail=reason)
-        if d.status=='ready' and d.route.get('combine_confirmation') and actor.pk==d.purchase_checker_id and actor.pk!=d.owner_id and checker_assigned(actor,d):
+        if d.status=='ready' and combines_confirmation(d,actor):
             confirm_purchase(d,actor,p,'with_approval')
         users=[d.owner]
         if d.status=='approval':users.append(d.approver)
@@ -267,7 +274,7 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
         if d.status not in ['ready','reapproval','hold'] or not d.confirmed_at:raise ValidationError('대표님께 올리기 전의 확인된 품목만 여기서 반려할 수 있습니다. 결제 요청 후에는 해당 요청에서 처리해 주세요.')
         if not reason:raise ValidationError('반려 사유를 입력해 주세요.')
         d.status='denied';d.decision_reason=reason
-        event(actor,'경리 구매반려',request=d,detail=reason)
+        event(actor,'구매 반려',request=d,detail=reason)
         notify([d.owner],f'{d.product} · 구매요청이 반려되었습니다. {reason}',request=d,owner_update=True)
     elif action=='paid':
         if d.current_report_id and d.current_report.payment_tracking:raise ValidationError('결제 요청에서 품목을 선택해 결제 완료를 등록해 주세요.')
@@ -330,7 +337,7 @@ def submit_report(actor,ids,title,note,key):
 def decide_report(pk,actor,decisions,revision,final=False):
     p=lock_policy();actor=actor_now(actor)
     report=PurchaseReport.objects.select_for_update().get(pk=pk)
-    if report.payment_tracking:raise PermissionDenied('대표님은 구매 내역을 조회합니다. 결제 결과는 경리 담당자가 등록합니다.')
+    if report.payment_tracking:raise PermissionDenied('대표님은 구매 내역을 조회합니다. 결제 결과는 구매 담당자가 등록합니다.')
     if actor.pk!=report.representative_id or not actor.profile.is_representative or settings.INTEGRATED_PURCHASES and not actor.profile.representative_can_approve:raise PermissionDenied
     if report.status!='pending' or report.revision!=revision:raise ValidationError('이미 처리되었거나 다른 창에서 변경되었습니다. 다시 열어 주세요.')
     items=list(report.items.select_for_update().select_related('request'))

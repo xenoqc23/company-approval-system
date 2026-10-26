@@ -106,6 +106,8 @@ class PurchaseConcurrencyTests(TransactionTestCase):
 
     def test_department_combined_final_approval_confirms_only_once(self):
         d=self.department_request('review');request_action(d.pk,self.users['p_dev_lead'],'forward',new_person=self.users['p_dev_director']) if settings.INTEGRATED_PURCHASES else request_action(d.pk,self.users['p_dev_lead'],'approve')
+        if settings.INTEGRATED_PURCHASES:
+            d.refresh_from_db();d.route['combine_confirmation']=False;d.save(update_fields=['route'])
         op=lambda:request_action(d.pk,self.users['p_dev_director'],'approve')
         self.assertCountEqual(self.parallel(op,op),['ok','refused'])
         d.refresh_from_db();self.assertEqual(d.confirmation_method,'with_approval');self.assertEqual(d.events.filter(event='승인 시 구매 내용 함께 확인').count(),1)
@@ -137,7 +139,7 @@ class PurchaseConcurrencyTests(TransactionTestCase):
         r=submit_report(self.users['p_finance'],[self.doc.pk],'결제 동시 처리','실제 결제 등록 검증',uuid4());item=r.items.get()
         results=self.parallel(lambda:process_payment(r.pk,self.users['p_finance'],[item.pk],'paid','',0,apply=True),lambda:process_payment(r.pk,self.users['p_finance'],[item.pk],'deny','구매 취소',0,apply=True))
         self.assertCountEqual(results,['ok','refused']);self.doc.refresh_from_db();self.assertIn(self.doc.status,['paid','denied'])
-        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event__in=['결제 완료 확인','경리 구매반려']).count(),1)
+        self.assertEqual(PurchaseEvent.objects.filter(request=self.doc,event__in=['결제 완료 확인','구매 반려']).count(),1)
 
     def test_duplicate_accounting_payment_registers_one_completion(self):
         if not settings.INTEGRATED_PURCHASES:self.skipTest('New integrated payment flow only.')

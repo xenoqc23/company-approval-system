@@ -187,13 +187,14 @@ class IntegratedPolicyForm(PolicyForm):
         super().__init__(*args,**kwargs)
         for name in ['dev_director','production_director','finance','representative']:self.fields.pop(name)
         self.fields.pop('review_mode',None)
+        self.fields.pop('combine_confirmation',None)
         from workflow.people import review_final_people
         self.fields['review_final_users'].queryset=review_final_people()
         self.initial['review_final_users']=list(self.instance.review_final_users.values_list('pk',flat=True))
     def clean(self):
         data=super().clean()
         p=self.instance
-        data.update(dev_director=p.dev_director,production_director=p.production_director,finance=list(p.finance.all()),representative=p.representative,review_mode='review_approval')
+        data.update(dev_director=p.dev_director,production_director=p.production_director,finance=list(p.finance.all()),representative=p.representative,review_mode='review_approval',combine_confirmation=True)
         return data
     @transaction.atomic
     def save(self,actor):

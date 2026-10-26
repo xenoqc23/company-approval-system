@@ -78,7 +78,7 @@ mark_current() {
 }
 command_name=${1:-help}
 case "$command_name" in help)
-    echo 'Commands: install | update | status | logs | start | stop | backup | scheduled-backup | restore FILE | rollback'
+    echo 'Commands: install | precheck | update | status | logs | start | stop | backup | scheduled-backup | restore FILE | rollback'
     exit 0;;
 esac
 mkdir -p "$APPROVAL_BASE"
@@ -114,6 +114,14 @@ install)
     echo "Read $APPROVAL_BASE/initial-login.txt privately. Change the password on first login."
     echo 'Next: HTTPS, scheduled backup, and a separate backup destination.'
     ;;
+precheck)
+    load_config
+    [ ! -f "$APPROVAL_BASE/.pending-image" ] && [ ! -f "$APPROVAL_BASE/.recovery-in-progress" ] || { echo 'Complete rollback/recovery first.' >&2; exit 1; }
+    shift
+    build_image
+    run_manage prepare_purchase_update --check "$@"
+    echo 'Precheck complete. Existing web service is still running. Reuse the same role options for update.'
+    ;;
 update)
     load_config
     if [ -f "$APPROVAL_BASE/.pending-image" ] || [ -f "$APPROVAL_BASE/.recovery-in-progress" ]; then
@@ -122,10 +130,16 @@ update)
     previous=$APP_IMAGE
     build_image
     next=$APP_IMAGE
+    shift
+    # New image reads the old schema without changing DB/account information.
+    run_manage prepare_purchase_update --check "$@"
     APP_IMAGE=$previous; export APP_IMAGE
     # Build first so download/build errors do not interrupt the current service.
     compose stop web
     echo 'Web service stopped. It stays stopped if backup, migration or validation fails.'
+    APP_IMAGE=$next; export APP_IMAGE
+    run_manage prepare_purchase_update --capture
+    APP_IMAGE=$previous; export APP_IMAGE
     backup_name=$(run_manage backup_database --kind update)
     case "$backup_name" in backup-*.zip) ;; *) echo 'Backup filename was not returned; update stopped.' >&2; exit 1;; esac
     case "$backup_name" in *[!a-zA-Z0-9._-]*) echo 'Unexpected backup output; update stopped.' >&2; exit 1;; esac
@@ -134,7 +148,10 @@ update)
     APP_IMAGE=$next; export APP_IMAGE
     printf '%s\n' "$next" > "$APPROVAL_BASE/.pending-image"
     run_manage migrate --noinput
-    run_manage sync_annual_grants
+    run_manage prepare_purchase_update --verify
+    run_manage prepare_purchase_update --apply
+    run_manage check
+    # Updating the application must not recalculate existing leave balances.
     compose up -d web
     if ! wait_healthy web; then compose stop web; exit 1; fi
     mark_current

@@ -51,7 +51,7 @@ def process_payment(report_id, actor, item_ids, action, reason, revision, *, app
             d.decision_reason=reason if action!='paid' else '';d.hold_ready=False;d.hold_note=''
             d.completion_unread=action=='paid'
             if action=='paid':d.paid_at=now;d.permitted_at=now
-            event(actor,{'paid':'결제 완료 확인','deny':'경리 구매반려','hold':'경리 구매보류'}[action],request=d,report=report,detail=reason or '대표님 결제 사실을 확인하고 등록')
+            event(actor,{'paid':'결제 완료 확인','deny':'구매 반려','hold':'구매 보류'}[action],request=d,report=report,detail=reason or '대표님 결제 사실을 확인하고 등록')
             notify([d.owner],f'{d.product} · '+('최종결재가 완료되었습니다.' if action=='paid' else ('구매요청이 반려되었습니다. ' if action=='deny' else '구매요청이 보류되었습니다. ')+reason),request=d,owner_update=True)
         d.revision+=1;d.save();item.save()
     pending=report.items.filter(decision='pending').exists()

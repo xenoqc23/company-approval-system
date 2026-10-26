@@ -25,11 +25,11 @@
   const ownerKey = 'xenosys-push-owner';
   const bounded = (promise,ms=15000) => {
     let timer;
-    return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('알림 준비 시간이 초과되었습니다. 브라우저 권한과 실행 창을 확인한 뒤 다시 시도해 주세요.')),ms);})]).finally(()=>clearTimeout(timer));
+    return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('알림 준비 시간이 초과되었습니다. 브라우저 알림 권한을 확인한 뒤 다시 시도해 주세요.')),ms);})]).finally(()=>clearTimeout(timer));
   };
   async function request(url,options={}) {
     const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
-    try{return await fetch(url,{...options,signal:controller.signal});}catch(error){if(error.name==='AbortError')throw new Error('응답 시간이 초과되었습니다. 실행 창과 연결 상태를 확인한 뒤 다시 시도해 주세요.');throw error;}finally{clearTimeout(timer);}
+    try{return await fetch(url,{...options,signal:controller.signal});}catch(error){if(error.name==='AbortError')throw new Error('응답 시간이 초과되었습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.');throw error;}finally{clearTimeout(timer);}
   }
   const csrf = () => document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
   const post = async (url, data) => {
@@ -116,7 +116,7 @@
         const show=()=>{if(storage.get(key))return;storage.set(key,'1');if(settings.popup)toast(event.text,event.url);sound();};
         if(navigator.locks)await navigator.locks.request('xenosys-notice',show);else show();
       }
-    } catch { if(++failures>=2)connection('알림 연결을 다시 시도하고 있습니다. 실행 창과 인터넷 연결을 확인해 주세요.'); }
+    } catch { if(++failures>=2)connection('알림 연결을 다시 시도하고 있습니다. 계속되면 관리자에게 문의해 주세요.'); }
     finally {checking=false;}
   }
   update(initial);
@@ -199,11 +199,11 @@
     const target=document.querySelector('[data-push-diagnostic-result]');if(!target)return;
     try {
       const response=await request(runtime.dataset.pushStatus,{cache:'no-store'});
-      if(!response.ok || response.redirected)throw new Error('로그인 상태와 실행 창을 확인해 주세요.');
+      if(!response.ok || response.redirected)throw new Error('로그인 상태와 연결 상태를 확인해 주세요.');
       const result=await response.json();
       const permission=('Notification' in window)?Notification.permission:'unsupported';
       const labels={granted:'허용',denied:'차단',default:'아직 허용하지 않음',unsupported:'지원하지 않음'};
-      const lines=[`브라우저 알림: ${labels[permission]}`,`이 계정의 웹 푸시: ${result.subscribed?'켜짐':'꺼짐'}`,`푸시 발송 프로그램: ${result.worker_running?'실행 중':'중지 또는 응답 없음 (RUN 실행 창을 확인하세요)'}`];
+      const lines=[`브라우저 알림: ${labels[permission]}`,`이 계정의 웹 푸시: ${result.subscribed?'켜짐':'꺼짐'}`,`푸시 발송 프로그램: ${result.worker_running?'실행 중':'중지 또는 응답 없음 (관리자에게 문의해 주세요)'}`];
       if(result.last_delivery)lines.push(`최근 발송: ${result.last_delivery.label}`);
       target.textContent=lines.join(' / ');
     }catch(error){target.textContent=error.message;}

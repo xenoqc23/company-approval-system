@@ -18,7 +18,7 @@ from workflow.models import RANKS
 from .models import PurchaseRequest,PurchaseReport,PurchaseReportItem,PurchaseNotice,PurchasePolicy,DemoAccount,PurchasePermission
 from .forms import RequestForm,PolicyForm,AttachmentForm,SupplementForm,AmountChangeForm,PurchaseForwardForm
 from .access import active,is_admin,is_finance,requests_for,reports_for,require_finance,policy,notices_for,is_confirmer,can_view_purchase,finance_assigned,finance_requests,checker_assigned,checker_requests
-from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount,reviewer_can_finish
+from .services import save_request,request_action,submit_report,decide_report,event,supplement_request,amend_amount,reviewer_can_finish,combines_confirmation
 from .attachments import StoredFiles,visible_attachments,can_upload
 from .context import demo_choices
 from .fulfillment import receipt_info,report_fulfillment,report_receipt_label
@@ -33,6 +33,7 @@ def page(request,template,title,**context):
 
 @sensitive_post_parameters('password')
 def login_view(request):
+    if settings.INTEGRATED_PURCHASES:return redirect('dashboard' if request.user.is_authenticated else 'login')
     if request.user.is_authenticated:return redirect('purchasing:home')
     if request.method=='POST':
         u=authenticate(request,username=request.POST.get('username',''),password=request.POST.get('password',''))
@@ -43,7 +44,7 @@ def login_view(request):
 
 @login_required
 @require_POST
-def logout_view(request):logout(request);return redirect('purchasing:login')
+def logout_view(request):logout(request);return redirect('login' if settings.INTEGRATED_PURCHASES else 'purchasing:login')
 
 
 @login_required
@@ -178,7 +179,7 @@ def detail(request,pk):
         purchase_steps=(purchase_progress(d)[:3] if request.user.profile.is_representative else purchase_progress(d)) if not simplified and (d.confirmed_at or d.current_report_id) else [],
         task=task_for(d,request.user,permissions),has_secondary=has_secondary,**permissions,
         forward_form=PurchaseForwardForm(document=d) if permissions['can_forward'] else None,
-        approve_combined=permissions['can_approve'] and d.status in ['approval','director'] and d.route.get('combine_confirmation') and d.purchase_checker_id==request.user.pk and d.owner_id!=request.user.pk and checker_assigned(request.user,d),
+        approve_combined=permissions['can_approve'] and d.status in ['approval','director'] and combines_confirmation(d,request.user),
         supplements=d.supplements.all(),amendments=d.amendments.all(),receipt_key=uuid4(),
         attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),
         can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
@@ -237,9 +238,18 @@ def report_list(request):
     if is_finance(request.user) and settings.INTEGRATED_PURCHASES and 'tab' not in request.GET:
         ready=finance_requests(request.user).filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)).filter(confirmed_at__isnull=False).exists()
         if not ready and reports_for(request.user).filter(payment_tracking=True,status='pending').exists():tab='sent'
-    if tab in ['items','hold','completed']:return request_list(request,purchase_tab=tab)
+    if is_finance(request.user) and tab in ['items','hold','completed']:return request_list(request,purchase_tab=tab)
     qs=reports_for(request.user).prefetch_related('items__request__receipts__received_by')
     only_new=request.user.profile.is_representative and request.GET.get('new')=='1'
+    representative_tab='progress'
+    progress_count=completed_count=0
+    if request.user.profile.is_representative:
+        from .report_status import with_open_items
+        qs=with_open_items(qs)
+        progress_count=qs.filter(has_open_items=True).count()
+        completed_count=qs.filter(has_open_items=False).count()
+        representative_tab='completed' if request.GET.get('tab')=='completed' and not only_new else 'progress'
+        qs=qs.filter(has_open_items=representative_tab=='progress')
     if only_new:qs=qs.filter(payment_tracking=True,status='pending',representative_viewed_at=None)
     reports=list(qs[:100])
     for report in reports:
@@ -248,7 +258,7 @@ def report_list(request):
         report.receipt_label=report_receipt_label(report.fulfillment)
         report.requesters=' · '.join(dict.fromkeys(i.snapshot.get('owner','') for i in items))
         report.vendors=' · '.join(dict.fromkeys(i.snapshot.get('vendor','') for i in items))
-    return page(request,'reports','구매 진행현황' if request.user.profile.is_representative else '구매요청함',reports=reports,purchase_tab='sent',only_new=only_new,inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
+    return page(request,'reports','구매 진행현황' if request.user.profile.is_representative else '구매요청함',reports=reports,purchase_tab='sent',only_new=only_new,representative_tab=representative_tab,progress_count=progress_count,completed_count=completed_count,inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
 
 
 @login_required
@@ -303,7 +313,10 @@ def payment_detail(request,report,items):
         item.payment_label={'pending':'결제 대기','allow':'결제 완료','deny':'반려','hold':'보류'}[item.decision]
         item.selectable=can_process and item.decision=='pending'
         item.undoable=can_process and item.decision=='allow' and item.request.status=='paid' and not item.request.received_quantity and item.request.current_report_id==report.pk
+    from .report_status import with_open_items
+    completed=not with_open_items(PurchaseReport.objects.filter(pk=report.pk)).get().has_open_items
     return page(request,'payment_detail',report.title,report=report,items=items,can_process=can_process,
+        representative_completed=completed,
         can_undo=any(i.undoable for i in items),has_pending=any(i.selectable for i in items),
         total=sum((i.total for i in items),Decimal('0')),pending_total=sum((i.total for i in items if i.decision=='pending'),Decimal('0')),
         paid_total=sum((i.total for i in items if i.decision=='allow'),Decimal('0')))

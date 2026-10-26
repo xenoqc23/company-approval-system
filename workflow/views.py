@@ -49,13 +49,28 @@ def health(request):
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
+    cookie_name = 'xenosys_saved_username'
+    saved = request.get_signed_cookie(cookie_name, default='', salt='remember-username', max_age=180*86400)
+    username = saved
+    remember = bool(saved)
     if request.method == 'POST':
-        user = authenticate(request, username=request.POST.get('username', ''), password=request.POST.get('password', ''))
+        username = request.POST.get('username', '')
+        remember = request.POST.get('remember_username') == 'on'
+        user = authenticate(request, username=username, password=request.POST.get('password', ''))
         if user:
             login(request, user)
-            return redirect('dashboard')
+            response = redirect('dashboard')
+            if remember:
+                response.set_signed_cookie(cookie_name, user.username, salt='remember-username',
+                    max_age=180*86400, httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='Lax')
+            else:
+                response.delete_cookie(cookie_name, samesite='Lax')
+            return response
         messages.error(request, '아이디 또는 비밀번호를 확인해 주세요.')
-    return page(request, 'login', '로그인', 'login')
+    response = page(request, 'login', '로그인', 'login', saved_username=username[:150], remember_username=remember)
+    if request.method == 'POST' and not remember:
+        response.delete_cookie(cookie_name, samesite='Lax')
+    return response
 
 @never_cache
 @require_GET
