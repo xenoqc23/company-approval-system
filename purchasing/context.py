@@ -28,6 +28,7 @@ def shell(request):
         counts=dict(own_completed=PurchaseRequest.objects.filter(owner=u,completion_unread=True).count(),hold=finance_requests(u).filter(status='hold').count() if finance else 0,pending=PurchaseRequest.objects.filter(Q(status='review',reviewer=u)|Q(status='approval',approver=u)|Q(status='director',director=u)).count(),
                     completed=checker_requests(u).filter(status__in=['ready','hold'],confirmed_at=None).count() if checker else 0,
                     finance=finance_requests(u).filter(Q(status__in=['ready','reapproval'])|Q(status='hold',hold_ready=True)|Q(status='ceo',current_report__payment_tracking=True,current_report__created_by=u)).filter(confirmed_at__isnull=False).count() if finance else 0,
+                    new_purchase=PurchaseReport.objects.filter(status='pending',representative=u,payment_tracking=True,representative_viewed_at=None).count() if u.profile.is_representative else 0,
                     representative=PurchaseReport.objects.filter(status='pending',representative=u,payment_tracking=False).count(),notices=notices_for(u).filter(read=False).count()))
 
     cards=[]

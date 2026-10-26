@@ -118,7 +118,7 @@ if PURCHASE_LAB_ENABLED:
         CSRF_COOKIE_NAME = _purchase_cookie_prefix + '_csrftoken'
         LOGIN_URL = '/purchase-lab/login/'
     elif LOCAL_DEMO_ENABLED:
-        _full_prefix = 'xenosys_payment_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='payment-full-v4' else 'xenosys_final_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='reviewer-final-v3' else 'xenosys_simple_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='simple-full-v2' else 'xenosys_full_local'
+        _full_prefix = 'xenosys_newrequests_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='newrequests-full-v5' else 'xenosys_payment_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='payment-full-v4' else 'xenosys_final_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='reviewer-final-v3' else 'xenosys_simple_full_local' if os.environ.get('APPROVAL_PURCHASE_LAB_INSTANCE')=='simple-full-v2' else 'xenosys_full_local'
         SESSION_COOKIE_NAME = _full_prefix + '_sessionid'
         CSRF_COOKIE_NAME = _full_prefix + '_csrftoken'
         LOGIN_URL = '/login/'

@@ -149,9 +149,10 @@ class PaymentWorkflowTests(TestCase):
         data['intent']='draft';f=RequestForm(data,user=self.user('quality_manager'),policy=PurchasePolicy.objects.get(pk=1));self.assertTrue(f.is_valid(),f.errors)
         PurchaseRequest.objects.filter(pk=d.pk).update(url='');d.refresh_from_db();self.assertEqual(d.url,'')
 
-    def test_representative_export_has_status_and_no_receipt_columns(self):
+    def test_representative_export_contains_only_purchase_details(self):
         from openpyxl import load_workbook
         d=self.confirmed();r=self.report([d]);self.as_user('ceo')
         response=self.client.post(reverse('purchasing:report_export',args=[r.pk]));self.assertEqual(response.status_code,200)
         sheet=load_workbook(BytesIO(response.content)).active;header=[c.value for c in sheet[1]]
-        self.assertIn('진행상황',header);self.assertNotIn('수령 상태',header);self.assertEqual(sheet.cell(2,11).value,'결제 대기')
+        self.assertEqual(sheet.max_column,10);self.assertEqual(header[-1],'구매사유')
+        for label in ['진행상황','사유','수령 상태']:self.assertNotIn(label,header)

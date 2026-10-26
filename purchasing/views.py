@@ -239,18 +239,24 @@ def report_list(request):
         if not ready and reports_for(request.user).filter(payment_tracking=True,status='pending').exists():tab='sent'
     if tab in ['items','hold','completed']:return request_list(request,purchase_tab=tab)
     qs=reports_for(request.user).prefetch_related('items__request__receipts__received_by')
+    only_new=request.user.profile.is_representative and request.GET.get('new')=='1'
+    if only_new:qs=qs.filter(payment_tracking=True,status='pending',representative_viewed_at=None)
     reports=list(qs[:100])
     for report in reports:
+        report.is_new_payment=report.payment_tracking and report.status=='pending' and report.representative_viewed_at is None
         items=list(report.items.all());report.fulfillment=report_fulfillment(report,items)
         report.receipt_label=report_receipt_label(report.fulfillment)
         report.requesters=' · '.join(dict.fromkeys(i.snapshot.get('owner','') for i in items))
         report.vendors=' · '.join(dict.fromkeys(i.snapshot.get('vendor','') for i in items))
-    return page(request,'reports','구매 진행현황' if request.user.profile.is_representative else '구매요청함',reports=reports,purchase_tab='sent',inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
+    return page(request,'reports','구매 진행현황' if request.user.profile.is_representative else '구매요청함',reports=reports,purchase_tab='sent',only_new=only_new,inbox_counts=inbox_counts(request.user) if settings.INTEGRATED_PURCHASES and is_finance(request.user) else {})
 
 
 @login_required
 def report_detail(request,pk):
     report=get_object_or_404(reports_for(request.user).select_related('created_by','representative'),pk=pk)
+    if request.method=='GET' and report.payment_tracking and request.user.profile.is_representative and report.representative_id==request.user.pk and report.representative_viewed_at is None:
+        report.representative_viewed_at=timezone.now()
+        PurchaseReport.objects.filter(pk=report.pk,representative=request.user,representative_viewed_at=None).update(representative_viewed_at=report.representative_viewed_at)
     notices_for(request.user).filter(report=report,read=False).update(read=True)
     items=list(report.items.select_related('request').prefetch_related('request__receipts__received_by'))
     for item in items:item.visible_files=visible_attachments(request.user,item.request)
@@ -492,14 +498,11 @@ def report_export(request,pk):
     from django.utils.http import content_disposition_header
     report=get_object_or_404(reports_for(request.user),pk=pk)
     book=Workbook();sheet=book.active;sheet.title='구매요청'
-    show_receipts=not request.user.profile.is_representative
-    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유','진행상황' if report.payment_tracking else '구매승인 결과','사유']+(['수령 상태'] if show_receipts else []))
+    sheet.append(['구매요청서','원본 문서','요청 부서','요청자','품목','구매처','수량','단가','금액','구매사유'])
     for item in report.items.select_related('request'):
-        s=item.snapshot;d=item.request;info=receipt_info(d)
-        current=d.current_report_id==report.pk
-        label={'pending':'결제 대기','allow':'결제 완료','deny':'반려','hold':'보류'}[item.decision] if report.payment_tracking else item.get_decision_display()
-        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason',''),label,item.reason]+([info['label'] if current else '변경 후 다시 요청'] if show_receipts else []))
-        for i in [1,2,3,4,5,6,10,11,12]+([13] if show_receipts else []):sheet.cell(sheet.max_row,i).data_type='s'
+        s=item.snapshot
+        sheet.append([report.number,s.get('number',''),s.get('department',''),s.get('owner',''),s.get('product',''),s.get('vendor',''),s.get('quantity',0),Decimal(s.get('unit_price','0')),item.total,s.get('reason','')])
+        for i in [1,2,3,4,5,6,10]:sheet.cell(sheet.max_row,i).data_type='s'
     sheet.freeze_panes='A2';sheet.auto_filter.ref=sheet.dimensions
     from openpyxl.styles import Alignment,Font,PatternFill
     from openpyxl.utils import get_column_letter

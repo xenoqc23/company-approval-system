@@ -67,6 +67,7 @@
   function update(summary) {
     settings=summary.preferences;
     if(summary.purchase_counts)document.querySelectorAll('[data-live-purchase]').forEach(node=>{const n=summary.purchase_counts[node.dataset.livePurchase]||0;node.textContent=n;});
+    if(summary.purchase_counts)document.querySelectorAll('[data-live-purchase-region]').forEach(node=>{node.hidden=!(summary.purchase_counts[node.dataset.livePurchaseRegion]||0);});
     ['unread','waiting','accounting_unread','completed_unread'].forEach(key => document.querySelectorAll(`[data-live-count="${key}"]`).forEach(node => {
       node.textContent=summary[key];node.hidden=!summary[key] && !node.hasAttribute('data-keep-zero');
       node.setAttribute('aria-label',`${['accounting_unread','completed_unread'].includes(key)?'미확인':key==='waiting'?'미결':'안 읽은 알림'} ${summary[key]}건`);

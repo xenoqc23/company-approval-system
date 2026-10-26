@@ -103,6 +103,7 @@ class PurchaseRequest(models.Model):
 
 class PurchaseReport(models.Model):
     payment_tracking = models.BooleanField(default=False)
+    representative_viewed_at = models.DateTimeField(null=True,blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
     representative = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='+')
     title = models.CharField(max_length=180)
