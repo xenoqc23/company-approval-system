@@ -38,7 +38,7 @@ class ReviewerAuthorityTests(TestCase):
         self.assertEqual(doc.route_snapshot['name'],'기본 결재규정')
         self.assertTrue(may_review_final(doc,self.manager))
         self.client.force_login(self.manager)
-        self.assertContains(self.client.get(reverse('detail',args=[doc.pk])),'>검토자 전결</button>')
+        self.assertContains(self.client.get(reverse('detail',args=[doc.pk])),'>전결로 승인완료</button>')
         self.client.post(reverse('action',args=[doc.pk]),dict(action='review_final',reason='검토 후 승인'))
         doc.refresh_from_db();self.assertEqual(doc.status,'approved')
         self.assertEqual(AnnualBalance.objects.get(user=self.owner,year=2026).used,1)

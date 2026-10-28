@@ -5,6 +5,12 @@
 
 .rule-delete-form{display:inline-block;margin-left:.6rem}
 
+.action-panel .review-forward{margin-top:1.25rem}
+.action-panel .review-forward h3,.action-panel .review-completion h3{font-size:1rem;margin:0 0 .75rem}
+.action-panel .review-completion{margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid #dbe7df}
+.action-panel .review-completion p{font-size:.875rem;line-height:1.7}
+.action-panel .review-completion .btn{font-size:.875rem}
+
 .approval-track.four-stage{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:1080px){.approval-track.four-stage{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.approval-track.four-stage{grid-template-columns:1fr}}

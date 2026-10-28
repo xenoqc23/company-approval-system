@@ -216,7 +216,7 @@ class ProgressiveTests(TestCase):
         self.assertEqual(self.client.post(reverse('compose'),{**data,'intent':'submit'}).status_code,302)
         doc=Document.objects.get(owner=self.owner,status='review');self.assertIsNone(doc.approver_id)
         self.client.force_login(self.reviewer)
-        response=self.client.get(reverse('detail',args=[doc.pk]));self.assertContains(response,'상위 결재 요청');self.assertContains(response,'>검토자 전결</button>')
+        response=self.client.get(reverse('detail',args=[doc.pk]));self.assertContains(response,'상위 결재 요청');self.assertContains(response,'>전결로 승인완료</button>')
         response=self.client.post(reverse('action',args=[doc.pk]),dict(action='forward',new_person=self.approver.pk,reason='검토 완료'))
         self.assertEqual(response.status_code,302);doc.refresh_from_db();self.assertEqual(doc.status,'approve')
 

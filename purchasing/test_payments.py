@@ -137,7 +137,7 @@ class PaymentWorkflowTests(TestCase):
         response=self.client.get(url);self.assertContains(response,'data-forward-visible');self.assertNotContains(response,'<details class="review-forward"')
         self.assertNotContains(response,'value="review_final"');self.assertContains(response,'<section class="secondary-actions"')
         PurchasePolicy.objects.get(pk=1).review_final_users.add(self.user('quality_manager'))
-        response=self.client.get(url);self.assertContains(response,'<button class="full">승인완료</button>');self.assertContains(response,'<button class="primary full">승인 요청</button>')
+        response=self.client.get(url);self.assertContains(response,'<button class="full">전결로 승인완료</button>');self.assertContains(response,'<button class="primary full">선택한 승인자에게 전달</button>')
         request_action(d.pk,self.user('quality_manager'),'review_final');d.refresh_from_db();self.assertEqual(d.status,'ready');self.assertFalse(d.completion_unread)
 
     def test_link_required_to_submit_but_drafts_and_old_blank_links_preserved(self):

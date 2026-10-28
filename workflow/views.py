@@ -418,12 +418,14 @@ def detail(request, pk):
             actions += [('cancel_approval','최종 승인 취소')]
     if u.profile.is_representative and not u.profile.representative_can_approve:
         actions = []
+    # Forwarding is the normal review action; delegated completion stays last.
+    actions = [(key, label) for key, label in actions if key != 'review_final'] + [(key, label) for key, label in actions if key == 'review_final']
     workflow_task=''
     if settings.INTEGRATED_PURCHASES:
-        labels={'forward':'승인자에게 전달','review_final':'승인완료','approve':'승인완료'}
+        labels={'forward':'승인자에게 전달','review_final':'전결로 승인완료','approve':'승인완료'}
         actions=[(key,labels.get(key,label)) for key,label in actions]
         keys={key for key,label in actions}
-        if 'forward' in keys:workflow_task='내용을 확인하고 승인완료하거나 승인자에게 전달해 주세요.' if 'review_final' in keys else '내용을 확인하고 승인자를 지정해 전달해 주세요.'
+        if 'forward' in keys:workflow_task='내용을 검토한 뒤 아래에서 승인자를 선택해 전달해 주세요.'
         elif 'approve' in keys:workflow_task='신청 내용을 확인하고 승인 또는 반려를 선택해 주세요.'
         elif doc.owner_id==u.pk:
             workflow_task='최종 결재가 완료되었습니다.' if doc.status=='approved' else '검토자의 확인을 기다리고 있습니다.' if doc.status=='review' else '승인자의 확인을 기다리고 있습니다.' if doc.status in ['approve','executive'] else ''
