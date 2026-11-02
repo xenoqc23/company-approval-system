@@ -70,6 +70,15 @@ def resolve_route(kind, owner_rank, total=Decimal('0'), owner=None, mode='base')
         for stage in ['reviewer','approver']:
             if snapshot.get('fixed_'+stage+'_id')==snapshot['author_id']:snapshot['fixed_'+stage+'_id']=None
         if kind=='leave':snapshot['skip_review']=False
+    if kind == 'stock':
+        if mode != 'base':
+            raise ValidationError('생산 재고 요청은 검토자 확인 후 기록으로 보관합니다. 검토자를 지정해 주세요.')
+        # Submitted routes stay immutable. New stock requests always end at review,
+        # even when a shared rule or the progressive approval policy is enabled.
+        snapshot.update(stock_record_only=True, stock_final_approval=False,
+            progressive=False, skip_review=False, self_complete=False,
+            fixed_approver_id=None, available_modes=['base'], mode='base')
+        return snapshot
     decorate_route(snapshot, kind, owner, selected_rule)
     if mode not in snapshot['available_modes']:
         raise ValidationError('선택한 결재방식의 권한이 없거나 규정이 변경되었습니다. 과장급 이상에게 허용된 결재방식을 확인해 주세요.')
@@ -138,7 +147,7 @@ def route_preview(kind, owner_rank, total, reviewer_rank=None, owner=None, mode=
     elif route.get('direct_representative'):
         path = '기안 → 대표 최종 결재'
     if kind == 'stock':
-        path += ' → 발주 → 입고'
+        path = '기안 → 검토자 확인 → 기록 보관'
     return {**route, 'final_approval_required': final_required,
         'reviewers': candidate_ranks(route, 'reviewer'),
         'approvers': candidate_ranks(route, 'approver', reviewer_rank) if final_required else [],

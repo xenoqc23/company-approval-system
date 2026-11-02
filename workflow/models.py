@@ -142,15 +142,18 @@ class Document(models.Model):
     @property
     def shipment_label(self):
         if self.kind == 'stock' and not self.shipment:
-            return '발주대기' if self.status == 'approved' else '검토 후 발주'
+            return '—'
         if self.shipment == 'received':
             return '배송완료' if self.kind == 'office' else '입고완료'
         return self.get_shipment_display()
 
     @property
     def status_label(self):
-        if self.kind == 'stock' and self.status == 'approved':
-            return {'': '발주대기', 'ordered': '입고대기', 'received': '입고완료'}.get(self.shipment, '검토완료')
+        if self.kind == 'stock':
+            if self.status == 'approved':
+                return '확인 완료'
+            if self.status == 'review':
+                return '확인 대기'
         return self.get_status_display()
 
 class DocumentCounter(models.Model):

@@ -122,7 +122,7 @@ class IntegratedTests(TestCase):
 
     def test_staff_page_owns_buying_roles_and_rules_are_separated(self):
         self.as_user('admin');r=self.client.get('/staff/');self.assertContains(r,'구매 업무 담당자·권한');self.assertContains(r,reverse('purchasing:assignments'))
-        r=self.client.get('/regulations/');self.assertContains(r,'휴가원 결재 규정');self.assertContains(r,'구매요청 규정');self.assertContains(r,'생산 재고 결재 규정')
+        r=self.client.get('/regulations/');self.assertContains(r,'휴가원 결재 규정');self.assertContains(r,'구매요청 규정');self.assertContains(r,'생산 재고 확인 설정')
         self.assertNotContains(self.client.get(reverse('purchasing:regulations')),'name="finance"')
         self.as_user('finance');self.assertEqual(self.client.post(reverse('purchasing:assignments'),{}).status_code,403)
 

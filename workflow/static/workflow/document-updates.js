@@ -10,7 +10,7 @@
   let timer,controller,version=0;
   async function search(){
     const current=++version;controller?.abort();box.replaceChildren();box.hidden=true;
-    const q=product.value.trim();if(kind.value==='leave' || q.replace(/\s/g,'').length<2)return;
+    const q=product.value.trim();if(kind.value!=='office' || q.replace(/\s/g,'').length<2)return;
     controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),10000);
     box.hidden=false;box.textContent='유사 구매내역을 찾고 있습니다…';
     try{

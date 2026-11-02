@@ -10,7 +10,7 @@
   {% endif %}
   <form method="post" data-document-action="{{ key }}" action="{% url 'action' doc.pk %}"
     {% if key == 'cancel_review' and not doc.final_approval_required %}
-      data-confirm="검토 완료를 취소하면 문서가 반려함으로 이동하고 발주·입고 처리가 중단됩니다."
+      data-confirm="확인을 취소하면 문서가 반려함으로 이동하며, 이전 확인 이력은 보존됩니다."
     {% elif key == 'cancel_approval' %}
       data-confirm="최종 승인을 취소하면 {% if doc.kind == 'leave' %}실제 차감한 연차 {{ doc.charged|amount }}일이 복원되고 {% endif %}문서가 반려함으로 이동합니다."
     {% elif key == 'delete' %}

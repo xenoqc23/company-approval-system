@@ -120,6 +120,9 @@ document.addEventListener('DOMContentLoaded', () => {
     show('#end-date-field', isLeave && annual);
     show('#url-field', kind === 'office');
     show('#unit-price-field', kind === 'office');
+    show('#recipient-field', kind === 'office');
+    show('#purchase-private-field', kind === 'office');
+    if (document.querySelector('#approval-mode-picker')) show('#approval-mode-picker', !isStock);
     show('#approver-field', finalApproval && !selfComplete && !deferredApprover && !directRepresentative);
     show('#reviewer-field', !skipReview);
     document.querySelector('#approval-arrow').hidden = !finalApproval || skipReview || deferredApprover;
@@ -132,9 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#representative-mode-note').hidden = !directRepresentative;
     document.querySelector('#approval-heading').textContent = directRepresentative ? '대표 결재 요청' : !finalApproval || deferredApprover ? '검토자 지정' : '결재선 지정';
     document.querySelector('#compose-intro').textContent = directRepresentative ? '신청 내용을 작성해 대표에게 최종 결재를 요청합니다.' : deferredApprover ? '신청 내용을 작성하고 검토자만 선택해 주세요. 다음 승인자는 검토자가 결정합니다.' : selfComplete ? '다른 결재 담당자에게 요청합니다.' : !finalApproval ? '부족한 품목과 수량을 작성하고 검토자를 선택해 주세요.' : skipReview ? '신청 내용을 작성하고 최종 승인자를 선택해 주세요.' : '신청 내용을 작성하고 검토자와 승인자를 선택해 주세요.';
-    document.querySelector('#approval-footnote').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : !finalApproval ? '선택 가능한 직원 중 검토자를 지정해 주세요. 검토가 완료되면 발주 담당자가 생산 재고 요청함에서 확인하고 발주를 진행합니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
-    document.querySelector('#needed-date-label').innerHTML = (isStock ? '발주 필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
-    document.querySelector('#compose-help-route').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : !finalApproval ? '검토자를 선택하세요. 검토가 완료되면 발주 담당자에게 알림이 전달됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
+    document.querySelector('#approval-footnote').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : !finalApproval ? '검토자가 확인하면 절차가 끝나고 생산 재고 기록으로 보관됩니다.' : '선택 가능한 직원 중 결재 담당자를 지정해 주세요. 적용된 결재규정에 따라 검토·승인 단계가 진행됩니다.';
+    document.querySelector('#needed-date-label').innerHTML = (isStock ? '필요 날짜' : '구매 필요 날짜') + ' <span class="optional">선택</span>';
+    document.querySelector('#compose-help-route').textContent = selfComplete ? '다른 결재 담당자에게 요청합니다.' : skipReview ? '최종 승인자를 선택하면 승인대기 알림이 전달됩니다.' : !finalApproval ? '검토자를 선택하세요. 확인 결과는 기안자에게 알림으로 전달되며 기록으로 보관됩니다.' : '검토자와 승인자를 선택하면 해당 직원에게 알림이 전달됩니다.';
     document.querySelector('#submit-label').textContent = directRepresentative ? '대표 결재 요청' : selfComplete ? '기안 제출' : isStock ? '재고 요청 제출' : form.dataset.reviewerOnly === 'true' && id('kind').value === 'leave' ? '검토 요청' : '기안 제출';
     id('product').placeholder = isStock ? '예: 제품 사용자 매뉴얼, 제품 보관함' : '예: A4 복사용지';
     document.querySelector('#leave-preview').hidden = !isLeave;

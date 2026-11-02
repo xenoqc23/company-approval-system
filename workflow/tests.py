@@ -88,10 +88,12 @@ class ApprovalTests(TestCase):
         self.assertEqual(Notice.objects.filter(user=self.accounting, document=office).first().stage, '배송완료')
         stock = self.finish(self.purchase(kind='stock'))
         self.assertFalse(Notice.objects.filter(user=self.accounting, document=stock).exists())
-        act_on_document(stock.pk, self.accounting, 'place')
-        act_on_document(stock.pk, self.recipient, 'receive')
+        with self.assertRaises(PermissionDenied):
+            act_on_document(stock.pk, self.accounting, 'place')
+        with self.assertRaises(PermissionDenied):
+            act_on_document(stock.pk, self.recipient, 'receive')
         self.assertFalse(Notice.objects.filter(user=self.accounting, document=stock).exists())
-        self.assertEqual(Notice.objects.filter(user=self.owner, document=stock).first().stage, '입고완료')
+        self.assertEqual(Notice.objects.filter(user=self.owner, document=stock).first().stage, '확인완료')
         own = self.leave(reviewer=self.owner, approver=self.owner)
         act_on_document(own.pk, self.owner, 'review')
         self.assertEqual(Notice.objects.filter(user=self.owner, document=own).count(), 2)
@@ -128,24 +130,19 @@ class ApprovalTests(TestCase):
         self.assertEqual(set(visible_notices(self.accounting).filter(document=doc).values_list('stage', flat=True)),
                          {'검토완료', '승인완료', '배송중', '배송완료', '승인취소'})
 
-    def test_accounting_stock_notices_excluded_for_own_foreign_and_legacy_records(self):
+    def test_stock_notices_target_participants_and_hide_legacy_finance_forwarding(self):
         for owner in [self.accounting, self.owner]:
-            stock = self.purchase(kind='stock', owner=owner, recipient=self.accounting)
+            stock=self.purchase(kind='stock',owner=owner,recipient=self.accounting)
             self.finish(stock)
-            act_on_document(stock.pk, self.accounting, 'place')
-            act_on_document(stock.pk, self.accounting, 'receive')
-            self.assertFalse(Notice.objects.filter(user=self.accounting, document=stock).exists())
-            # Previously stored stock notices are hidden even with old final-approval wording.
-            for stage in ['검토대기', '검토완료', '승인완료', '입고완료']:
-                Notice.objects.create(user=self.accounting, document=stock, stage=stage, text='기존 재고 알림')
-            self.assertFalse(visible_notices(self.accounting).filter(document=stock).exists())
-            act_on_document(stock.pk, self.reviewer, 'cancel_review', '재고 요청 취소')
+            self.assertEqual(Notice.objects.filter(user=self.accounting,document=stock).exists(),owner==self.accounting)
+            for stage in ['검토대기','검토완료','승인완료','입고완료']:
+                Notice.objects.create(user=self.accounting,document=stock,stage=stage,text='기존 재고 알림')
+            self.assertEqual(visible_notices(self.accounting).filter(document=stock).exists(),owner==self.accounting)
+            act_on_document(stock.pk,self.reviewer,'cancel_review','재고 요청 취소')
         self.client.force_login(self.accounting)
-        response = self.client.get(reverse('notices'))
-        self.assertEqual(response.context['notice_rows'], [])
-        self.assertEqual(response.context['unread'], 0)
-        self.assertEqual(list(self.client.get(reverse('dashboard')).context['notices']), [])
-        self.assertEqual(Notice.objects.filter(user=self.accounting).count(), 8)
+        response=self.client.get(reverse('notices'))
+        self.assertTrue(response.context['notice_rows'])
+        self.assertFalse(any(n.document.owner_id==self.owner.pk for n in visible_notices(self.accounting)))
 
     def test_accounting_foreign_purchase_only_approval_and_delivery_completion(self):
         doc = self.purchase(reviewer=self.accounting, approver=self.accounting, recipient=self.accounting)
@@ -506,8 +503,9 @@ class ApprovalTests(TestCase):
         doc = act_on_document(doc.pk, self.recipient, 'receive')
         self.assertEqual(doc.shipment, 'received')
         second = self.finish(self.purchase(kind='stock', url=''))
-        act_on_document(second.pk, self.accounting, 'place')
-        act_on_document(second.pk, self.reviewer, 'cancel_review', '발주 취소')
+        with self.assertRaises(PermissionDenied):
+            act_on_document(second.pk, self.accounting, 'place')
+        act_on_document(second.pk, self.reviewer, 'cancel_review', '확인 취소')
         with self.assertRaises(PermissionDenied):
             act_on_document(second.pk, self.recipient, 'receive')
 
@@ -730,11 +728,11 @@ class ApprovalTests(TestCase):
         self.client.force_login(self.accounting)
         response = self.client.get(reverse('documents'), {'mode': 'accounting'})
         self.assertEqual(response.context['selected_kind'], 'all')
-        self.assertEqual({d.pk for d in response.context['documents']}, {leave.pk, office.pk, stock.pk})
+        self.assertEqual({d.pk for d in response.context['documents']}, {leave.pk, office.pk})
         self.assertNotContains(response, '최종승인대기</a>')
         self.assertEqual({c['key']: c['count'] for c in response.context['accounting_categories']},
-                         {'all': 3, 'leave': 1, 'office': 1, 'stock': 1})
-        for kind, expected in [('office', office), ('stock', stock)]:
+                         {'all': 2, 'leave': 1, 'office': 1})
+        for kind, expected in [('office', office), ('leave', leave)]:
             response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': kind})
             self.assertEqual([d.pk for d in response.context['documents']], [expected.pk])
         response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'office', 'q': 'A4'})
@@ -762,7 +760,7 @@ class ApprovalTests(TestCase):
         self.assertTrue(all(states().values()))  # Filtering never acknowledges documents.
         for doc in Document.objects.filter(status='approved',kind='office'):
             self.client.get(reverse('detail',args=[doc.pk]))
-        self.assertEqual(states(), {'all': True, 'leave': True, 'office': False, 'stock': True})
+        self.assertEqual(states(), {'all': True, 'leave': True, 'office': False})
         self.client.logout()
         self.client.force_login(self.accounting)
         self.assertFalse(states()['office'])  # Retained across sessions.
@@ -787,16 +785,16 @@ class ApprovalTests(TestCase):
         tabs = {tab['key']: tab for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']}
         self.assertTrue(tabs['all']['unread'])
         self.assertTrue(tabs['office']['unread'])
-        self.assertTrue(tabs['stock']['unread'])
+        self.assertNotIn('stock',tabs)
         self.assertFalse(tabs['leave']['unread'])
-        self.assertEqual(tabs['all']['count'], 2)
+        self.assertEqual(tabs['all']['count'], 1)
         act_on_document(pending_office.pk, self.approver, 'cancel_approval', '취소')
         tabs = {tab['key']: tab for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']}
         self.assertEqual(tabs['office']['count'], 0)
         self.assertFalse(tabs['office']['unread'])
-        self.assertTrue(tabs['all']['unread'])
+        self.assertFalse(tabs['all']['unread'])
         response = self.client.get(reverse('documents'), {'mode': 'accounting', 'kind': 'stock'})
-        self.assertTrue(any(tab['unread'] for tab in response.context['accounting_categories']))
+        self.assertFalse(any(tab['unread'] for tab in response.context['accounting_categories']))
         self.client.get(reverse('detail',args=[pending_stock.pk]))
         self.assertFalse(any(tab['unread'] for tab in self.client.get(reverse('accounting_tab_status')).json()['tabs']))
 
@@ -835,7 +833,7 @@ class ApprovalTests(TestCase):
         with self.assertRaises(PermissionDenied):
             act_on_document(doc.pk, self.approver, 'approve')
         doc = act_on_document(doc.pk, self.reviewer, 'review')
-        self.assertEqual(doc.status_label, '발주대기')
+        self.assertEqual(doc.status_label, '확인 완료')
         self.assertEqual(self.used(), 3)
         self.assertFalse(Notice.objects.filter(user=self.accounting, document=doc).exists())
         with self.assertRaises(PermissionDenied):
@@ -847,38 +845,28 @@ class ApprovalTests(TestCase):
         self.assertNotContains(response, '총가격')
         self.assertNotContains(response, '03 최종 승인')
 
-    def test_procurement_only_role_receives_stock_requests_without_accounting_access(self):
-        self.stranger.profile.procure = True
-        self.stranger.profile.save()
-        stock = self.purchase(kind='stock', approver=None, unit_price=0, url='')
-        office = self.finish(self.purchase())
-        leave = self.finish(self.leave())
-        self.assertFalse(visible_documents(self.stranger).filter(pk=stock.pk).exists())
-        act_on_document(stock.pk, self.reviewer, 'review')
-        self.assertTrue(visible_documents(self.stranger).filter(pk=stock.pk).exists())
-        self.assertTrue(Notice.objects.filter(user=self.stranger, document=stock, stage='검토완료').exists())
-        self.assertFalse(visible_documents(self.stranger).filter(pk__in=[office.pk, leave.pk]).exists())
+    def test_procurement_role_does_not_receive_stock_records(self):
+        self.stranger.profile.procure=True;self.stranger.profile.save()
+        stock=self.purchase(kind='stock',approver=None,unit_price=0,url='')
+        office=self.finish(self.purchase());leave=self.finish(self.leave())
+        act_on_document(stock.pk,self.reviewer,'review')
+        self.assertFalse(visible_documents(self.stranger).filter(pk__in=[stock.pk,office.pk,leave.pk]).exists())
+        self.assertFalse(Notice.objects.filter(user=self.stranger,document=stock).exists())
         self.client.force_login(self.stranger)
-        response = self.client.get('/documents/?mode=stock&stock_stage=ready')
-        self.assertContains(response, stock.number)
-        self.assertNotContains(response, office.number)
-        self.assertNotContains(response, '최종승인대기')
-        self.assertEqual(self.client.get('/documents/?mode=accounting').status_code, 403)
-        response = self.client.post(reverse('action', args=[stock.pk]), {'action': 'place'})
-        self.assertRedirects(response, reverse('detail', args=[stock.pk]))
-        stock.refresh_from_db()
-        self.assertEqual(stock.status_label, '입고대기')
-        self.assertNotContains(self.client.get('/documents/?mode=stock&stock_stage=ready'), stock.number)
-        self.assertContains(self.client.get('/documents/?mode=stock&stock_stage=ordered'), stock.number)
+        self.assertNotContains(self.client.get('/documents/?mode=stock'),stock.number)
+        self.assertEqual(self.client.get('/documents/?mode=accounting').status_code,403)
+        self.assertEqual(self.client.post(reverse('action',args=[stock.pk]),{'action':'place'}).status_code,404)
+        stock.refresh_from_db();self.assertEqual((stock.status_label,stock.shipment),('확인 완료',''))
 
     def test_stock_review_cancellation_blocks_fulfillment_and_requires_own_reviewer(self):
         doc = self.finish(self.purchase(kind='stock', approver=None, unit_price=0, url=''))
-        act_on_document(doc.pk, self.accounting, 'place')
+        with self.assertRaises(PermissionDenied):
+            act_on_document(doc.pk, self.accounting, 'place')
         for user in [self.owner, self.accounting, self.approver]:
             with self.assertRaises(PermissionDenied):
                 act_on_document(doc.pk, user, 'cancel_review', '취소 사유')
         act_on_document(doc.pk, self.reviewer, 'cancel_review', '생산 계획 변경')
-        self.assertTrue(visible_documents(self.accounting).filter(pk=doc.pk).exists())
+        self.assertFalse(visible_documents(self.accounting).filter(pk=doc.pk).exists())
         with self.assertRaises(PermissionDenied):
             act_on_document(doc.pk, self.recipient, 'receive')
         with self.assertRaises(PermissionDenied):
@@ -896,7 +884,7 @@ class ApprovalTests(TestCase):
         self.assertEqual(doc.unit_price, 0)
         self.assertEqual(doc.url, '')
         reviewed = act_on_document(doc.pk, self.owner, 'review')
-        self.assertEqual(reviewed.status_label, '발주대기')
+        self.assertEqual(reviewed.status_label, '확인 완료')
         self.assertContains(self.client.get('/documents/?mode=history'), doc.number)
 
     def test_stock_reject_copy_retains_single_review_workflow(self):
@@ -927,7 +915,7 @@ class ApprovalTests(TestCase):
         migration = importlib.import_module('workflow.migrations.0003_stock_review_workflow')
         migration.convert_stock_requests(apps, SimpleNamespace(connection=connection))
         pending.refresh_from_db(); ordered.refresh_from_db(); unreviewed.refresh_from_db()
-        self.assertEqual(pending.status_label, '발주대기')
+        self.assertEqual(pending.status_label, '확인 완료')
         self.assertEqual(pending.approved_at, pending.reviewed_at)
         self.assertEqual((pending.number, pending.quantity, pending.unit_price), ('LEGACY-1', 20, 15000))
         self.assertTrue(Audit.objects.filter(pk=old_log.pk).exists())

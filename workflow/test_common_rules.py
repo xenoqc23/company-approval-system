@@ -53,54 +53,45 @@ class CommonRuleTests(TestCase):
         for kind in ['leave','office','stock']:
             self.assertEqual(resolve_route(kind,'과장',Decimal('200'),owner=self.owner)['rule_id'],rule.pk)
 
-    def test_common_stock_requires_final_approval_before_procurement_and_renders_four_steps(self):
-        self.rule()
-        before=self.balances();doc=self.doc()
-        self.assertTrue(doc.final_approval_required)
+    def test_common_stock_finishes_with_review_and_renders_no_procurement(self):
+        self.rule();before=self.balances();doc=self.doc()
+        self.assertFalse(doc.final_approval_required)
         self.assertEqual(doc.status,'review')
         self.client.force_login(self.owner)
         response=self.client.get(reverse('documents'),{'mode':'stock','stock_stage':'review'})
-        self.assertIn(('approve','최종승인대기'),response.context['states'])
-        with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.finance,'place')
+        self.assertNotIn(('approve','최종승인대기'),response.context['states'])
         doc=act_on_document(doc.pk,self.reviewer,'review')
-        self.assertEqual(doc.status,'approve')
-        with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.finance,'place')
-        self.client.force_login(self.approver)
+        self.assertEqual((doc.status,doc.status_label),('approved','확인 완료'))
         response=self.client.get(reverse('detail',args=[doc.pk]))
-        self.assertContains(response,'data-stage="approval"')
-        self.assertContains(response,'data-stage="procurement"')
-        self.assertContains(response,'four-stage')
-        self.assertContains(response,'승인확인')
-        self.assertEqual(act_on_document(doc.pk,self.approver,'approve').status,'approved')
-        self.assertEqual(act_on_document(doc.pk,self.finance,'place').shipment,'ordered')
-        self.assertEqual(act_on_document(doc.pk,self.owner,'receive').shipment,'received')
+        self.assertNotContains(response,'data-stage="approval"')
+        self.assertNotContains(response,'data-stage="procurement"')
+        self.assertContains(response,'two-stage')
+        for who,action in [(self.approver,'approve'),(self.finance,'place'),(self.owner,'receive')]:
+            with self.assertRaises(PermissionDenied):act_on_document(doc.pk,who,action)
         self.assertEqual(self.balances(),before)
 
-    def test_common_stock_skip_and_self_routes_complete_and_cancel_without_leave_changes(self):
-        self.rule()
-        before=self.balances()
-        skipped=self.doc(approval_mode='skip')
-        self.assertEqual((skipped.status,skipped.reviewer_id),('approve',None))
-        with self.assertRaises(PermissionDenied):act_on_document(skipped.pk,self.reviewer,'review')
-        self.assertEqual(act_on_document(skipped.pk,self.approver,'approve').status,'approved')
-        own=self.doc(approval_mode='self')
-        self.assertEqual((own.status,own.reviewer_id,own.approver_id),('approved',None,self.owner.pk))
-        self.assertEqual(act_on_document(own.pk,self.owner,'cancel_approval','오입력').status,'cancelled')
-        with self.assertRaises(PermissionDenied):act_on_document(own.pk,self.owner,'cancel_approval','중복')
+    def test_common_stock_cannot_skip_confirmation_or_self_complete(self):
+        self.rule();before=self.balances()
+        for mode in ['skip','self']:
+            doc=self.doc(approval_mode=mode)
+            self.assertEqual((doc.status,doc.reviewer_id,doc.approver_id),('review',self.reviewer.pk,None))
+            with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.owner,'approve')
+            act_on_document(doc.pk,self.reviewer,'review')
+            self.assertEqual(act_on_document(doc.pk,self.reviewer,'cancel_review','오입력').status,'cancelled')
         self.assertEqual(self.balances(),before)
 
-    def test_stock_form_and_preview_keep_approver_for_common_rules(self):
+    def test_stock_form_and_preview_keep_only_the_fixed_reviewer(self):
         self.rule(fixed_reviewer=self.reviewer,fixed_approver=self.approver)
         form=DocumentForm(dict(kind='stock',product='재고',quantity=2,approval_mode='base'),instance=Document(owner=self.owner),submit=True)
         self.assertTrue(form.is_valid(),form.errors)
         doc=save_document(form.save(commit=False),self.owner,submit=True)
-        self.assertEqual(doc.approver_id,self.approver.pk)
+        self.assertEqual(doc.reviewer_id,self.reviewer.pk);self.assertIsNone(doc.approver_id)
         preview=route_preview('stock','과장',0,owner=self.owner)
-        self.assertEqual(preview['path'],'기안 → 검토 → 승인 → 발주 → 입고')
+        self.assertEqual(preview['path'],'기안 → 검토자 확인 → 기록 보관')
+        self.assertEqual(preview['available_modes'],['base'])
+        self.assertFalse(preview['final_approval_required'])
         self.client.force_login(self.owner)
-        data=self.client.get(reverse('preview_route'),{'kind':'stock','mode':'self'}).json()
-        self.assertEqual(data['available_modes'],['base','skip','self'])
-        self.assertTrue(data['final_approval_required'])
+        self.assertIn('error',self.client.get(reverse('preview_route'),{'kind':'stock','mode':'self'}).json())
 
     def test_specific_type_wins_at_same_scope_but_person_common_beats_company_type(self):
         common=self.rule()
@@ -132,13 +123,13 @@ class CommonRuleTests(TestCase):
         self.assertEqual(act_on_document(doc.pk,self.reviewer,'review').status,'approved')
         with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.approver,'approve')
 
-    def test_new_stock_assignees_with_accounting_role_receive_pending_notices(self):
-        self.rule()
-        doc=self.doc(reviewer=self.finance)
+    def test_new_stock_assignees_with_accounting_role_receive_only_the_assigned_task(self):
+        self.rule();doc=self.doc(reviewer=self.finance)
         self.assertTrue(visible_notices(self.finance).filter(document=doc,stage='검토대기').exists())
         doc=act_on_document(doc.pk,self.finance,'review')
-        act_on_document(doc.pk,self.approver,'approve')
-        self.assertTrue(visible_notices(self.finance).filter(document=doc,stage='승인완료').exists())
+        self.assertEqual(doc.status,'approved');self.assertIsNone(doc.approver_id)
+        self.assertTrue(Notice.objects.filter(document=doc,user=self.owner,stage='확인완료').exists())
+        self.assertFalse(Notice.objects.filter(document=doc,user=self.approver).exists())
 
     def test_rule_delete_hides_and_disables_but_preserves_rules_documents_m2m_and_history(self):
         rule=self.rule();rule.authors.add(self.owner)
@@ -156,7 +147,7 @@ class CommonRuleTests(TestCase):
         self.assertEqual(self.client.post(reverse('rule_delete',args=[rule.pk])).status_code,404)
         self.assertIsNone(resolve_route('stock','과장',owner=self.owner)['rule_id'])
         doc.refresh_from_db();self.assertEqual(serializers.serialize('json',[doc]),before)
-        act_on_document(doc.pk,self.reviewer,'review');act_on_document(doc.pk,self.approver,'approve')
+        act_on_document(doc.pk,self.reviewer,'review')
         self.assertEqual(self.balances(),balances)
 
     def test_rule_delete_enforces_role_csrf_and_stale_edit_cannot_resurrect(self):
@@ -193,7 +184,7 @@ class CommonRuleTests(TestCase):
         self.rule();doc=self.doc();act_on_document(doc.pk,self.reviewer,'reject','보완')
         secure=Client(enforce_csrf_checks=True);secure.force_login(self.owner)
         self.assertEqual(secure.post(reverse('action',args=[doc.pk]),{'action':'delete'}).status_code,403)
-        doc=self.doc(approval_mode='self')
+        doc=self.doc();act_on_document(doc.pk,self.reviewer,'review')
         with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.owner,'delete')
 
 

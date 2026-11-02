@@ -17,13 +17,11 @@ def visible_documents(user):
     if p.manage_system:
         return Document.objects.exclude(status='deleted')
     related = Q(owner=user) | Q(reviewer=user) | Q(approver=user) | Q(representative=user)
-    related |= Q(recipient=user, status='approved', kind__in=['office', 'stock'])
+    related |= Q(recipient=user, status='approved', kind='office')
     if p.view_accounting:
-        related |= Q(status__in=['approved', 'cancelled'])
+        related |= Q(status__in=['approved', 'cancelled']) & ~Q(kind='stock')
     if p.manage_leave:
         related |= Q(kind='leave', status__in=['approved', 'cancelled'])
-    if p.procure:
-        related |= Q(kind='stock', status='approved')
     return Document.objects.filter(related).exclude(status='deleted').exclude(Q(status='draft') & ~Q(owner=user))
 
 def audit(actor, event, document=None, detail='', target=None):
@@ -41,6 +39,8 @@ def notify(document, users, text, stage, stages_by_user=None):
     enqueue(notices)
 
 def accountants(document):
+    if document.kind == 'stock':
+        return []
     query = Q(profile__view_accounting=True)
     query |= Q(profile__manage_leave=True) if document.kind == 'leave' else Q(profile__procure=True)
     from django.contrib.auth import get_user_model
@@ -129,6 +129,8 @@ def save_document(document, actor, submit=False):
     if document.kind == 'stock':
         # Stock requests do not have prices, a shopping URL or final approver.
         document.unit_price, document.url = Decimal('0'), ''
+        document.approval_mode = 'base'
+        document.approver = document.representative = document.recipient = None
     if document.approval_mode != 'base' or document.kind == 'stock':
         from .delegation import resolve_route
         preliminary = resolve_route(document.kind, actor.profile.rank, document.total_price, owner=actor, mode=document.approval_mode)
@@ -169,7 +171,7 @@ def save_document(document, actor, submit=False):
             raise ValidationError('0원 초과 단가를 입력해 주세요.')
         elif document.kind == 'office' and not document.url:
             raise ValidationError('사무·사내용품의 구매 사이트 링크를 입력해 주세요.')
-        if document.kind != 'leave' and not document.recipient:
+        if document.kind == 'office' and not document.recipient:
             document.recipient = actor
         day = timezone.localdate()
         counter, _ = DocumentCounter.objects.get_or_create(day=day)
@@ -228,8 +230,8 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         document.reviewed_at = now
         if not document.final_approval_required:
             document.status, document.approved_at = 'approved', now
-            audit(actor, '재고 요청 검토 완료', document)
-            notify(document, [document.owner] + accountants(document), '생산 재고 요청의 검토가 완료되었습니다. 발주 담당자에게 전달했습니다.', '검토완료')
+            audit(actor, '재고 요청 확인 완료', document)
+            notify(document, [document.owner], '생산 재고 요청의 확인이 완료되어 기록으로 보관되었습니다.', '확인완료')
         else:
             document.status = 'approve'
             audit(actor, '검토 승인', document)
@@ -263,8 +265,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             raise PermissionDenied
         document.status = 'cancelled'
         audit(actor, '재고 요청 검토 취소' if document.kind == 'stock' else '검토 승인 취소', document, reason)
-        recipients = [document.owner] + (accountants(document) if document.kind == 'stock' else [])
-        notify(document, recipients, f'검토가 취소되었습니다. 사유: {reason[:100]}', '검토취소')
+        notify(document, [document.owner], f'검토가 취소되었습니다. 사유: {reason[:100]}', '검토취소')
     elif action == 'cancel_approval':
         if not document.final_approval_required or document.status != 'approved' or document.approver_id != actor.pk:
             raise PermissionDenied
@@ -280,14 +281,14 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
         document.status = 'deleted'
         audit(actor, '기안 삭제', document, f'삭제 전 상태: {previous_status} / 기존 결재·반려 이력 보존')
     elif action == 'place':
-        if not p.procure or document.status != 'approved' or document.kind == 'leave' or document.shipment:
+        if not p.procure or document.status != 'approved' or document.kind != 'office' or document.shipment:
             raise PermissionDenied
         document.shipment = 'shipping' if document.kind == 'office' else 'ordered'
         audit(actor, '구매 처리' if document.kind == 'office' else '발주 처리', document)
         notify(document, [document.owner, document.recipient], '구매·발주가 완료되었습니다. 물품을 받으면 수령을 확인해 주세요.',
                '배송중' if document.kind == 'office' else '입고대기')
     elif action == 'receive':
-        if document.status != 'approved' or document.recipient_id != actor.pk or document.shipment not in ['shipping', 'ordered']:
+        if document.kind != 'office' or document.status != 'approved' or document.recipient_id != actor.pk or document.shipment not in ['shipping', 'ordered']:
             raise PermissionDenied
         document.shipment = 'received'
         audit(actor, '배송완료' if document.kind == 'office' else '입고완료', document)
@@ -349,7 +350,7 @@ def may_delete_document(document, actor):
     if not actor.is_active or not p.approved or p.is_representative:
         return False
     if document.status == 'cancelled':
-        return (document.owner_id == actor.pk or p.manage_system or p.view_accounting
+        return (document.owner_id == actor.pk or p.manage_system or (document.kind != 'stock' and p.view_accounting)
                 or (document.kind == 'leave' and p.manage_leave))
     return document.owner_id == actor.pk and (document.status in ['draft', 'review', 'rejected']
         or (document.status == 'approve' and not document.review_required))

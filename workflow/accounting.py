@@ -6,7 +6,7 @@ from .models import DocumentReceipt, Document
 
 def accounting_documents(user):
     from .services import visible_documents
-    return visible_documents(user).filter(status='approved').annotate(
+    return visible_documents(user).filter(status='approved').exclude(kind='stock').annotate(
         approval_stamp=Coalesce('leave_corrected_at', 'approved_at', 'reviewed_at', 'created_at')).annotate(
         accounting_seen=Exists(DocumentReceipt.objects.filter(
             user=user, document_id=OuterRef('pk'), approval_stamp=OuterRef('approval_stamp'))))
@@ -17,7 +17,7 @@ def accounting_tabs(user, read_kind=None):
     stats = {row['kind']: row for row in accounting_documents(user).order_by().values('kind').annotate(
         total=Count('pk'), unread_count=Count('pk', filter=Q(accounting_seen=False)))}
     tabs=[]
-    for kind,label in [('leave','휴가원'),('office','구매요청서'),('stock','생산 재고 요청')]:
+    for kind,label in [('leave','휴가원'),('office','구매요청서')]:
         row=stats.get(kind,{})
         tabs.append(dict(key=kind,label=label,count=row.get('total',0),
                          unread_count=row.get('unread_count',0),unread=bool(row.get('unread_count',0))))
@@ -26,7 +26,7 @@ def accounting_tabs(user, read_kind=None):
 
 
 def acknowledge_document(user,document):
-    if not user.profile.view_accounting or document.status != 'approved':
+    if not user.profile.view_accounting or document.status != 'approved' or document.kind == 'stock':
         return
     DocumentReceipt.objects.update_or_create(user=user,document=document,defaults={
         'approval_stamp':document.leave_corrected_at or document.approved_at or document.reviewed_at or document.created_at,

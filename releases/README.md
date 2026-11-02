@@ -1,5 +1,8 @@
 # 설치된 NAS용 화면 수정 파일
 
+[xenosys-nas-stock-record-update-20261102-v4.zip](xenosys-nas-stock-record-update-20261102-v4.zip)은 생산 재고 요청을 검토자 확인 후 기록 보관으로 종료하고 경리 자동 전달을 제외합니다. [적용·복구 안내](../docs/NAS_STOCK_RECORD_UPDATE_20261102_V4.md)를 확인합니다. 기존 계정·담당자·규정·문서·연차·첨부와 이미 제출된 결재선을 보존합니다.
+
+
 [xenosys-login-fix-20261016.zip](xenosys-login-fix-20261016.zip)은 모바일 업데이트 후 반복되는 로그인 CSRF 오류를 보완한다. 전용 쿠키·캐시 방지·로그인 직전 토큰 갱신을 포함하며 CSRF 검사는 유지한다. [수정 내용·검증·NAS 적용 안내](../docs/LOGIN_FIX_20261016.md)를 확인한다.
 
 생성: `python3 packaging/build_login_fix_patch.py` · 적용 시험: `python3 packaging/test_login_fix_patch.py`

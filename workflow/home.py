@@ -18,18 +18,15 @@ def progress_stages(doc):
         from .progressive import steps
         return steps(doc)
     steps = [{'label': '기안', 'person': doc.owner.first_name, 'done': bool(doc.submitted_at), 'time': doc.submitted_at},
-             {'label': '검토', 'person': doc.reviewer.first_name if doc.reviewer else '—',
+             {'label': '확인' if doc.kind == 'stock' else '검토', 'person': doc.reviewer.first_name if doc.reviewer else '—',
               'done': bool(doc.reviewed_at), 'time': doc.reviewed_at}]
     if not doc.review_required:
         steps = steps[:1]
     if doc.final_approval_required:
         steps.append({'label': '승인', 'person': doc.approver.first_name if doc.approver else '—',
                       'done': bool(doc.approved_at), 'time': doc.approved_at})
-    if doc.kind != 'leave':
-        if doc.kind == 'stock':
-            ordered = doc.shipment in ['ordered', 'received']
-            steps.append({'label': '발주', 'person': '발주완료' if ordered else '발주대기', 'done': ordered, 'time': None})
-        steps.append({'label': '입고' if doc.kind == 'stock' else '배송', 'person': doc.shipment_label,
+    if doc.kind == 'office':
+        steps.append({'label': '배송', 'person': doc.shipment_label,
                       'done': doc.shipment == 'received', 'time': None})
     else:
         steps.append({'label': '완료', 'person': doc.status_label, 'done': doc.status == 'approved', 'time': None})

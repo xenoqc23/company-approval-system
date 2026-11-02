@@ -184,7 +184,7 @@ def documents(request):
     qs = visible_documents(request.user).select_related('owner', 'owner__profile', 'reviewer', 'approver')
     titles = {'mine': '내 기안', 'drafts': '임시저장함', 'pending': '결재함', 'history': '내 승인 내역',
               'completed': '내 기안 결재완료', 'deleted': '삭제 문서 보관함', 'archive': '반려함', 'accounting': '최종 승인 문서함', 'receive': '물품 수령 확인',
-              'stock': '생산 재고 요청함', 'all': '전체 문서', 'search': '문서 검색'}
+              'stock': '생산 재고 기록함', 'all': '전체 문서', 'search': '문서 검색'}
     if settings.INTEGRATED_PURCHASES and mode=='completed':titles['completed']='내 기안 결재완료'
     if mode == 'mine':
         qs = qs.filter(owner=request.user).exclude(status='draft')
@@ -203,18 +203,16 @@ def documents(request):
         from .progressive import pending_for
         qs = qs.filter(pending_for(request.user))
     elif mode == 'history':
-        qs = qs.filter(audits__actor=request.user, audits__event__in=['검토 승인', '최종 승인', '재고 요청 검토 완료','상위 결재 요청','검토자 전결','대표 결재 요청','대표 최종 승인']).distinct()
+        qs = qs.filter(audits__actor=request.user, audits__event__in=['검토 승인', '최종 승인', '재고 요청 검토 완료', '재고 요청 확인 완료','상위 결재 요청','검토자 전결','대표 결재 요청','대표 최종 승인']).distinct()
     elif mode == 'stock':
         qs = qs.filter(kind='stock').exclude(status='draft')
         stage = request.GET.get('stock_stage')
         if stage == 'review':
             qs = qs.filter(status__in=['review', 'approve', 'executive'])
-        elif stage == 'ready':
-            qs = qs.filter(status='approved', shipment='')
-        elif stage == 'ordered':
-            qs = qs.filter(status='approved', shipment='ordered')
-        elif stage == 'received':
-            qs = qs.filter(status='approved', shipment='received')
+        elif stage in ['confirmed', 'ready', 'ordered', 'received']:
+            qs = qs.filter(status='approved')
+        elif stage == 'archived':
+            qs = qs.filter(status__in=['rejected', 'cancelled'])
     elif mode == 'archive':
         qs = qs.filter(status__in=['rejected', 'cancelled'])
     elif mode == 'accounting':
@@ -236,7 +234,7 @@ def documents(request):
         if selected_kind != 'all':
             qs = qs.filter(kind=selected_kind)
     elif mode == 'receive':
-        qs = qs.filter(status='approved', recipient=request.user, kind__in=['office', 'stock'])
+        qs = qs.filter(status='approved', recipient=request.user, kind='office')
     elif mode == 'all':
         if not (request.user.profile.manage_system or (request.user.profile.is_representative
                 and request.user.profile.representative_view_documents)):
@@ -293,7 +291,7 @@ def documents(request):
                 else:query.pop('kind',None)
                 document_categories.append(dict(key=key,label=label,count=sum(category_counts.values()) if not key else category_counts.get(key,0),url='?'+query.urlencode(),selected=request.GET.get('kind','')==key))
     return page(request, 'documents', titles[mode], mode, documents=shown, document_count=count,
-                mode=mode, document_categories=document_categories,states=([(k,v) for k,v in [('draft','작성 중'),('review','검토·승인 중'),('purchasing','구매 진행 중'),('approved','결재완료'),('hold','보류'),('rejected','반려'),('cancelled','취소')]] if settings.INTEGRATED_PURCHASES and mode not in ['stock','accounting'] else [(k, ('결재완료' if stock_final_routes else '검토완료') if k == 'approved' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES),
+                mode=mode, document_categories=document_categories,states=([(k,v) for k,v in [('draft','작성 중'),('review','검토·승인 중'),('purchasing','구매 진행 중'),('approved','결재완료'),('hold','보류'),('rejected','반려'),('cancelled','취소')]] if settings.INTEGRATED_PURCHASES and mode not in ['stock','accounting'] else [(k, '확인 완료' if k == 'approved' else '확인 대기' if k == 'review' else label) for k, label in Document.STATES if k != 'approve' or stock_final_routes] if mode == 'stock' else Document.STATES),
                 kinds=Document.KINDS, departments=DEPARTMENTS,
                 accounting_categories=accounting_categories, selected_kind=selected_kind,
                 can_export_purchases=mode == 'accounting' and selected_kind == 'office',
@@ -382,19 +380,19 @@ def detail(request, pk):
     actions = []
     u = request.user
     if doc.status == 'review' and doc.reviewer_id == u.pk:
-        actions += [('review', '검토확인'), ('reject', '반려')]
+        actions += [('review', '확인 완료' if doc.kind == 'stock' else '검토확인'), ('reject', '반려')]
     if doc.final_approval_required and doc.status == 'approve' and doc.approver_id == u.pk:
         actions += [('approve', '승인확인'), ('reject', '반려')]
     if doc.review_required and doc.status == 'approve' and doc.reviewer_id == u.pk:
         actions += [('cancel_review', '검토 승인 취소')]
     if not doc.final_approval_required and doc.status == 'approved' and doc.reviewer_id == u.pk:
-        actions += [('cancel_review', '검토 완료 취소')]
+        actions += [('cancel_review', '확인 취소' if doc.kind == 'stock' else '검토 완료 취소')]
     if doc.final_approval_required and doc.status == 'approved' and doc.approver_id == u.pk:
         actions += [('cancel_approval', '최종 승인 취소')]
     from .services import may_delete_document
     if may_delete_document(doc, u):
         actions += [('delete', '기안 삭제')]
-    if doc.status == 'approved' and doc.kind != 'leave':
+    if doc.status == 'approved' and doc.kind == 'office':
         if u.profile.procure and not doc.shipment:
             actions += [('place', '구매 처리' if doc.kind == 'office' else '발주 처리')]
         if doc.recipient_id == u.pk and doc.shipment in ['shipping', 'ordered']:
@@ -429,6 +427,10 @@ def detail(request, pk):
         elif 'approve' in keys:workflow_task='신청 내용을 확인하고 승인 또는 반려를 선택해 주세요.'
         elif doc.owner_id==u.pk:
             workflow_task='최종 결재가 완료되었습니다.' if doc.status=='approved' else '검토자의 확인을 기다리고 있습니다.' if doc.status=='review' else '승인자의 확인을 기다리고 있습니다.' if doc.status in ['approve','executive'] else ''
+        if doc.kind == 'stock' and not doc.final_approval_required:
+            workflow_task = ('확인이 완료되어 생산 재고 기록으로 보관되었습니다.' if doc.status == 'approved' else
+                '요청 내용을 확인한 뒤 확인 완료 또는 반려를 선택해 주세요.' if 'review' in keys else
+                '검토자의 확인을 기다리고 있습니다.' if doc.status == 'review' else '')
     try:
         amount = leave_amount(doc) if doc.kind == 'leave' else 0
     except ValidationError:
@@ -467,7 +469,8 @@ def action(request, pk):
         doc = act_on_document(pk, request.user, request.POST.get('action'), request.POST.get('reason', ''), new)
         if request.POST.get('action') in ['review', 'approve']:
             label = '검토확인' if request.POST['action'] == 'review' else '승인확인'
-            messages.success(request, f'{label}이 완료되었습니다.', extra_tags='approval-feedback')
+            message = '확인이 완료되어 기록으로 보관되었습니다.' if doc.kind == 'stock' and request.POST['action'] == 'review' else f'{label}이 완료되었습니다.'
+            messages.success(request, message, extra_tags='approval-feedback')
         else:
             messages.success(request, '처리가 완료되었습니다.')
         if doc.status == 'deleted' or not visible_documents(request.user).filter(pk=pk).exists():

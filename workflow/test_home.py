@@ -128,7 +128,7 @@ class HomeWorkspaceTests(TestCase):
         for category in response.context['home_categories']:
             self.assertIn(f'progress_document={first.pk}', category['url'])
         response = self.client.get(reverse('dashboard'), {'progress_document': second.pk})
-        self.assertEqual([s['label'] for s in response.context['progress_steps']], ['기안', '검토', '발주', '입고'])
+        self.assertEqual([s['label'] for s in response.context['progress_steps']], ['기안', '확인', '완료'])
 
     def test_progress_chooser_excludes_completed_and_shows_empty_when_none_pending(self):
         completed = save_document(Document(owner=self.owner, kind='office', product='완료 구매', quantity=1,
@@ -215,9 +215,9 @@ class HomeWorkspaceTests(TestCase):
     def test_progress_stages_include_stock_ordering_and_do_not_show_cancelled_as_pending(self):
         doc = save_document(Document(owner=self.owner, kind='stock', product='매뉴얼', quantity=1,
                                      reviewer=self.reviewer), self.owner, submit=True)
-        self.assertEqual([step['label'] for step in progress_stages(doc)], ['기안', '검토', '발주', '입고'])
+        self.assertEqual([step['label'] for step in progress_stages(doc)], ['기안', '확인', '완료'])
         doc = act_on_document(doc.pk, self.reviewer, 'review')
-        self.assertEqual(next(step['label'] for step in progress_stages(doc) if step.get('current')), '발주')
+        self.assertFalse(any(step.get('current') for step in progress_stages(doc)))
         doc = act_on_document(doc.pk, self.reviewer, 'cancel_review', '취소')
         self.assertFalse(any(step.get('current') for step in progress_stages(doc)))
 

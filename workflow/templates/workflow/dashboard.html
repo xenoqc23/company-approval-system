@@ -12,7 +12,7 @@
   <section class="mint-quick" aria-label="기안 바로가기"><div class="mint-quick-intro"><h2>빠른 신청</h2><p>지금 필요한 업무를<br>빠르게 시작하세요.</p></div>
     <a class="mint-quick-card leave" href="{% url 'compose' %}?kind=leave"><span class="mint-quick-icon"><svg><use href="#i-calendar"/></svg></span><div><strong>휴가 신청 <svg aria-hidden="true"><use href="#i-arrow"/></svg></strong><small>연차 · 반차 · 외출 신청</small></div></a>
     <a class="mint-quick-card office" href="{% url 'compose' %}?kind=office"><span class="mint-quick-icon"><svg><use href="#i-cart"/></svg></span><div><strong>구매 요청 <svg aria-hidden="true"><use href="#i-arrow"/></svg></strong><small>사무·사내용품 구매 신청</small></div></a>
-    <a class="mint-quick-card stock" href="{% url 'compose' %}?kind=stock"><span class="mint-quick-icon"><svg><use href="#i-box"/></svg></span><div><strong>생산 재고 <svg aria-hidden="true"><use href="#i-arrow"/></svg></strong><small>부족한 재고 발주 요청</small></div></a>
+    <a class="mint-quick-card stock" href="{% url 'compose' %}?kind=stock"><span class="mint-quick-icon"><svg><use href="#i-box"/></svg></span><div><strong>생산 재고 <svg aria-hidden="true"><use href="#i-arrow"/></svg></strong><small>부족한 품목·수량 확인 및 기록</small></div></a>
   </section>
   {% endif %}
   {% if integrated_purchases %}{% include 'purchasing/dashboard_panel.html' %}{% endif %}

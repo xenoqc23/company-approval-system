@@ -184,12 +184,12 @@ class ProgressiveTests(TestCase):
         with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.approver,'escalate','기준 미만')
         act_on_document(doc.pk,self.approver,'approve');self.assertEqual(self.used(),1)
 
-    def test_stock_progresses_only_after_final_approval_and_then_procurement(self):
+    def test_stock_ignores_progressive_policy_and_ends_after_confirmation(self):
         doc=save_document(Document(owner=self.owner,reviewer=self.reviewer,kind='stock',product='재고',quantity=3),self.owner,submit=True)
-        self.forward(doc)
+        self.assertFalse(doc.progressive);self.assertIsNone(doc.approver_id)
+        doc=act_on_document(doc.pk,self.reviewer,'review')
+        self.assertEqual(doc.status,'approved')
         with self.assertRaises(PermissionDenied):act_on_document(doc.pk,self.finance,'place')
-        act_on_document(doc.pk,self.approver,'approve');doc=act_on_document(doc.pk,self.finance,'place')
-        self.assertEqual(doc.shipment,'ordered')
 
     def test_frozen_routes_survive_rule_threshold_and_mode_changes(self):
         doc=self.leave(end_date=date(2026,10,21))
