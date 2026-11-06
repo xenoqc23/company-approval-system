@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 PC 알림 테스트</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main>
+<header><span class="badge">이 PC에서만 실행 · NAS 연결 없음</span><h1>PC 알림, 먼저 시험해 보세요.</h1><p>Chrome과 Edge에서 윈도우 오른쪽 아래 팝업을 확인하는 별도 테스트입니다.<br>실제 직원 계정이나 결재 문서를 사용하지 않습니다.</p></header>
+<section class="card"><div class="step">1</div><h2>브라우저 설정 한 번만 확인</h2><p>현재 브라우저: <strong id="browser-name">확인 중</strong>. Chrome과 Edge는 각각 설정하고 시험해 주세요.</p>
+<div class="browser-grid">
+<article><h3>Chrome</h3><p>주소창에 아래 주소 붙여넣기</p><div class="copy-row"><code>chrome://settings/system</code><button type="button" data-copy="chrome://settings/system">주소 복사</button></div><p><b>Chrome 종료 후에도 백그라운드 앱을 계속 실행</b> 항목을 켜 주세요.</p></article>
+<article><h3>Microsoft Edge</h3><p>주소창에 아래 주소 붙여넣기</p><div class="copy-row"><code>edge://settings/system</code><button type="button" data-copy="edge://settings/system">주소 복사</button></div><p><b>Microsoft Edge가 닫혀 있을 때 백그라운드 확장과 앱을 계속 실행</b> 항목을 켜 주세요.</p></article>
+</div>
+<p class="hint">항목 이름은 브라우저 버전에 따라 다를 수 있습니다. 해당 항목이 없으면 설정에서 ‘백그라운드’를 검색해 주세요.</p>
+<p>윈도우 <b>설정 → 시스템 → 알림</b>에서 알림을 켜고, <b>방해 금지</b>는 꺼 주세요. 팝업이 안 보이면 <b>Win + N</b>으로 알림 센터도 확인해 주세요.</p>
+<p class="note">이 설정은 창을 닫은 뒤에도 브라우저가 백그라운드에서 동작하도록 돕습니다. 브라우저를 완전히 종료하거나 PC를 끈 상태의 즉시 수신은 보장하지 않습니다.</p>
+</section>
+<section class="card"><div class="step">2</div><h2>이 브라우저 알림 허용</h2><p>아래 버튼을 누른 뒤 브라우저가 물으면 <b>허용</b>을 선택해 주세요. 다른 브라우저에서도 따로 허용해야 합니다.</p>
+<div class="actions"><button class="primary" id="connect" type="button" disabled>알림 허용하고 연결</button><button id="disconnect" type="button" hidden>이 브라우저 연결 해제</button><button id="display" type="button" disabled>지금 윈도우 표시 확인</button></div>
+<p id="connection" class="state" role="status">테스트 도구를 준비하고 있습니다.</p>
+<p class="hint">‘지금 윈도우 표시 확인’은 PC 표시만 확인합니다. 창을 닫은 뒤의 수신은 아래 3번으로 시험해 주세요.</p>
+</section>
+<section class="card"><div class="step">3</div><h2>30초 후 알림 보내기</h2><p>원하는 버튼을 누른 뒤 <b>Chrome 또는 Edge의 모든 창을 닫고 30초 정도</b> 기다려 주세요. 첫 시험은 창을 켜 둔 상태로 해도 됩니다.</p>
+<p class="note"><b>검은 실행 창은 계속 켜 두세요.</b> 로컬 알림 발송 프로그램이 실행되는 창입니다. 브라우저 창을 닫는 것과 실행 창을 닫는 것은 다릅니다.</p>
+<div class="preview-grid"><article><h3>결재 요청 예시</h3><p>개발팀 홍길동 대리님이 휴가원을 올렸습니다. 검토해 주세요.</p><button class="primary send" type="button" data-kind="request" disabled>30초 뒤 결재 요청 알림</button></article><article><h3>결재 완료 예시</h3><p>신청하신 구매요청서의 결재가 완료되었습니다.</p><button class="primary send" type="button" data-kind="completed" disabled>30초 뒤 결재 완료 알림</button></article></div>
+<p id="delivery" class="state" role="status">이 브라우저를 먼저 연결해 주세요.</p>
+<p class="hint">두 예시는 가상 내용입니다. 테스트 알림은 30초 간격으로 요청할 수 있으며, 누른 브라우저에만 보냅니다. 알림을 클릭하면 이 테스트 화면으로 돌아옵니다.</p>
+</section>
+<section class="card"><h2>안 보일 때 확인할 순서</h2><ol><li>창을 켜 둔 상태에서 ‘지금 윈도우 표시 확인’을 눌러 보세요.</li><li>윈도우 알림 허용, 방해 금지, 알림 센터(Win + N)를 확인해 주세요.</li><li>‘30초 뒤 알림’을 누르고 창을 켜 둔 상태에서 받아 보세요.</li><li>그다음 같은 시험을 모든 브라우저 창을 닫은 상태로 해 보세요.</li><li>테스트 주소를 다시 열어 아래 ‘결과 확인’을 누르면 발송 상태를 볼 수 있습니다.</li></ol><div class="actions"><button id="refresh" type="button">결과 확인</button><button id="copy-result" type="button">확인 결과 복사</button></div><p id="diagnostic" role="status"></p><p class="hint">푸시 서비스에 전달됐다는 결과와 실제 PC에 팝업이 표시됐다는 결과는 다릅니다. PC 표시는 직접 확인해 주세요. 이 도구는 브라우저·윈도우 설정을 자동 변경하지 않습니다.</p></section>
+<footer>인터넷 연결이 필요합니다. NAS나 실제 결재시스템에는 연결하지 않습니다. 시험 종료: 검은 실행 창에서 Ctrl+C.</footer>
+</main></body></html>
