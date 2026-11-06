@@ -3,6 +3,7 @@ const $=id=>document.getElementById(id);
 const browser=/Edg\//.test(navigator.userAgent)?'Microsoft Edge':/Chrome\//.test(navigator.userAgent)?'Chrome':'Chrome 또는 Edge 사용을 권장합니다';
 $('browser-name').textContent=browser;
 let config,registration,connected=false,device='',lastStatus=null,busy=false,cooldownUntil=0;
+let pendingBusy=false,pendingStatus=null,documentFingerprint='';
 try{device=localStorage.getItem('xenosys-local-push-device')||'';}catch{}
 const state=text=>$('connection').textContent=text;
 const delivery=text=>$('delivery').textContent=text;
@@ -41,17 +42,63 @@ async function refresh(){
     $('diagnostic').textContent=diagnostic();controls();
   }catch{state('로컬 실행 창이 켜져 있는지 확인해 주세요. 실행 창을 다시 시작했다면 화면을 새로고침해 주세요.');}
 }
+function pendingControls(){
+  const windows=!!pendingStatus?.startup.supported;
+  $('pending-create').disabled=!config||pendingBusy;
+  $('pending-remind').disabled=!config||pendingBusy||!windows||!pendingStatus?.pending_count;
+  $('startup-enable').disabled=!config||pendingBusy||!windows;
+  $('startup-disable').disabled=!config||pendingBusy||!windows;
+  document.querySelectorAll('[data-complete-document]').forEach(button=>button.disabled=pendingBusy);
+}
+function renderPending(result){
+  pendingStatus=result;
+  const fingerprint=JSON.stringify(result.documents);
+  if(fingerprint!==documentFingerprint){
+    documentFingerprint=fingerprint;
+    const rows=result.documents.map(doc=>{
+      const row=document.createElement('div');row.className='pending-document';
+      const info=document.createElement('div'),title=document.createElement('strong'),who=document.createElement('small');
+      title.textContent=`${doc.kind} · ${doc.completed===null?'검토 대기':'처리완료'}`;
+      who.textContent=`${doc.department} ${doc.author} ${doc.rank}`;
+      info.append(title,who);row.append(info);
+      if(doc.completed===null){
+        const button=document.createElement('button');button.type='button';button.textContent='처리완료';button.dataset.completeDocument=doc.id;
+        button.onclick=()=>pendingAction('/api/pending/complete',{document:doc.id});row.append(button);
+      }
+      return row;
+    });
+    $('pending-documents').replaceChildren(...rows);
+  }
+  let text=`저장된 가상 미결 문서 ${result.pending_count}건`;
+  if(result.last_reminder){const last=result.last_reminder;text+=`\n최근 확인: ${new Date(last.created*1000).toLocaleString()} · ${last.reason==='windows_login'?'Windows 로그인':'PC 켜기 상황 재현'}\n${last.message}`;}
+  $('pending-state').textContent=text;
+  $('startup-state').textContent=result.startup.message;
+  pendingControls();
+}
+async function refreshPending(){
+  if(pendingBusy||!config)return;
+  try{renderPending(await request('/api/pending'));}
+  catch{$('pending-state').textContent='미결 문서 확인에 실패했습니다. 로컬 실행 창을 확인해 주세요.';}
+}
+async function pendingAction(path,data={}){
+  pendingBusy=true;pendingControls();
+  if(path==='/api/pending/remind')$('pending-state').textContent='저장된 미결 문서의 Windows 알림 표시를 요청하고 있습니다…';
+  try{renderPending(await request(path,data));}
+  catch(error){$('pending-state').textContent=error.message;}
+  finally{pendingBusy=false;pendingControls();}
+}
 async function registerExisting(sub){
   const result=await request('/api/connect',{subscription:sub.toJSON()});device=result.device;connected=true;
   try{localStorage.setItem('xenosys-local-push-device',device);}catch{}
   state('이 브라우저에 알림이 연결됐습니다. 아래에서 테스트해 주세요.');delivery('원하는 테스트 알림을 선택해 주세요.');
 }
 const ready=(async()=>{
+  try{config=await request('/api/config');await refreshPending();}
+  catch{state('로컬 실행 창을 켜고 화면을 새로고침해 주세요.');return;}
   if(!window.isSecureContext||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){
     state('Chrome 또는 Edge에서 검은 실행 창에 나온 http://127.0.0.1 주소로 접속해 주세요. HTML 파일을 직접 열면 테스트할 수 없습니다.');return;
   }
   try{
-    config=await request('/api/config');
     registration=await navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'});
     await navigator.serviceWorker.ready;
     const sub=await registration.pushManager.getSubscription();
@@ -104,9 +151,13 @@ document.querySelectorAll('[data-copy]').forEach(button=>button.onclick=async()=
   catch{state('위 주소를 직접 선택해 복사한 뒤 주소창에 붙여넣어 주세요.');}
 });
 $('refresh').onclick=refresh;
+$('pending-create').onclick=()=>pendingAction('/api/pending/create');
+$('pending-remind').onclick=()=>pendingAction('/api/pending/remind');
+$('startup-enable').onclick=()=>pendingAction('/api/startup/enable');
+$('startup-disable').onclick=()=>pendingAction('/api/startup/disable');
 $('copy-result').onclick=async()=>{
   await refresh();try{await navigator.clipboard.writeText(diagnostic());$('copy-result').textContent='복사됨';}
   catch{$('diagnostic').textContent=diagnostic()+'\n위 내용을 직접 복사해 주세요.';}
 };
-setInterval(()=>{controls();if(!document.hidden)refresh();},2000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+setInterval(()=>{controls();if(!document.hidden){refresh();refreshPending();}},2000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();refreshPending();}});

@@ -130,5 +130,27 @@ class LocalHttpTests(unittest.TestCase):
         self.assertEqual(self.request('/api/connect',{'subscription':None})[0],400)
         self.assertEqual(self.request('/../.local-test-data/local-test-vapid.pem')[0],404)
 
+    def test_persistent_pending_routes_and_explicit_startup_controls(self):
+        desktop=Mock();enabled={'value':False}
+        desktop.status.side_effect=lambda:dict(supported=True,enabled=enabled['value'],message='테스트 상태')
+        desktop.enable.side_effect=lambda:enabled.update(value=True)
+        desktop.disable.side_effect=lambda:enabled.update(value=False)
+        self.trial.desktop=desktop
+        status,result=self.request('/api/pending/create',{})
+        self.assertEqual(status,200);self.assertEqual(result['pending_count'],2)
+        desktop.enable.assert_not_called();desktop.notify.assert_not_called()
+        self.assertEqual(self.request('/api/startup/enable',{},headers={'X-Local-Test-Token':''})[0],403)
+        desktop.enable.assert_not_called()
+        status,result=self.request('/api/startup/enable',{})
+        self.assertTrue(result['startup']['enabled']);desktop.enable.assert_called_once()
+        status,result=self.request('/api/pending/remind',{})
+        self.assertEqual(result['reminder_result']['result'],'requested');desktop.notify.assert_called_once()
+        self.assertEqual(self.request('/api/pending/complete',{'document':'trial-leave'})[1]['pending_count'],1)
+        from server import Trial
+        reopened=Trial(self.temp.name)
+        self.assertEqual(reopened.pending_store.status()['pending_count'],1)
+        self.assertEqual(self.request('/api/startup/disable',{})[1]['startup']['enabled'],False)
+        self.assertEqual(self.request('/api/pending/complete',{'document':'missing'})[0],400)
+
 
 if __name__=='__main__':unittest.main()

@@ -48,6 +48,10 @@ class Trial:
         self.lock = threading.RLock()
         self.token = secrets.token_urlsafe(32)
         self.devices, self.jobs = {}, []
+        self.data_dir = Path(data_dir)
+        self._pending_store = None
+        from desktop import WindowsDesktop
+        self.desktop = WindowsDesktop(ROOT, self.data_dir)
         self.key_path = Path(data_dir) / 'local-test-vapid.pem'
         self.key_path.parent.mkdir(parents=True, exist_ok=True)
         from cryptography.hazmat.primitives import serialization
@@ -63,6 +67,17 @@ class Trial:
         key = serialization.load_pem_private_key(self.key_path.read_bytes(), password=None)
         self.public_key = base64.urlsafe_b64encode(key.public_key().public_bytes(
             serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)).rstrip(b'=').decode()
+
+    @property
+    def pending_store(self):
+        from pending import PendingStore
+        with self.lock:
+            if self._pending_store is None:
+                self._pending_store = PendingStore(self.data_dir / 'pending-trial.sqlite3', self.clock)
+            return self._pending_store
+
+    def pending_status(self):
+        return {**self.pending_store.status(), 'startup': self.desktop.status()}
 
     def connect(self, value):
         sub = validate_subscription(value)
@@ -164,6 +179,8 @@ def handler(trial):
                 return self.send(200, dict(public_key=trial.public_key, token=trial.token, delay=30))
             if url.path == '/api/status':
                 return self.send(200, trial.status(parse_qs(url.query).get('device', [''])[0]))
+            if url.path == '/api/pending':
+                return self.send(200, trial.pending_status())
             files = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'application/javascript'),
                      '/sw.js': ('sw.js', 'application/javascript'), '/style.css': ('style.css', 'text/css; charset=utf-8')}
             if url.path not in files:
@@ -183,6 +200,24 @@ def handler(trial):
                     raise ValueError('올바른 테스트 요청이 필요합니다.')
                 if self.path == '/api/connect':
                     return self.send(200, dict(device=trial.connect(data.get('subscription'))))
+                if self.path == '/api/pending/create':
+                    trial.pending_store.create_samples()
+                    return self.send(200, trial.pending_status())
+                if self.path == '/api/pending/complete':
+                    if not isinstance(data.get('document'), str):
+                        raise ValueError('가상 문서를 선택해 주세요.')
+                    trial.pending_store.complete(data['document'])
+                    return self.send(200, trial.pending_status())
+                if self.path == '/api/pending/remind':
+                    from pending import remind_once
+                    result = remind_once(trial.pending_store, trial.desktop)
+                    return self.send(200, {**trial.pending_status(), 'reminder_result': result})
+                if self.path == '/api/startup/enable':
+                    trial.desktop.enable()
+                    return self.send(200, trial.pending_status())
+                if self.path == '/api/startup/disable':
+                    trial.desktop.disable()
+                    return self.send(200, trial.pending_status())
                 if not isinstance(data.get('device'), str):
                     raise ValueError('이 브라우저를 먼저 연결해 주세요.')
                 if self.path == '/api/test':
@@ -191,8 +226,9 @@ def handler(trial):
                     trial.disconnect(data['device'])
                     return self.send(200, {'ok': True})
                 self.send(404, {'error': '없는 페이지입니다.'})
-            except (ValueError, TypeError, UnicodeError):
-                self.send(400, {'error': '요청을 처리하지 못했습니다. 알림 연결과 테스트 간격(30초)을 확인해 주세요.'})
+            except (ValueError, TypeError, UnicodeError, RuntimeError, OSError) as exc:
+                message = str(exc) if isinstance(exc, (ValueError, RuntimeError)) else '요청을 처리하지 못했습니다. 설정과 실행 상태를 확인해 주세요.'
+                self.send(400, {'error': message})
 
     return Handler
 
