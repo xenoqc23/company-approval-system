@@ -218,6 +218,8 @@ def handler(trial):
                 if self.path == '/api/startup/disable':
                     trial.desktop.disable()
                     return self.send(200, trial.pending_status())
+                if self.path == '/api/windows/diagnose':
+                    return self.send(200, trial.desktop.diagnose())
                 if not isinstance(data.get('device'), str):
                     raise ValueError('이 브라우저를 먼저 연결해 주세요.')
                 if self.path == '/api/test':

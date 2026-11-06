@@ -152,5 +152,14 @@ class LocalHttpTests(unittest.TestCase):
         self.assertEqual(self.request('/api/startup/disable',{})[1]['startup']['enabled'],False)
         self.assertEqual(self.request('/api/pending/complete',{'document':'missing'})[0],400)
 
+    def test_windows_diagnostics_requires_local_token_and_does_not_enable_startup(self):
+        desktop=Mock();desktop.diagnose.return_value=dict(supported=True,native=dict(ok=False,stage='notifier',hresult='0x80070057'))
+        self.trial.desktop=desktop
+        self.assertEqual(self.request('/api/windows/diagnose',{},headers={'X-Local-Test-Token':''})[0],403)
+        desktop.diagnose.assert_not_called()
+        status,result=self.request('/api/windows/diagnose',{})
+        self.assertEqual(status,200);self.assertEqual(result['native']['hresult'],'0x80070057')
+        desktop.enable.assert_not_called();desktop.notify.assert_not_called()
+
 
 if __name__=='__main__':unittest.main()

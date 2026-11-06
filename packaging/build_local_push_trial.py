@@ -5,7 +5,7 @@ from pathlib import Path
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 
 ROOT=Path(__file__).resolve().parents[1]
-NAME='xenosys-local-pc-notification-test-20261106-v2'
+NAME='xenosys-local-pc-notification-test-20261106-v3'
 FILES=['server.py','launch.py','START_TEST.bat','requirements.txt','index.html','style.css','app.js','sw.js','README.md',
        'pending.py','desktop.py','login_reminder.py','DISABLE_AUTO_START.bat']
 

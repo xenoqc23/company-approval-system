@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import platform
 from pathlib import Path
 
 APP_ID = 'Xenosys.LocalNotificationTrial'
@@ -14,22 +15,47 @@ DISPLAY_NAME = '사내결재 PC 알림 테스트'
 
 TOAST_SCRIPT = r'''
 $ErrorActionPreference = 'Stop'
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType=WindowsRuntime] > $null
-$data = Get-Content -LiteralPath $env:XENOSYS_LOCAL_TOAST_PAYLOAD -Raw -Encoding UTF8 | ConvertFrom-Json
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml('<toast duration="long"><visual><binding template="ToastGeneric"><text></text><text></text><text></text></binding></visual></toast>')
-$nodes = $xml.GetElementsByTagName('text')
-$nodes.Item(0).InnerText = [string]$data.title
-$nodes.Item(1).InnerText = [string]$data.body
-$nodes.Item(2).InnerText = '가상 문서입니다. 확인: START_TEST.bat 실행'
-$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Xenosys.LocalNotificationTrial')
-if ([string]$notifier.Setting -ne 'Enabled') { throw 'Windows notification setting is disabled.' }
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-$toast.Tag = [guid]::NewGuid().ToString('N').Substring(0, 16)
-$toast.Group = 'local-trial'
-$toast.SuppressPopup = $false
-$notifier.Show($toast)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$stage = 'runtime'
+$setting = 'unknown'
+try {
+    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null
+    [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType=WindowsRuntime] > $null
+    $stage = 'payload'
+    $data = Get-Content -LiteralPath $env:XENOSYS_LOCAL_TOAST_PAYLOAD -Raw -Encoding UTF8 | ConvertFrom-Json
+    $stage = 'notifier'
+    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Xenosys.LocalNotificationTrial')
+    $stage = 'settings'
+    $setting = [string]$notifier.Setting
+    if ($data.mode -eq 'diagnose') {
+        [pscustomobject]@{ok=$true; stage='diagnose'; setting=$setting} | ConvertTo-Json -Compress
+        exit 0
+    }
+    if ($setting -ne 'Enabled') {
+        [pscustomobject]@{ok=$false; stage=$stage; setting=$setting; error_type='NotificationDisabled'; hresult=''} | ConvertTo-Json -Compress
+        exit 2
+    }
+    $stage = 'xml'
+    $title = [System.Security.SecurityElement]::Escape([string]$data.title)
+    $body = [System.Security.SecurityElement]::Escape([string]$data.body)
+    $footer = [System.Security.SecurityElement]::Escape([string]$data.footer)
+    $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+    $xml.LoadXml("<toast duration='long'><visual><binding template='ToastGeneric'><text>$title</text><text>$body</text><text>$footer</text></binding></visual></toast>")
+    $stage = 'show'
+    $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+    $toast.Tag = [guid]::NewGuid().ToString('N').Substring(0, 16)
+    $toast.Group = 'local-trial'
+    $toast.SuppressPopup = $false
+    $notifier.Show($toast)
+    [pscustomobject]@{ok=$true; stage=$stage; setting=$setting} | ConvertTo-Json -Compress
+    exit 0
+} catch {
+    $failure = $_.Exception
+    while ($failure.InnerException) { $failure = $failure.InnerException }
+    $code = '0x{0:X8}' -f $failure.HResult
+    [pscustomobject]@{ok=$false; stage=$stage; setting=$setting; error_type=$failure.GetType().FullName; hresult=$code} | ConvertTo-Json -Compress
+    exit 1
+}
 '''
 
 
@@ -99,22 +125,77 @@ class WindowsDesktop:
     def notify(self, title, body):
         self.require_windows()
         self.register_app()
+        result = self.call_windows(dict(mode='notify', title=title, body=body,
+                                        footer='가상 문서입니다. 확인: START_TEST.bat 실행'))
+        if not result.get('ok'):
+            text = self.failure_message(result)
+            raise RuntimeError(text)
+        return result
+
+    @staticmethod
+    def failure_message(result):
+        return ('Windows 알림 요청 실패 · 단계: ' + str(result.get('stage', 'unknown')) +
+                ' · 오류: ' + str(result.get('hresult') or result.get('error_type', 'unknown')) +
+                ' · 알림 설정: ' + str(result.get('setting', 'unknown')) +
+                '. 아래 ‘Windows 알림 상태 확인’ 결과를 확인해 주세요.')
+
+    def read_setting(self, path, name, machine=False):
+        import winreg
+        hive = winreg.HKEY_LOCAL_MACHINE if machine else winreg.HKEY_CURRENT_USER
+        try:
+            with winreg.OpenKey(hive, path) as key:
+                value = winreg.QueryValueEx(key, name)[0]
+                return value if isinstance(value, int) else None
+        except OSError:
+            return None
+
+    def diagnose(self):
+        if not self.supported:
+            return dict(supported=False, message='Windows PC에서 확인해 주세요.')
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, APP_KEY):
+                registered = True
+        except OSError:
+            registered = False
+        base = r'Software\Microsoft\Windows\CurrentVersion'
+        policy = r'Software\Policies\Microsoft\Windows\CurrentVersion\PushNotifications'
+        return dict(supported=True, windows=platform.win32_ver()[1], app_registered=registered,
+            global_toasts=self.read_setting(base + r'\PushNotifications', 'ToastEnabled'),
+            app_toasts=self.read_setting(base + '\\Notifications\\Settings\\' + APP_ID, 'Enabled'),
+            user_policy=self.read_setting(policy, 'NoToastApplicationNotification'),
+            machine_policy=self.read_setting(policy, 'NoToastApplicationNotification', machine=True),
+            native=self.call_windows({'mode': 'diagnose'}))
+
+    def call_windows(self, payload):
+        self.require_windows()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         fd, filename = tempfile.mkstemp(prefix='.toast-', suffix='.json', dir=self.data_dir)
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                json.dump(dict(title=title, body=body), f, ensure_ascii=False)
+                json.dump(payload, f, ensure_ascii=False)
             env = os.environ.copy()
             env['XENOSYS_LOCAL_TOAST_PAYLOAD'] = filename
             # Use the Windows system binary; never change execution policies.
             powershell = self.powershell_path()
-            result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-Command', TOAST_SCRIPT],
+            result = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-STA', '-Command', TOAST_SCRIPT],
                                     env=env, capture_output=True, timeout=20,
                                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            if result.returncode:
-                raise RuntimeError('Windows 알림 표시 요청에 실패했습니다. 알림 설정에서 ‘사내결재 PC 알림 테스트’를 허용하고 방해 금지를 확인해 주세요.')
+            try:
+                answer = json.loads(result.stdout.decode('utf-8-sig').strip())
+                if not isinstance(answer, dict):
+                    raise ValueError
+                if result.returncode:
+                    answer['ok'] = False
+                return answer
+            except (ValueError, UnicodeError):
+                details = result.stderr.decode('utf-8', errors='replace')
+                for path, label in [(self.data_dir, '[TEST_DATA]'), (self.root, '[TEST_FOLDER]')]:
+                    details = details.replace(str(path), label)
+                return dict(ok=False, stage='powershell_process', setting='unknown',
+                            error_type='NoStructuredResult', exit_code=result.returncode, details=details[:1200])
         except subprocess.TimeoutExpired:
-            raise RuntimeError('Windows 알림 요청 시간이 초과됐습니다. 실행 결과를 확인해 주세요.') from None
+            return dict(ok=False, stage='powershell_process', setting='unknown', error_type='Timeout')
         finally:
             Path(filename).unlink(missing_ok=True)
 

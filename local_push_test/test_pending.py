@@ -71,6 +71,7 @@ class PendingReminderTests(unittest.TestCase):
 
 class FakeRegistry:
     HKEY_CURRENT_USER=1
+    HKEY_LOCAL_MACHINE=2
     REG_SZ=1
     REG_DWORD=4
     KEY_SET_VALUE=2
@@ -131,7 +132,7 @@ class DesktopIntegrationTests(unittest.TestCase):
             payload.append((path,json.loads(path.read_text(encoding='utf-8'))))
             self.assertNotIn('-ExecutionPolicy',command);self.assertNotIn('-EncodedCommand',command)
             self.assertNotIn('shell',kwargs)
-            return Mock(returncode=0)
+            return Mock(returncode=0,stdout=b'{"ok":true,"stage":"show","setting":"Enabled"}',stderr=b'')
         with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
               patch('desktop.subprocess.run',side_effect=runner)):
             self.desktop.notify('처리할 문서 2건','홍길동 · 휴가원\n김가영 · 구매요청서')
@@ -139,8 +140,25 @@ class DesktopIntegrationTests(unittest.TestCase):
 
     def test_native_block_is_reported_as_failure_not_display_success(self):
         with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
-              patch('desktop.subprocess.run',return_value=Mock(returncode=1))):
-            with self.assertRaises(RuntimeError):self.desktop.notify('제목','내용')
+              patch('desktop.subprocess.run',return_value=Mock(returncode=1,stdout=b'{"ok":false,"stage":"xml","setting":"Enabled","hresult":"0x80070057"}',stderr=b''))):
+            with self.assertRaisesRegex(RuntimeError,'xml.*0x80070057'):self.desktop.notify('제목','내용')
+
+    def test_diagnose_is_readonly_and_distinguishes_disabled_setting_from_api_failure(self):
+        self.registry.keys[APP_KEY]={'DisplayName':'test'}
+        before=json.dumps(self.registry.keys,sort_keys=True)
+        with patch.object(WindowsDesktop,'call_windows',return_value=dict(ok=True,stage='diagnose',setting='DisabledForUser')) as run:
+            result=self.desktop.diagnose()
+        self.assertEqual(result['native']['setting'],'DisabledForUser')
+        self.assertTrue(result['app_registered']);self.assertEqual(json.dumps(self.registry.keys,sort_keys=True),before)
+        run.assert_called_once_with({'mode':'diagnose'})
+
+    def test_unstructured_powershell_failure_is_not_reported_as_windows_settings_problem(self):
+        details=str(self.root)+' failed to start PowerShell'
+        with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
+              patch('desktop.subprocess.run',return_value=Mock(returncode=1,stdout=b'',stderr=details.encode()))):
+            result=self.desktop.call_windows({'mode':'diagnose'})
+        self.assertFalse(result['ok']);self.assertEqual(result['stage'],'powershell_process')
+        self.assertNotIn(str(self.root),result['details']);self.assertIn('[TEST_FOLDER]',result['details'])
 
 
 if __name__=='__main__':unittest.main()
