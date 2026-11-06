@@ -11,7 +11,7 @@ from django.db.models import F, Q
 from django.db.migrations.loader import MigrationLoader
 from .models import Profile, Document
 
-RELEASE = 'nas-stock-record-20261102-v4'
+RELEASE = 'nas-reviewer-access-20261106-v5'
 ROLES = ('development_checker', 'other_checker', 'purchaser', 'representative')
 PROFILE_FIELDS = ('user_id', 'department', 'rank', 'approved', 'department_confirmed', 'representative_slot', 'manage_system')
 

@@ -183,27 +183,67 @@ class AmountChangeForm(forms.Form):
 
 class IntegratedPolicyForm(PolicyForm):
     """Routes only; personnel are exclusively managed on the shared staff page."""
-    review_final_users=PersonMultiple(label='승인완료 가능한 검토자 · 과장급 이상',queryset=get_user_model().objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         for name in ['dev_director','production_director','finance','representative']:self.fields.pop(name)
         self.fields.pop('review_mode',None)
         self.fields.pop('combine_confirmation',None)
-        from workflow.people import review_final_people
-        self.fields['review_final_users'].queryset=review_final_people()
-        self.initial['review_final_users']=list(self.instance.review_final_users.values_list('pk',flat=True))
     def clean(self):
         data=super().clean()
         p=self.instance
         data.update(dev_director=p.dev_director,production_director=p.production_director,finance=list(p.finance.all()),representative=p.representative,review_mode='review_approval',combine_confirmation=True)
         return data
+
+
+class ReviewCompletionForm(forms.Form):
+    leave_users=PersonMultiple(label='휴가원 · 검토 단계에서 승인완료 가능한 직원',queryset=get_user_model().objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
+    purchase_users=PersonMultiple(label='구매요청서 · 검토 단계에서 승인완료 가능한 직원',queryset=get_user_model().objects.none(),required=False,widget=forms.CheckboxSelectMultiple)
+    leave_revision=forms.IntegerField(widget=forms.HiddenInput)
+    purchase_revision=forms.IntegerField(widget=forms.HiddenInput)
+    reason=forms.CharField(label='권한 변경 사유',max_length=1000,widget=forms.Textarea(attrs={'rows':2}))
+
+    def __init__(self,*args,**kwargs):
+        from workflow.models import ApprovalRule,ReviewerCompletionAuthority
+        from workflow.people import review_final_people
+        from .access import policy
+        kwargs.setdefault('auto_id','reviewer_authority_%s')
+        super().__init__(*args,**kwargs)
+        people=review_final_people()
+        for name in ['leave_users','purchase_users']:self.fields[name].queryset=people
+        leave=ReviewerCompletionAuthority.objects.filter(pk=1).first();purchase=policy()
+        # Until first explicit staff save, preserve the existing live leave grants.
+        leave_ids=list(leave.leave_users.values_list('pk',flat=True)) if leave else list(people.filter(
+            review_final_rules__in=ApprovalRule.objects.filter(enabled=True,deleted_at__isnull=True,
+                allow_review_final=True,kind__in=['leave','all'])).distinct().values_list('pk',flat=True))
+        self.initial.update(leave_revision=leave.version if leave else 0,leave_users=leave_ids,
+            purchase_revision=purchase.version if purchase else 0,
+            purchase_users=list(purchase.review_final_users.values_list('pk',flat=True)) if purchase else [])
+
     @transaction.atomic
     def save(self,actor):
-        p=super().save(actor)
-        before=list(p.review_final_users.values_list('pk',flat=True));people=self.cleaned_data['review_final_users']
-        p.review_final_users.set(people)
-        event(actor,'구매 검토 승인완료 권한 변경',detail=f'{before} → {[u.pk for u in people]} / {self.cleaned_data["reason"]}')
-        return p
+        from workflow.models import RegulationLock,ReviewerCompletionAuthority
+        from workflow.people import review_final_people
+        from workflow.services import audit
+        RegulationLock.objects.select_for_update().get_or_create(pk=1)
+        p=lock_policy();actor=actor_now(actor)
+        if not is_admin(actor):raise ValidationError('직원 권한관리 권한이 필요합니다.')
+        leave=ReviewerCompletionAuthority.objects.select_for_update().filter(pk=1).first()
+        data=self.cleaned_data
+        if data['leave_revision']!=(leave.version if leave else 0) or data['purchase_revision']!=p.version:
+            raise ValidationError('다른 창에서 권한이나 담당자 설정이 변경됐습니다. 새로고침 후 다시 저장해 주세요.')
+        selected={u.pk for name in ['leave_users','purchase_users'] for u in data[name]}
+        if selected!=set(review_final_people().filter(pk__in=selected).values_list('pk',flat=True)):
+            raise ValidationError('직원 정보가 변경됐습니다. 과장급 이상 활성·가입 승인된 직원을 다시 선택해 주세요.')
+        before_leave=list(leave.leave_users.values_list('pk',flat=True)) if leave else self.initial['leave_users']
+        before_purchase=list(p.review_final_users.values_list('pk',flat=True))
+        if leave:
+            leave.version+=1;leave.save(update_fields=['version'])
+        else:leave=ReviewerCompletionAuthority.objects.create(pk=1)
+        leave.leave_users.set(data['leave_users'])
+        p.review_final_users.set(data['purchase_users']);p.version+=1;p.save(update_fields=['version','updated_at'])
+        audit(actor,'휴가원 검토 승인완료 권한 변경',detail=f'{before_leave} → {[u.pk for u in data["leave_users"]]} / {data["reason"]}')
+        event(actor,'구매 검토 승인완료 권한 변경',detail=f'{before_purchase} → {[u.pk for u in data["purchase_users"]]} / {data["reason"]}')
+        return leave
 
 
 class PurchaseForwardForm(forms.Form):

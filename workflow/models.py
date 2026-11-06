@@ -295,6 +295,16 @@ class ApprovalRule(models.Model):
         ordering = ['kind', 'amount_over', 'pk']
 
 
+class ReviewerCompletionAuthority(models.Model):
+    """Live leave reviewer grants, managed independently of submission routes."""
+    leave_users = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='+')
+    version = models.PositiveIntegerField(default=1)
+
+    @property
+    def name(self):
+        return '직원·권한 관리 · 휴가원 승인완료 권한'
+
+
 class ApprovalFlowPolicy(models.Model):
     """Current new-submission settings; submitted documents keep their snapshot."""
     enabled = models.BooleanField(default=True)

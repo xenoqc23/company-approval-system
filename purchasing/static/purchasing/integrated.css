@@ -40,6 +40,10 @@
 .rule-route-summary p{margin:.3rem 0}
 .integrated-rules .rule-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
 .integrated-rules input[type=checkbox]{width:1rem;flex:none}
+#reviewer-authority{scroll-margin-top:110px}
+#reviewer-authority fieldset{min-width:0;border:1px solid #dbe7df;border-radius:12px;padding:1rem;background:#f8fcf9}
+#reviewer-authority legend{max-width:100%;padding:0 .4rem;font-weight:700;color:#0b4f3d}
+#reviewer-authority .people-checks label{display:flex;align-items:center;gap:.5rem}
 @media(max-width:700px){.purchase-content .approval-picker-columns,.integrated-rules .rule-options{grid-template-columns:1fr}}
 .simple-rule-ranks .field>div{display:flex;flex-wrap:wrap;gap:.6rem 1rem}
 .simple-rule-ranks label{display:flex;align-items:center;gap:.4rem;margin:0}

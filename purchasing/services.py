@@ -76,6 +76,7 @@ def reviewer_can_finish(actor,d,p=None):
     p=p or PurchasePolicy.objects.filter(pk=1).first()
     from workflow.people import review_final_people
     return bool(p and active(actor) and d.status=='review' and d.reviewer_id==actor.pk and d.owner_id!=actor.pk
+        and not d.confirmed_at and not d.current_report_id
         and actor.profile.rank in ['과장','팀장','부장','이사'] and not actor.profile.is_representative
         and not actor.profile.manage_system and review_final_people().filter(pk=actor.pk).exists() and p.review_final_users.filter(pk=actor.pk).exists())
 
@@ -209,7 +210,8 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
     if action in ['forward','review_final','approve','reject'] and actor.pk==d.owner_id:raise PermissionDenied('기안자는 본인 문서를 검토·승인할 수 없습니다.')
     if action in ['forward','review_final']:
-        if not d.route.get('reviewer_decides') or d.status!='review' or assigned!=actor.pk or d.owner_id==actor.pk:raise PermissionDenied('현재 검토자만 처리할 수 있습니다.')
+        if d.status!='review' or assigned!=actor.pk or d.owner_id==actor.pk:raise PermissionDenied('현재 검토자만 처리할 수 있습니다.')
+        if action=='forward' and not d.route.get('reviewer_decides'):raise PermissionDenied('기존 결재선으로 처리해 주세요.')
         if action=='forward':
             person=forward_people(d).filter(pk=getattr(new_person,'pk',None)).first()
             if not person:raise ValidationError('본인과 기안자를 제외하고 규정·직급 조건에 맞는 승인자를 선택해 주세요.')
@@ -219,7 +221,8 @@ def request_action(pk,actor,action,reason='',quantity=None,receipt_key=None,stor
             notify([person],f'{d.product} · {actor.first_name}님의 검토가 완료되어 승인 요청이 도착했습니다.',request=d)
             notify([d.owner],f'{d.product} · {actor.first_name}님이 검토를 완료했습니다.',request=d,owner_update=True)
         else:
-            if not reviewer_can_finish(actor,d,p):raise PermissionDenied('구매 규정에서 승인완료 권한을 받은 검토자만 처리할 수 있습니다.')
+            if not reviewer_can_finish(actor,d,p):raise PermissionDenied('직원·권한 관리에서 구매요청서 승인완료 권한을 받은 검토자만 처리할 수 있습니다.')
+            if d.confirmed_at or d.current_report_id:raise ValidationError('이미 구매 절차가 진행된 문서입니다. 새로고침 후 상태를 확인해 주세요.')
             d.approver=actor;d.reviewed_at=d.intermediate_at=now;d.status='ready'
             d.route={**d.route,'reviewer_final':True,'approver_id':actor.pk,'review_final_policy_version':p.version}
             event(actor,'내부 승인완료',request=d,detail=reason or '지정 검토자의 승인완료')

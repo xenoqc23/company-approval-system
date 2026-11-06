@@ -25,8 +25,9 @@ def shell(request):
         if card['key']=='finance':card.update(title='구매요청 관리',url=reverse('purchasing:reports'))
         elif card['key']=='pending':card['url']=reverse('documents')+'?mode=pending'
     if request.path=='/staff/' and data['lab_admin']:
-        from .forms import PurchaseAssignmentsForm
+        from .forms import PurchaseAssignmentsForm,ReviewCompletionForm
         data['purchase_assignments_form']=PurchaseAssignmentsForm()
+        data['review_completion_form']=ReviewCompletionForm()
     return data
 
 

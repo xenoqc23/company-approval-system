@@ -132,12 +132,13 @@ class PaymentWorkflowTests(TestCase):
         c=Client(enforce_csrf_checks=True);c.force_login(self.user('finance'))
         self.assertEqual(c.post(url,dict(action='paid',items=[r.items.get().pk],revision=0,intent='confirm')).status_code,403)
 
-    def test_reviewer_picker_visible_and_completion_secondary_only_when_authorized(self):
+    def test_reviewer_picker_visible_and_completion_first_only_when_authorized(self):
         d=self.create('quality','review');url=reverse('purchasing:detail',args=[d.pk]);self.as_user('quality_manager')
         response=self.client.get(url);self.assertContains(response,'data-forward-visible');self.assertNotContains(response,'<details class="review-forward"')
         self.assertNotContains(response,'value="review_final"');self.assertContains(response,'<section class="secondary-actions"')
         PurchasePolicy.objects.get(pk=1).review_final_users.add(self.user('quality_manager'))
-        response=self.client.get(url);self.assertContains(response,'<button class="full">전결로 승인완료</button>');self.assertContains(response,'<button class="primary full">선택한 승인자에게 전달</button>')
+        response=self.client.get(url);self.assertContains(response,'<button class="primary full">승인완료</button>');self.assertContains(response,'<button class="full">선택한 승인자에게 전달</button>')
+        html=response.content.decode();self.assertLess(html.index('data-review-final'),html.index('data-forward-visible'))
         request_action(d.pk,self.user('quality_manager'),'review_final');d.refresh_from_db();self.assertEqual(d.status,'ready');self.assertFalse(d.completion_unread)
 
     def test_link_required_to_submit_but_drafts_and_old_blank_links_preserved(self):

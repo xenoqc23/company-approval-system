@@ -49,6 +49,8 @@
  }));
  document.querySelectorAll('.purchase-content form, body.purchase-workspace form, form[data-request-form]').forEach(form=>form.addEventListener('submit',event=>{
    if(event.defaultPrevented)return;
+   // The shared confirmation dialog resubmits only after explicit confirmation.
+   if(form.dataset.confirm && form.dataset.confirmed!=='yes')return;
    if(form.dataset.sending){event.preventDefault();return;}
    form.dataset.sending='1';
  }));

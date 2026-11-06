@@ -12,7 +12,7 @@ from workflow.services import save_document,act_on_document
 from . import test_integrated as fixtures
 from .models import PurchasePolicy,PurchaseRequest,PurchaseNotice,PurchaseEvent
 from .services import request_action,decide_report,save_request
-from .forms import PurchaseForwardForm,IntegratedPolicyForm
+from .forms import PurchaseForwardForm,IntegratedPolicyForm,ReviewCompletionForm
 
 class ReviewerFlowTests(TestCase):
     setUpTestData=classmethod(fixtures.IntegratedTests.setUpTestData.__func__)
@@ -96,12 +96,12 @@ class ReviewerFlowTests(TestCase):
         self.assertContains(response,'value="deny" checked');r.refresh_from_db();self.assertEqual(r.status,'pending')
         d.refresh_from_db();self.assertEqual(d.status,'ceo')
 
-    def test_purchase_policy_grants_only_selected_eligible_reviewers(self):
-        p=PurchasePolicy.objects.get(pk=1);f=IntegratedPolicyForm(instance=p)
-        data={name:f.initial.get(name,field.initial) for name,field in f.fields.items()};data.update(reason='검토자 승인완료 권한',review_final_users=[self.user('quality_manager').pk])
-        f=IntegratedPolicyForm(data,instance=p);self.assertTrue(f.is_valid(),f.errors);f.save(self.user('admin'))
+    def test_staff_authority_grants_only_selected_eligible_reviewers(self):
+        p=PurchasePolicy.objects.get(pk=1);f=ReviewCompletionForm()
+        data=dict(leave_revision=f.initial['leave_revision'],purchase_revision=p.version,reason='검토자 승인완료 권한',purchase_users=[self.user('quality_manager').pk])
+        f=ReviewCompletionForm(data);self.assertTrue(f.is_valid(),f.errors);f.save(self.user('admin'))
         self.assertEqual(list(p.review_final_users.values_list('pk',flat=True)),[self.user('quality_manager').pk])
-        data['review_final_users']=[self.user('quality').pk];f=IntegratedPolicyForm(data,instance=p);self.assertFalse(f.is_valid())
+        data['purchase_users']=[self.user('quality').pk];f=ReviewCompletionForm(data);self.assertFalse(f.is_valid())
 
     def test_rule_list_toggle_preserves_old_route_and_blocks_stale_toggle(self):
         ApprovalRule.objects.filter(kind='leave').update(enabled=False)

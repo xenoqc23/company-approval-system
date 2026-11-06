@@ -27,6 +27,8 @@ class ScopedRuleForm(ApprovalRuleForm):
         self.fields['name'].label='규정 이름'
         self.fields['authors'].label='특정 기안자에게만 적용 · 선택사항'
         self.fields['allow_review_final'].label='지정한 검토자가 승인까지 완료할 수 있음'
+        # Keep legacy rule grants intact; live grants are edited only on Staff.
+        for name in ['allow_review_final','review_final_users']:self.fields[name].disabled=True
         self.fields['allow_representative_direct'].label='과장·팀장·부장·이사에게 대표 결재 요청 허용'
     def clean(self):
         data=super().clean();data['amount_over']=Decimal('0');data['amount_to']=None

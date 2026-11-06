@@ -80,11 +80,17 @@ def forward_candidates(document):
 
 def review_final_rule(document, actor):
     """Named reviewer authority is live and independent of author-targeted route rules."""
-    from .models import ApprovalRule
+    from django.conf import settings
+    from .models import ApprovalRule,ReviewerCompletionAuthority
     from .people import review_final_people
-    if (not document.progressive or document.status!='review' or document.reviewer_id!=actor.pk
+    if (document.status!='review' or document.reviewer_id!=actor.pk
             or document.owner_id==actor.pk or not review_final_people().filter(pk=actor.pk).exists()):
         return None
+    if settings.INTEGRATED_PURCHASES and document.kind=='leave':
+        authority=ReviewerCompletionAuthority.objects.filter(pk=1).first()
+        if authority:
+            return authority if authority.leave_users.filter(pk=actor.pk).exists() else None
+    if not document.progressive:return None
     rules=ApprovalRule.objects.filter(enabled=True,deleted_at__isnull=True,allow_review_final=True,
         review_final_users=actor,kind__in=['all',document.kind]).order_by('pk')
     for rule in rules:
@@ -159,6 +165,10 @@ def handle_action(document, actor, action, reason, new_person):
         document.route_snapshot = {**document.route_snapshot,'reviewer_final':True,
             'review_final_authority':{'rule_id':authority.pk,'name':authority.name,'version':authority.version,
                 'reviewer_id':actor.pk,'reviewer_name':actor.first_name}}
+        from .models import ReviewerCompletionAuthority
+        if isinstance(authority,ReviewerCompletionAuthority):
+            record=document.route_snapshot['review_final_authority']
+            record.update(source='staff',staff_policy_id=record.pop('rule_id'))
         finish(document,actor,'검토자 전결',reason)
     elif action == 'escalate':
         if not may_escalate(document,actor):

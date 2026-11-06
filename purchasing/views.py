@@ -167,11 +167,12 @@ def detail(request,pk):
         PurchaseRequest.objects.filter(pk=d.pk,revision=d.revision).update(completion_unread=False)
     assigned={'review':d.reviewer_id,'approval':d.approver_id,'director':d.director_id}.get(d.status)
     simplified=not can_view_purchase(request.user,d)
+    can_review_final=reviewer_can_finish(request.user,d)
     permissions=dict(
         can_confirm=checker_assigned(request.user,d) and request.user.pk!=d.owner_id and d.status in ['ready','hold'] and not d.confirmed_at,
-        can_approve=assigned==request.user.pk and not (d.status=='review' and d.route.get('reviewer_decides')),
+        can_approve=assigned==request.user.pk and not (d.status=='review' and (d.route.get('reviewer_decides') or can_review_final)),
         can_forward=assigned==request.user.pk and d.status=='review' and bool(d.route.get('reviewer_decides')),
-        can_review_final=bool(d.route.get('reviewer_decides')) and reviewer_can_finish(request.user,d),
+        can_review_final=can_review_final,
         can_reject=assigned==request.user.pk,
         can_cancel=d.owner_id==request.user.pk and d.status in ['draft','review','approval','director','ready'] and not d.current_report_id and not d.confirmed_at,
         can_receive=d.owner_id==request.user.pk and d.status in ['allowed','paid'],
@@ -190,6 +191,7 @@ def detail(request,pk):
         task=task_for(d,request.user,permissions),has_secondary=has_secondary,**permissions,
         forward_form=PurchaseForwardForm(document=d) if permissions['can_forward'] else None,
         approve_combined=permissions['can_approve'] and d.status in ['approval','director'] and combines_confirmation(d,request.user),
+        review_combined=can_review_final and combines_confirmation(d,request.user),
         supplements=d.supplements.all(),amendments=d.amendments.all(),receipt_key=uuid4(),
         attachment_form=AttachmentForm(),attachment_list=visible_attachments(request.user,d),can_attach=can_upload(request.user,d),
         can_report=bool(d.current_report_id and reports_for(request.user).filter(pk=d.current_report_id).exists()))
@@ -540,6 +542,21 @@ def purchase_summary(request):
         purchase_tab='summary',inbox_counts=inbox_counts(request.user),filters_valid=valid)
     if not valid and request.GET.get('download')=='1':response.status_code=400
     return response
+
+
+@login_required
+@require_POST
+def reviewer_authority(request):
+    if not settings.INTEGRATED_PURCHASES or not is_admin(request.user):raise PermissionDenied
+    from .forms import ReviewCompletionForm
+    form=ReviewCompletionForm(request.POST)
+    if form.is_valid():
+        try:
+            form.save(request.user)
+            messages.success(request,'문서별 승인완료 권한을 저장했습니다. 이미 요청된 검토 대기 문서에도 즉시 적용됩니다.')
+            return redirect(reverse('staff')+'#reviewer-authority')
+        except ValidationError as exc:form.add_error(None,exc)
+    return page(request,'reviewer_authority','검토 단계 승인완료 권한',form=form)
 
 
 @login_required

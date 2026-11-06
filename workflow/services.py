@@ -215,7 +215,7 @@ def act_on_document(pk, actor, action, reason='', new_person=None):
             and document.progressive and document.representative_id == actor.pk
             and action in ['approve','reject','cancel_approval']):
         raise PermissionDenied('회사 대표 계정은 허용된 대표 결재만 처리할 수 있습니다.')
-    if document.progressive:
+    if document.progressive or (settings.INTEGRATED_PURCHASES and document.kind=='leave' and action=='review_final'):
         from .progressive import handle_action
         if handle_action(document, actor, action, reason, new_person):
             document.save()

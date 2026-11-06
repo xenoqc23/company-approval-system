@@ -87,6 +87,9 @@ def pending_columns(d):
 
 
 def task_for(d,user,permissions):
+    if permissions.get('can_review_final'):
+        from .services import combines_confirmation
+        return dict(kind='review',message='승인완료를 누르면 구매확인까지 함께 완료되어 구매 담당자에게 전달됩니다.' if combines_confirmation(d,user) else '승인완료를 누르면 내부 결재를 마치고 구매확인 담당자에게 전달됩니다.')
     if permissions.get('can_forward'):
         return dict(kind='review',message='구매 내용을 검토한 뒤 승인자를 지정해 승인 요청해 주세요.')
     if permissions['can_approve']:
