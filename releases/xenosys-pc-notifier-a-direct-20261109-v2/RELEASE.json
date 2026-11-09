@@ -1,0 +1,9 @@
+{
+  "version": "1.0.1",
+  "self_contained": true,
+  "compressed_bundle": true,
+  "contains_machine_data": false,
+  "source_revision": "6698e3a14fbaf5e213033b9bbde4cbc151fb3652",
+  "sha256": "2cee10102ddb736011f612a10857506c0852925f74f197b50e9bcbe1234928ee",
+  "bytes": 52584832
+}
