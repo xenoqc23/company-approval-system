@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import subprocess
 import sys
+from xml.etree.ElementTree import fromstring
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock,patch
@@ -136,7 +137,11 @@ class DesktopIntegrationTests(unittest.TestCase):
         with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
               patch('desktop.subprocess.run',side_effect=runner)):
             self.desktop.notify('처리할 문서 2건','홍길동 · 휴가원\n김가영 · 구매요청서')
-        self.assertIn('홍길동',payload[0][1]['body']);self.assertFalse(payload[0][0].exists())
+        xml=fromstring(payload[0][1]['xml'])
+        self.assertIn('홍길동',xml.find('visual/binding').findall('text')[1].text)
+        self.assertEqual(xml.get('scenario'),'reminder')
+        self.assertEqual(xml.find('actions/action').get('arguments'),'dismiss')
+        self.assertFalse(payload[0][0].exists())
 
     def test_native_block_is_reported_as_failure_not_display_success(self):
         with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),

@@ -9,10 +9,12 @@ self.addEventListener('push',event=>{
   let payload={};try{payload=event.data?event.data.json():{};}catch{}
   const message=messages[payload.kind]||{title:'[테스트] PC 알림',body:'로컬 PC 알림 테스트입니다.'};
   event.waitUntil(self.registration.showNotification(message.title,{body:message.body,
-    tag:typeof payload.tag==='string'?payload.tag:'local-push-test',data:{localTrial:true}}));
+    tag:typeof payload.tag==='string'?payload.tag:'local-push-test',requireInteraction:true,
+    actions:[{action:'acknowledge',title:'확인'}],data:{localTrial:true}}));
 });
 self.addEventListener('notificationclick',event=>{
   event.notification.close();
+  if(event.action==='acknowledge')return;
   event.waitUntil((async()=>{
     const target=self.location.origin+'/';
     const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});

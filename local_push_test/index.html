@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 PC 알림 테스트</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body><main>
-<header><span class="badge">로컬 테스트 v3 · NAS 연결 없음</span><h1>PC 알림, 먼저 시험해 보세요.</h1><p>Chrome·Edge 알림과 PC 로그인 시 미결 문서 알림을 확인하는 별도 테스트입니다.<br>실제 직원 계정이나 결재 문서를 사용하지 않습니다.</p><p class="note">알림이 보이지 않으면 <a href="#windows-check">Windows 알림 상태 확인</a>을 눌러 주세요. 실패 단계와 오류 코드를 확인할 수 있습니다.</p><p class="note">출근해서 PC를 켰을 때의 알림은 아래 <a href="#login-trial">4번 ‘PC를 켰을 때 미결 문서 알림’</a>에서 시험해 주세요. 날짜가 바뀌지 않아도 미결 문서가 남아 있으면 다시 알려줍니다.</p></header>
+<header><span class="badge">로컬 테스트 v4 · NAS 연결 없음</span><h1>PC 알림, 먼저 시험해 보세요.</h1><p>Chrome·Edge 알림과 PC 로그인 시 미결 문서 알림을 확인하는 별도 테스트입니다.<br>실제 직원 계정이나 결재 문서를 사용하지 않습니다.</p><p class="note">알림이 보이지 않으면 <a href="#windows-check">Windows 알림 상태 확인</a>을 눌러 주세요. 실패 단계와 오류 코드를 확인할 수 있습니다.</p><p class="note">출근해서 PC를 켰을 때의 알림은 아래 <a href="#login-trial">4번 ‘PC를 켰을 때 미결 문서 알림’</a>에서 시험해 주세요. 날짜가 바뀌지 않아도 미결 문서가 남아 있으면 다시 알려줍니다.</p></header>
 <section class="card"><div class="step">1</div><h2>브라우저 설정 한 번만 확인</h2><p>현재 브라우저: <strong id="browser-name">확인 중</strong>. Chrome과 Edge는 각각 설정하고 시험해 주세요.</p>
 <div class="browser-grid">
 <article><h3>Chrome</h3><p>주소창에 아래 주소 붙여넣기</p><div class="copy-row"><code>chrome://settings/system</code><button type="button" data-copy="chrome://settings/system">주소 복사</button></div><p><b>Chrome 종료 후에도 백그라운드 앱을 계속 실행</b> 항목을 켜 주세요.</p></article>
@@ -14,15 +14,15 @@
 <section class="card"><div class="step">2</div><h2>이 브라우저 알림 허용</h2><p>아래 버튼을 누른 뒤 브라우저가 물으면 <b>허용</b>을 선택해 주세요. 다른 브라우저에서도 따로 허용해야 합니다.</p>
 <div class="actions"><button class="primary" id="connect" type="button" disabled>알림 허용하고 연결</button><button id="disconnect" type="button" hidden>이 브라우저 연결 해제</button><button id="display" type="button" disabled>지금 윈도우 표시 확인</button></div>
 <p id="connection" class="state" role="status">테스트 도구를 준비하고 있습니다.</p>
-<p class="hint">‘지금 윈도우 표시 확인’은 PC 표시만 확인합니다. 창을 닫은 뒤의 수신은 아래 3번으로 시험해 주세요.</p>
+<p class="hint">Chrome·Edge에는 ‘확인’ 버튼과 확인 전까지 유지 요청을 전달합니다. 브라우저·Windows가 표시 시간을 제한할 수 있습니다. Windows 리마인더 알림은 아래 4번에서 시험해 주세요.</p>
 </section>
 <section class="card"><div class="step">3</div><h2>30초 후 알림 보내기</h2><p>원하는 버튼을 누른 뒤 <b>Chrome 또는 Edge의 모든 창을 닫고 30초 정도</b> 기다려 주세요. 첫 시험은 창을 켜 둔 상태로 해도 됩니다.</p>
 <p class="note"><b>검은 실행 창은 계속 켜 두세요.</b> 로컬 알림 발송 프로그램이 실행되는 창입니다. 브라우저 창을 닫는 것과 실행 창을 닫는 것은 다릅니다.</p>
 <div class="preview-grid"><article><h3>결재 요청 예시</h3><p>개발팀 홍길동 대리님이 휴가원을 올렸습니다. 검토해 주세요.</p><button class="primary send" type="button" data-kind="request" disabled>30초 뒤 결재 요청 알림</button></article><article><h3>결재 완료 예시</h3><p>신청하신 구매요청서의 결재가 완료되었습니다.</p><button class="primary send" type="button" data-kind="completed" disabled>30초 뒤 결재 완료 알림</button></article></div>
 <p id="delivery" class="state" role="status">이 브라우저를 먼저 연결해 주세요.</p>
-<p class="hint">두 예시는 가상 내용입니다. 테스트 알림은 30초 간격으로 요청할 수 있으며, 누른 브라우저에만 보냅니다. 알림을 클릭하면 이 테스트 화면으로 돌아옵니다.</p>
+<p class="hint">두 예시는 가상 내용입니다. 테스트 알림은 30초 간격으로 요청할 수 있으며, 누른 브라우저에만 보냅니다. 알림의 ‘확인’은 알림만 닫습니다. 알림 본문을 클릭하면 이 테스트 화면으로 돌아옵니다.</p>
 </section>
-<section class="card" id="login-trial"><div class="step">4</div><h2>PC를 켰을 때 미결 문서 알림</h2>
+<section class="card" id="login-trial"><div class="step">4</div><h2>PC를 켰을 때 미결 문서 알림</h2><p class="note"><b>확인 버튼이 있는 Windows 리마인더 알림</b>으로 표시합니다. 직접 ‘확인’ 또는 닫기를 누를 때까지 유지하도록 요청하며, 소리는 내지 않습니다. <b>확인은 알림만 닫고 문서는 승인하지 않습니다.</b> Windows 알림 설정·정책에 따라 표시가 제한될 수 있습니다.</p>
 <p>PC를 켜고 <b>Windows에 로그인하면</b> 처리할 문서가 남아 있는지 알려줍니다. 이 테스트는 브라우저와 별도로 실행하므로 <b>브라우저·검은 실행 창을 미리 열어 둘 필요가 없습니다.</b></p>
 <ol><li><b>가상 미결 2건 만들기</b>를 누릅니다.</li><li><b>PC 켜기 알림 지금 시험</b>으로 먼저 팝업을 확인합니다. 재부팅하지 않고 같은 동작을 시험합니다.</li><li><b>Windows 로그인 자동 알림 켜기</b>를 한 번 누릅니다. 현재 Windows 사용자에게만 시작 프로그램으로 등록됩니다.</li><li>브라우저와 검은 실행 창을 닫고 PC를 재시작해 로그인합니다. 약 15~30초 뒤 오른쪽 아래와 알림 센터(Win + N)를 확인합니다.</li><li>다시 START_TEST.bat을 열어 가상 문서를 <b>처리완료</b>하면, 다음 알림부터 그 문서는 제외됩니다.</li></ol>
 <div class="actions"><button type="button" id="pending-create" disabled>가상 미결 2건 만들기</button><button type="button" class="primary" id="pending-remind" disabled>PC 켜기 알림 지금 시험</button></div>

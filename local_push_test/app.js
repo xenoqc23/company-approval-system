@@ -130,7 +130,8 @@ $('display').onclick=async()=>{
     const permission=await Notification.requestPermission();
     if(permission!=='granted')throw new Error('브라우저 알림을 허용해 주세요.');
     const tag='local-display-test-'+Date.now();
-    await registration.showNotification('[테스트] 윈도우 표시 확인',{body:'이 PC의 알림 표시 테스트입니다. 실제 결재 문서는 없습니다.',tag,data:{localTrial:true}});
+    await registration.showNotification('[테스트] 윈도우 표시 확인',{body:'이 PC의 알림 표시 테스트입니다. 확인은 알림만 닫습니다.',
+      tag,requireInteraction:true,actions:[{action:'acknowledge',title:'확인'}],data:{localTrial:true}});
     let found=false;
     for(let i=0;i<8;i++){
       if((await registration.getNotifications({tag})).length){found=true;break;}

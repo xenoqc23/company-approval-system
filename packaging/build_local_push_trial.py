@@ -5,9 +5,9 @@ from pathlib import Path
 from zipfile import ZipFile,ZipInfo,ZIP_DEFLATED
 
 ROOT=Path(__file__).resolve().parents[1]
-NAME='xenosys-local-pc-notification-test-20261106-v3'
+NAME='xenosys-local-pc-notification-test-20261109-v4'
 FILES=['server.py','launch.py','START_TEST.bat','requirements.txt','index.html','style.css','app.js','sw.js','README.md',
-       'pending.py','desktop.py','login_reminder.py','DISABLE_AUTO_START.bat']
+       'pending.py','desktop.py','login_reminder.py','DISABLE_AUTO_START.bat','toast_content.py']
 
 
 def build(destination):
@@ -20,7 +20,7 @@ def build(destination):
     destination.parent.mkdir(parents=True,exist_ok=True)
     with ZipFile(destination,'w') as archive:
         for name,data in sorted(files.items()):
-            info=ZipInfo(NAME+'/'+name,date_time=(2026,11,6,0,0,0));info.compress_type=ZIP_DEFLATED;info.external_attr=0o644<<16
+            info=ZipInfo(NAME+'/'+name,date_time=(2026,11,9,0,0,0));info.compress_type=ZIP_DEFLATED;info.external_attr=0o644<<16
             archive.writestr(info,data)
     digest=hashlib.sha256(destination.read_bytes()).hexdigest()
     destination.with_suffix('.zip.sha256').write_text(f'{digest}  {destination.name}\n')

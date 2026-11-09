@@ -36,11 +36,8 @@ try {
         exit 2
     }
     $stage = 'xml'
-    $title = [System.Security.SecurityElement]::Escape([string]$data.title)
-    $body = [System.Security.SecurityElement]::Escape([string]$data.body)
-    $footer = [System.Security.SecurityElement]::Escape([string]$data.footer)
     $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-    $xml.LoadXml("<toast duration='long'><visual><binding template='ToastGeneric'><text>$title</text><text>$body</text><text>$footer</text></binding></visual></toast>")
+    $xml.LoadXml([string]$data.xml)
     $stage = 'show'
     $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
     $toast.Tag = [guid]::NewGuid().ToString('N').Substring(0, 16)
@@ -125,8 +122,9 @@ class WindowsDesktop:
     def notify(self, title, body):
         self.require_windows()
         self.register_app()
-        result = self.call_windows(dict(mode='notify', title=title, body=body,
-                                        footer='가상 문서입니다. 확인: START_TEST.bat 실행'))
+        from toast_content import reminder_xml
+        result = self.call_windows(dict(mode='notify', xml=reminder_xml(title,body,
+                                        '확인은 알림만 닫습니다. 문서는 별도로 처리해 주세요.')))
         if not result.get('ok'):
             text = self.failure_message(result)
             raise RuntimeError(text)
