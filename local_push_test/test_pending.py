@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock,patch
 from pending import PendingStore,remind_once
 from login_reminder import run
-from desktop import WindowsDesktop,RUN_KEY,RUN_NAME,APP_KEY
+from desktop import WindowsDesktop,RUN_KEY,RUN_NAME,APP_KEY,notification_setting,NOTIFICATION_SETTINGS
 
 
 class PendingReminderTests(unittest.TestCase):
@@ -147,6 +147,35 @@ class DesktopIntegrationTests(unittest.TestCase):
         with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
               patch('desktop.subprocess.run',return_value=Mock(returncode=1,stdout=b'{"ok":false,"stage":"xml","setting":"Enabled","hresult":"0x80070057"}',stderr=b''))):
             with self.assertRaisesRegex(RuntimeError,'xml.*0x80070057'):self.desktop.notify('제목','내용')
+
+    def test_empty_unknown_or_numeric_enabled_setting_does_not_prevent_show(self):
+        for setting in [None,'',' ','unknown','unprojected',0,'0','Enabled']:
+            with self.subTest(setting=setting):
+                output=json.dumps(dict(ok=True,stage='show',setting=setting)).encode()
+                with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
+                      patch('desktop.subprocess.run',return_value=Mock(returncode=0,stdout=output,stderr=b'')) as transport):
+                    result=self.desktop.notify('테스트','가상 미결 문서')
+                transport.assert_called_once();self.assertTrue(result['ok'])
+                self.assertEqual(result['setting_raw'],setting)
+                self.assertEqual(result['setting'],notification_setting(setting))
+
+    def test_observed_disabled_settings_are_still_reported_without_changing_policy(self):
+        for setting in list(NOTIFICATION_SETTINGS[1:])+[1,'2',3,4]:
+            with self.subTest(setting=setting):
+                output=json.dumps(dict(ok=True,stage='show',setting=setting)).encode()
+                with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
+                      patch('desktop.subprocess.run',return_value=Mock(returncode=0,stdout=output,stderr=b''))):
+                    with self.assertRaisesRegex(RuntimeError,'NotificationDisabled'):
+                        self.desktop.notify('테스트','가상 미결 문서')
+        self.assertEqual(set(self.registry.keys),{RUN_KEY,APP_KEY})
+
+    def test_unknown_diagnostic_setting_remains_unknown_not_disabled(self):
+        with (patch.object(WindowsDesktop,'powershell_path',return_value=Path('powershell.exe')),
+              patch('desktop.subprocess.run',return_value=Mock(returncode=0,stdout=b'{"ok":true,"stage":"diagnose","setting":""}',stderr=b''))):
+            result=self.desktop.call_windows({'mode':'diagnose'})
+        self.assertEqual(result['setting'],'unknown');self.assertTrue(result['ok'])
+        for value in [None,False,True,'', ' ',{},'invalid',99]:
+            self.assertEqual(notification_setting(value),'unknown')
 
     def test_diagnose_is_readonly_and_distinguishes_disabled_setting_from_api_failure(self):
         self.registry.keys[APP_KEY]={'DisplayName':'test'}

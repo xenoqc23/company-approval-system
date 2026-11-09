@@ -179,11 +179,12 @@ $('windows-diagnostics').onclick=async()=>{
       const setting=v=>v===0?'꺼짐':v===1?'켜짐':'기본값 · Windows 설정에서 확인 필요';
       const policy=v=>v===1?'알림 차단 정책 확인됨':'차단 값 확인되지 않음';
       const native=value.native||{};
+      const nativeSetting=!native.setting||native.setting==='unknown'?'확인 불가 · 차단으로 판단하지 않음':native.setting;
       const lines=[`Windows 버전: ${value.windows||'확인 불가'}`,`Windows 전체 알림: ${setting(value.global_toasts)}`,
         `테스트 앱 등록 정보: ${value.app_registered?'있음':'없음'}`,`테스트 앱 알림: ${setting(value.app_toasts)}`,
         `사용자 정책: ${policy(value.user_policy)}`,`PC 정책: ${policy(value.machine_policy)}`,
         `Windows 알림 API: ${native.ok?'응답 확인':'실패'}`,`확인 단계: ${native.stage||'unknown'}`,
-        `API 알림 설정: ${native.setting||'unknown'}`];
+        `API 알림 설정: ${nativeSetting}`];
       if(native.hresult||native.error_type)lines.push(`오류: ${native.hresult||native.error_type}`);
       if(native.details)lines.push(`상세: ${native.details}`);
       windowsDiagnostic=lines.join('\n');

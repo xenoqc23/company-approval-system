@@ -12,6 +12,21 @@ RUN_NAME = 'XenosysLocalPendingTrial'
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 APP_KEY = 'Software\\Classes\\AppUserModelId\\' + APP_ID
 DISPLAY_NAME = '사내결재 PC 알림 테스트'
+NOTIFICATION_SETTINGS = ('Enabled', 'DisabledForApplication', 'DisabledForUser',
+                         'DisabledByGroupPolicy', 'DisabledByManifest')
+
+
+def notification_setting(value):
+    """Missing WinRT projection data is unknown, never proof of disabled alerts."""
+    if value is None or isinstance(value, bool):
+        return 'unknown'
+    text = str(value).strip()
+    if text in ('0', '1', '2', '3', '4'):
+        return NOTIFICATION_SETTINGS[int(text)]
+    for name in NOTIFICATION_SETTINGS:
+        if text.casefold() == name.casefold():
+            return name
+    return 'unknown'
 
 TOAST_SCRIPT = r'''
 $ErrorActionPreference = 'Stop'
@@ -26,14 +41,10 @@ try {
     $stage = 'notifier'
     $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Xenosys.LocalNotificationTrial')
     $stage = 'settings'
-    $setting = [string]$notifier.Setting
+    try { $setting = [string]$notifier.Setting } catch { $setting = 'unknown' }
     if ($data.mode -eq 'diagnose') {
         [pscustomobject]@{ok=$true; stage='diagnose'; setting=$setting} | ConvertTo-Json -Compress
         exit 0
-    }
-    if ($setting -ne 'Enabled') {
-        [pscustomobject]@{ok=$false; stage=$stage; setting=$setting; error_type='NotificationDisabled'; hresult=''} | ConvertTo-Json -Compress
-        exit 2
     }
     $stage = 'xml'
     $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
@@ -134,7 +145,7 @@ class WindowsDesktop:
     def failure_message(result):
         return ('Windows 알림 요청 실패 · 단계: ' + str(result.get('stage', 'unknown')) +
                 ' · 오류: ' + str(result.get('hresult') or result.get('error_type', 'unknown')) +
-                ' · 알림 설정: ' + str(result.get('setting', 'unknown')) +
+                ' · 알림 설정: ' + ('확인 불가' if notification_setting(result.get('setting')) == 'unknown' else notification_setting(result.get('setting'))) +
                 '. 아래 ‘Windows 알림 상태 확인’ 결과를 확인해 주세요.')
 
     def read_setting(self, path, name, machine=False):
@@ -183,8 +194,15 @@ class WindowsDesktop:
                 answer = json.loads(result.stdout.decode('utf-8-sig').strip())
                 if not isinstance(answer, dict):
                     raise ValueError
+                raw_setting = answer.get('setting')
+                answer['setting_raw'] = raw_setting
+                answer['setting'] = notification_setting(raw_setting)
                 if result.returncode:
                     answer['ok'] = False
+                elif answer.get('ok') and payload.get('mode') == 'notify' and answer['setting'] in NOTIFICATION_SETTINGS[1:]:
+                    # Show() enforces the OS policy; a known disabled setting also
+                    # prevents a silent API return being reported as display success.
+                    answer.update(ok=False, stage='settings', error_type='NotificationDisabled')
                 return answer
             except (ValueError, UnicodeError):
                 details = result.stderr.decode('utf-8', errors='replace')

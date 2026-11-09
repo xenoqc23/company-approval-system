@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 PC 알림 테스트</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body><main>
-<header><span class="badge">로컬 테스트 v4 · NAS 연결 없음</span><h1>PC 알림, 먼저 시험해 보세요.</h1><p>Chrome·Edge 알림과 PC 로그인 시 미결 문서 알림을 확인하는 별도 테스트입니다.<br>실제 직원 계정이나 결재 문서를 사용하지 않습니다.</p><p class="note">알림이 보이지 않으면 <a href="#windows-check">Windows 알림 상태 확인</a>을 눌러 주세요. 실패 단계와 오류 코드를 확인할 수 있습니다.</p><p class="note">출근해서 PC를 켰을 때의 알림은 아래 <a href="#login-trial">4번 ‘PC를 켰을 때 미결 문서 알림’</a>에서 시험해 주세요. 날짜가 바뀌지 않아도 미결 문서가 남아 있으면 다시 알려줍니다.</p></header>
+<header><span class="badge">로컬 테스트 v5 · NAS 연결 없음</span><h1>PC 알림, 먼저 시험해 보세요.</h1><p class="note">알림 설정값이 비어 있을 때 차단으로 잘못 판단하던 오류를 수정했습니다. 확인할 수 없는 값은 ‘확인 불가’로 표시하고 Windows의 실제 표시 요청 결과를 확인합니다.</p><p>Chrome·Edge 알림과 PC 로그인 시 미결 문서 알림을 확인하는 별도 테스트입니다.<br>실제 직원 계정이나 결재 문서를 사용하지 않습니다.</p><p class="note">알림이 보이지 않으면 <a href="#windows-check">Windows 알림 상태 확인</a>을 눌러 주세요. 실패 단계와 오류 코드를 확인할 수 있습니다.</p><p class="note">출근해서 PC를 켰을 때의 알림은 아래 <a href="#login-trial">4번 ‘PC를 켰을 때 미결 문서 알림’</a>에서 시험해 주세요. 날짜가 바뀌지 않아도 미결 문서가 남아 있으면 다시 알려줍니다.</p></header>
 <section class="card"><div class="step">1</div><h2>브라우저 설정 한 번만 확인</h2><p>현재 브라우저: <strong id="browser-name">확인 중</strong>. Chrome과 Edge는 각각 설정하고 시험해 주세요.</p>
 <div class="browser-grid">
 <article><h3>Chrome</h3><p>주소창에 아래 주소 붙여넣기</p><div class="copy-row"><code>chrome://settings/system</code><button type="button" data-copy="chrome://settings/system">주소 복사</button></div><p><b>Chrome 종료 후에도 백그라운드 앱을 계속 실행</b> 항목을 켜 주세요.</p></article>
