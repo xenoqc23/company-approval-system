@@ -1,5 +1,7 @@
 # 설치된 NAS용 화면 수정 파일
 
+[검토·승인 의견 및 연차 이름 검색 NAS 업데이트](xenosys-nas-opinions-search-update-20261112-v1.zip)는 휴가원·구매요청서의 선택 의견과 직원별 연차 관리의 이름 검색을 추가합니다. 의견은 실제 검토·승인 완료와 함께 저장하며 신청 내용 아래에 작성자·단계·시간을 표시합니다. 이미 제출된 대기 문서에도 적용됩니다. 연차 조회·엑셀에 같은 검색 조건을 사용하고 기존 문서·연차·공지·첨부·PC 알림 연결은 보존합니다. [사전점검·적용 안내](xenosys-nas-opinions-search-update-20261112-v1.md)를 확인합니다. 직원 PC 프로그램은 재설치하지 않아도 됩니다.
+
 [PC 알림 설치 공지 포함 NAS 업데이트 v4](xenosys-nas-announcements-update-20261110-v4.zip)는 **사내결재시스템 알림 설치** 공지 한 건과 직원용 EXE를 최초 한 번 등록합니다. 설치 방법은 공지 본문에서 관리자가 직접 수정할 수 있습니다. 이전에 수정하거나 삭제한 설치 공지는 다시 덮어쓰거나 되살리지 않습니다. EXE를 따로 첨부할 필요 없이 NAS ZIP 하나만 적용합니다. 실제 NAS에는 [적용 안내](../docs/NAS_ANNOUNCEMENTS_UPDATE_20261109.md)에 따라 별도 업데이트가 필요합니다.
 
 [공지사항 NAS 업데이트 v3](xenosys-nas-announcements-update-20261109-v3.zip)는 검색 버튼을 가로로 표시하고 공지에 PC 알림 다운로드 버튼·설치 안내를 넣는 옵션을 추가합니다. [직원용 설치 EXE](xenosys-pc-notifier-a-direct-20261109-v2/XenosysApprovalSetup.exe)를 공지에 첨부하고 ‘PC 알림 프로그램 설치 안내 표시’를 켭니다. 직원은 내려받은 EXE를 실행해 설치하며 ZIP 압축 해제는 필요 없습니다. 기존 설치 직원은 재설치하지 않아도 됩니다. 클릭만으로 자동 설치되지는 않습니다. NAS에는 [적용 안내](../docs/NAS_ANNOUNCEMENTS_UPDATE_20261109.md)에 따라 별도 업데이트가 필요합니다. 이 새 압축 EXE의 실제 Windows 설치는 한 PC에서 먼저 확인합니다.
